@@ -66,7 +66,7 @@
     <div class="rail-bottom">
       <div class="machine-status"><span class="led" id="device-led"></span><div><span id="rail-scanner-name">Selected scanner</span><small id="device-status">Checking connection…</small></div></div>
       <button class="rail-logout" id="logout-button">SIGN OUT <span>↗</span></button>
-      <div class="rail-license">PRIVATE EDITION <span>0.10.0</span></div>
+      <div class="rail-license">PRIVATE EDITION <span>0.11.0</span></div>
     </div>
   </aside>
   <div class="app-main">
@@ -170,10 +170,11 @@
         </section>
         <aside class="print-desk-aside">
           <section class="print-panel print-doc-panel"><span class="overline">02 / FROM YOUR LIBRARY</span><h2>Ready when you are.</h2><p>Open a scanned document in the workbench or print its current edited pages directly.</p><div id="print-library" class="print-library"><p class="muted">Loading documents…</p></div><div id="print-document-feedback" class="print-feedback hidden" role="status" aria-live="polite"></div></section>
+          <section id="print-jobs-panel" class="print-panel print-jobs-panel"><span class="overline">YOUR PRINT JOBS</span><h2>On its way.</h2><p>What you sent from Folio, newest first. Anything still waiting can be cancelled.</p><div id="print-jobs" class="print-jobs" aria-live="polite"><p class="muted">Loading your print jobs…</p></div><button class="small-link" id="print-jobs-refresh" type="button">Refresh ↻</button></section>
           <section id="guest-settings-panel" class="print-panel print-guest-settings hidden"><span class="overline">03 / ADMINISTRATION</span><h2>The guest pass.</h2><label class="switch-line"><input id="guest-enable" type="checkbox"> <span>Allow guests to print without an account</span></label><p>Guest-only rules: PDF, PNG or JPEG; max 10 MB, 20 pages, one copy, with rate limits. Signed-in users are not subject to these guest quotas.</p><div class="print-admin-actions"><button class="button outline-button" id="save-guest" type="button">Save guest access</button><button class="small-link" id="open-guest-view" type="button">Open guest page →</button></div></section>
         </aside>
       </div>
-      <div class="security-note"><svg class="svg-icon"><use href="#ico-lock"/></svg> A queued job is not the same as a completed physical print. Folio only reports CUPS submission; native AirPrint is managed separately by CUPS and Avahi.</div>
+      <div class="security-note"><svg class="svg-icon"><use href="#ico-lock"/></svg> Job status comes from CUPS. “Done” means CUPS finished sending the job to the printer; a paper jam or empty tray is reported by the printer itself.</div>
     </section>
     <section id="admin-users-view" class="people-desk hidden">
       <div class="overline">ACCESS / 05</div><h1>People, with<br><em>the right keys.</em></h1>
@@ -195,7 +196,7 @@
     </section>
     <section id="admin-devices-view" class="devices-desk hidden">
       <div class="overline">EQUIPMENT / 06</div><h1>Tools of<br><em>the trade.</em></h1>
-      <p>Add, edit or remove scanners right here; Folio writes the SANE configuration automatically. Printers are installed in CUPS and appear here after Refresh. Neither workflow requires a Docker restart.</p>
+      <p>Add, edit or remove scanners and printers right here; Folio writes the SANE configuration and sets up CUPS queues for you. Neither requires a Docker restart.</p>
       <div class="device-intro"><span class="led on"></span><strong id="device-cups-server">CUPS server</strong><button class="button outline-button" type="button" id="devices-refresh">Refresh devices ↻</button></div>
       <div class="device-grid">
         <div class="device-column">
@@ -214,9 +215,29 @@
           </div>
         </div>
         <div class="device-column">
-          <div class="device-heading"><span class="overline">02 / PRINTERS</span><h2>Output devices.</h2><p>Add queues in CUPS; Folio reads available options and controls access.</p></div>
+          <div class="device-heading"><span class="overline">02 / PRINTERS</span><h2>Output devices.</h2><p>Add printers, choose who may use them, and see what they are printing.</p></div>
+          <div id="cups-admin-list" class="device-list cups-admin-list"></div>
           <div id="device-printer-list" class="device-list"><p>Discovering CUPS printers…</p></div>
-          <div class="device-add-panel"><h3>Need another printer?</h3><p>Install its driver and queue in CUPS first. Then press Refresh devices. Folio will find it automatically—no privileged printer administration is exposed to the web app.</p><p class="inline-note">AirPrint discovery for each new queue remains separately configured in Avahi, if needed.</p></div>
+          <div class="device-add-panel" id="add-printer-panel"><h3>Add a printer</h3><p id="add-printer-intro">Folio sets the printer up in CUPS for you. Connect a CUPS administrator login above to begin.</p>
+            <form id="add-printer-form" class="device-form hidden">
+              <label>CUPS server <select id="add-printer-server"></select></label>
+              <fieldset class="device-fieldset"><legend>Which printer?</legend>
+                <div class="device-form-row find-row"><button type="button" class="button outline-button" id="find-printers">Find printers</button><span id="find-printers-status" class="inline-note">Looks for USB printers and network printers CUPS can see.</span></div>
+                <div id="found-printers" class="found-printers"></div>
+                <label class="device-checkbox"><input type="radio" name="printer-source" value="manual" checked> Enter its network address</label>
+                <div id="manual-printer" class="device-form-row"><label>Address <input id="add-printer-address" placeholder="192.168.1.60" autocomplete="off"></label><label>Connection <select id="add-printer-connection"><option value="ipp">IPP / AirPrint</option><option value="socket">JetDirect (port 9100)</option><option value="lpd">LPD</option></select></label></div>
+              </fieldset>
+              <fieldset class="device-fieldset"><legend>Driver</legend>
+                <label class="device-checkbox"><input type="radio" name="driver-kind" value="everywhere" checked> <span><strong>Driverless</strong> · for printers that support AirPrint or IPP Everywhere (most made since about 2015)</span></label>
+                <label class="device-checkbox"><input type="radio" name="driver-kind" value="ppd"> <span><strong>Choose a driver</strong> · for older printers, USB printers and JetDirect/LPD connections</span></label>
+                <div id="driver-picker" class="hidden"><div class="device-form-row"><label>Manufacturer <select id="driver-make"><option value="">Loading…</option></select></label><label>Model <input id="driver-model" placeholder="e.g. M2885FW" autocomplete="off"></label></div><label>Driver <select id="driver-choice" size="6"></select></label><p id="driver-count" class="inline-note"></p></div>
+              </fieldset>
+              <div class="device-form-row"><label>Name <input id="add-printer-name" maxlength="60" required placeholder="Office_Laser" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]*" title="Letters, numbers, dot, dash and underscore; no spaces"></label><label>Location <input id="add-printer-location" maxlength="127" placeholder="Upstairs"></label></div>
+              <label class="device-checkbox"><input type="checkbox" id="add-printer-default"> Make default printer</label>
+              <label class="device-checkbox"><input type="checkbox" id="add-printer-guest"> Allow guest printing</label>
+              <button class="button dark-button" type="submit" id="add-printer-submit">Add printer</button>
+              <div id="add-printer-feedback" class="print-feedback hidden" role="status" aria-live="polite"></div>
+            </form></div>
         </div>
       </div>
       <div class="diagnostics-panel">

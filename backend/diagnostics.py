@@ -16,7 +16,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from backend import devices
+from backend import cupsadmin, devices
 
 LOW_DISK_WARN = 1024 ** 3        # 1 GiB
 LOW_DISK_FAIL = 200 * 1024 ** 2  # 200 MiB
@@ -187,12 +187,20 @@ def probe_cups_server(server: str) -> dict:
                  f'{reason}. Check the address, that CUPS listens on the network, and port 631.')
 
 
-def check_printing(cups_servers: list[str], default_printer: str | None) -> list[dict]:
+def check_printing(cups_servers: list[str], default_printer: str | None, data_dir: Path | None = None) -> list[dict]:
     if not cups_servers:
         return [check('cups', 'Printing', 'warn',
                       'No CUPS server is configured. Set CUPS_SERVERS in the container environment.')]
     with ThreadPoolExecutor(max_workers=min(4, len(cups_servers))) as pool:
         results = list(pool.map(probe_cups_server, cups_servers))
+    if data_dir is not None:
+        for server in cups_servers:
+            login = cupsadmin.admin_status(data_dir, server)
+            results.append(check(f'cups-admin:{server}', f'Printer administration on {server}', 'info',
+                                 f"Connected as {login['username']}" + (' over TLS' if login['encrypted'] else '')
+                                 if login['connected'] else
+                                 'Not connected. Connect a CUPS administrator login in Devices to add, '
+                                 'remove or pause printers from Folio.'))
     if default_printer:
         server, _, queue = default_printer.partition('|')
         results.append(check('default-printer', 'Default printer', 'info',
@@ -250,7 +258,7 @@ def run_checks(*, data_dir: Path, jobs_dir: Path, cups_servers: list[str], regis
                          f'up {int((time.time() - STARTED) // 60)} min'),
                    *check_storage(data_dir, jobs_dir), check_memory(),
                    *check_proxy(request, cookie_secure)],
-        'printing': check_printing(cups_servers, default_printer),
+        'printing': check_printing(cups_servers, default_printer, data_dir),
         'scanning': [*check_scanning(registry), check_ocr()],
     }
     statuses = [c['status'] for group in sections.values() for c in group]

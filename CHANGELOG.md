@@ -4,6 +4,70 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.11.0 — Printer management and print jobs
+
+Folio can now set printers up in CUPS, and everyone can see what happened
+to what they printed.
+
+### Printer management (Devices → Printers)
+- **Connect a CUPS administrator login** once per CUPS server. Folio checks
+  it immediately, stores it in `data/cups-admin.json` (readable only by the
+  container user), and never sends it back to a browser. If CUPS only
+  accepts passwords over TLS, Folio switches to TLS automatically and trusts
+  that server's certificate from then on; a changed certificate is refused
+  before the password is sent.
+- **Add a printer**: choose one CUPS detected (USB, or a network printer on
+  the same network) or enter its address (IPP/AirPrint, JetDirect port 9100,
+  or LPD). Pick **Driverless** for printers that support AirPrint/IPP
+  Everywhere, or **Choose a driver**: select the manufacturer, type the
+  model ("M2885FW"), and the matching drivers are listed first.
+- **Test page, Pause/Resume, Jobs and Remove** on each printer card.
+- Folio refuses to create a printer whose name already exists on that
+  server (CUPS would silently replace it), and only uses devices CUPS
+  reported or addresses it builds itself, never a typed device URI.
+- Queues Folio creates are shared in CUPS. That is required: CUPS refuses
+  jobs from other computers for unshared queues, and Folio is one.
+
+### Print jobs
+- Every print is now submitted under the Folio user's name (guests as
+  `folio-guest`) instead of the container's `root`. CUPS's job history and
+  page logs now show who printed what.
+- **Print Desk → Your print jobs** shows your recent jobs with live status
+  (Waiting, Printing, Stopped with the printer's reason, Done, Cancelled) and
+  lets you cancel your own jobs. Folio checks ownership itself; if a CUPS
+  server only lets administrators cancel, Folio uses the connected admin login.
+- Administrators can open **Jobs** on a printer to see and cancel everyone's
+  jobs (titles and owners need the admin login; CUPS hides them otherwise).
+- System check lists whether each CUPS server has an admin login connected.
+
+### Under the hood
+- `backend/ipp.py`: a small IPP client (no new dependencies), needed because
+  the CUPS command-line tools cannot take an admin password non-interactively.
+- `backend/cupsadmin.py`: stored logins, discovery, drivers, queues and jobs.
+
+### Verified
+- 127 automated tests, against an in-process fake CUPS that speaks real IPP:
+  login checks, TLS with certificate pinning, ownership of jobs, name
+  clashes, input validation and an unreachable server.
+- In headless Chrome against a real CUPS (a throwaway container built from
+  the same image as a typical setup): connect, find printers, add a JetDirect
+  printer with a Samsung M288x driver, add a driverless printer for a real
+  Samsung M2885FW (CUPS read its capabilities: monochrome, duplex, 17 paper
+  sizes, 3 trays; nothing was printed), test page, job list, cancel, pause,
+  resume, remove. The test jobs went to an address that leads nowhere.
+- **Not verified:** USB printers (no hardware available), and TLS against a
+  real CUPS server (tested only against the fake server).
+
+### Upgrading 0.10.0 → 0.11.0
+No configuration changes. Rebuild or retag the image as
+`folio-scan-studio:0.11.0` and redeploy. Existing queues keep working
+unchanged. To manage printers from Folio, open **Devices** and connect your
+CUPS administrator login (the `CUPSADMIN` user of an `anujdatar/cups`
+container, or any user in CUPS's `lpadmin` group).
+
+If your CUPS server restricts printing to particular user names, allow the
+Folio user names (or `folio-guest`), since jobs no longer arrive as `root`.
+
 ## 0.10.0 — Background jobs: exports, OCR and printing that never time out
 
 Exporting a PDF, making a searchable PDF, and printing from the web app now

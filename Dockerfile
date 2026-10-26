@@ -1,5 +1,5 @@
 FROM python:3.12-slim-bookworm
-ARG FOLIO_VERSION=0.10.0
+ARG FOLIO_VERSION=0.11.0
 LABEL org.opencontainers.image.title="Folio Scan Studio" \
       org.opencontainers.image.version="${FOLIO_VERSION}" \
       org.opencontainers.image.description="Self-hosted scanning, printing and document workbench for CUPS/SANE devices"

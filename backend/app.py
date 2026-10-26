@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 import secrets
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from urllib.parse import unquote
 from datetime import datetime, timezone
@@ -30,7 +31,7 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 from backend import security
 from backend.processing import transform_page, find_deskew_angle
-from backend import printing, devices, diagnostics, tasks
+from backend import printing, devices, diagnostics, tasks, ipp, cupsadmin
 from backend.version import __version__
 
 DATA_DIR = Path(os.environ.get('DATA_DIR', '/data'))
@@ -365,7 +366,7 @@ async def guard_private_api(request: Request, call_next):
             return JSONResponse({'detail':'Administrator privileges required'}, status_code=403)
         # Print-only accounts have access only to account management for
         # themselves and the authenticated printing API, never scan files.
-        if session['role'] == 'printer' and not (path.startswith('/api/auth/') or (path in ('/api/print','/api/print/status','/api/print/inspect','/api/print/submit-preview','/api/printers') or path.startswith(('/api/print/preview/', '/api/tasks/')))):
+        if session['role'] == 'printer' and not (path.startswith('/api/auth/') or (path in ('/api/print','/api/print/status','/api/print/inspect','/api/print/submit-preview','/api/printers') or path.startswith(('/api/print/preview/', '/api/print/jobs', '/api/tasks/')))):
             return JSONResponse({'detail':'Printing-only account'}, status_code=403)
         # Every job endpoint (including thumbnails, exports and mutations)
         # is protected: members access only documents they created.
@@ -541,7 +542,10 @@ def print_choices(request: Request, authenticated: bool) -> dict:
     return {'copies':copies, 'media':media, 'sides':sides, 'orientation':orientation,
             'nup':nup, 'scale':scale, 'pages':pages or 'all', 'collate':collate,
             'border':border, 'quality':quality, 'queue':queue, 'color_mode':color_mode,
-            'paper_source':paper_source}
+            'paper_source':paper_source,
+            # CUPS records this as the job's owner, so people can follow and
+            # cancel their own jobs (and CUPS page logs show who printed).
+            'user':request.state.username if authenticated else cupsadmin.GUEST_USER}
 
 
 def print_with_cups(file_path: Path, title: str = 'Folio print', *,
@@ -549,7 +553,7 @@ def print_with_cups(file_path: Path, title: str = 'Folio print', *,
                     orientation: str = 'auto', nup: int = 1, scale: str = 'fit',
                     collate: bool = True, border: str = 'none', quality: str = 'default',
                     queue: str | None = None, color_mode: str = 'auto',
-                    paper_source: str = 'default') -> str:
+                    paper_source: str = 'default', user: str | None = None) -> str:
     _check_cups_config()
     cfg,records=printer_inventory()
     resolved=devices.resolve_printer(queue or cfg.get('default_printer'),records)
@@ -557,7 +561,7 @@ def print_with_cups(file_path: Path, title: str = 'Folio print', *,
         raise HTTPException(404, 'Printer no longer available in configured CUPS servers')
     server=resolved['server']
     queue_name=resolved['queue']
-    command = ['lp', '-h', server, '-d', queue_name,
+    command = ['lp', '-h', server, '-d', queue_name, *(['-U', user] if user else []),
                '-n', str(copies), '-o', 'job-sheets=none',
                '-o', f'sides={sides}', '-o', f'number-up={nup}',
                '-o', f'collate={str(collate).lower()}']
@@ -1080,6 +1084,240 @@ def configure_printer(queue: str, body: PrinterSettingsBody):
     persist_registry(cfg)
     return {'id':key,'queue':target['queue'], 'server':target['server'],
             'settings':flags,'default':cfg['default_printer']==key}
+
+
+# --- Printer administration and print jobs (0.11) --------------------------------
+
+def configured_server(server: str) -> str:
+    if server not in CUPS_SERVERS:
+        raise HTTPException(404, 'Unknown CUPS server. Add it to CUPS_SERVERS first.')
+    return server
+
+
+def cups_call(fn, *args, **kwargs):
+    """Run a CUPS request, turning its failures into clear HTTP answers."""
+    try:
+        return fn(*args, **kwargs)
+    except cupsadmin.NotConnected as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except ipp.AuthRequired as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except ipp.IPPError as exc:
+        if str(exc).startswith('Cannot reach'):
+            devices.mark_cups_down(getattr(args[0], 'server', '') if args else '')
+        raise HTTPException(502, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+def known_printer(printer: str) -> dict:
+    try:
+        devices.validate_printer_reference(printer)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    target = devices.resolve_printer(printer, devices.all_cups_queues(CUPS_SERVERS))
+    if not target:
+        raise HTTPException(404, 'Printer not found in CUPS. Refresh Devices.')
+    return target
+
+
+class CupsLoginBody(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class AddPrinterBody(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    device_uri: str | None = Field(default=None, max_length=512)  # A detected device...
+    connection: Literal['ipp', 'socket', 'lpd'] | None = None      # ...or an address
+    address: str | None = Field(default=None, max_length=253)
+    port: int | None = Field(default=None, ge=1, le=65535)
+    path: str | None = Field(default=None, max_length=120)
+    driver: str = Field(min_length=1, max_length=240)              # 'everywhere' or a CUPS driver name
+    location: str = Field(default='', max_length=127)
+    description: str = Field(default='', max_length=127)
+    make_default: bool = False
+    guest: bool = False
+
+
+class PausePrinterBody(BaseModel):
+    paused: bool
+
+
+class CancelJobBody(BaseModel):
+    server: str = Field(min_length=1, max_length=120)
+    job_id: int = Field(ge=1)
+
+
+@app.get('/api/admin/cups/servers')
+def cups_servers():
+    return [{'server': server, 'admin': cupsadmin.admin_status(DATA_DIR, server),
+             'reachable': not devices.cups_backoff(server)} for server in CUPS_SERVERS]
+
+
+@app.put('/api/admin/cups/servers/{server}/login')
+def cups_connect(server: str, body: CupsLoginBody):
+    configured_server(server)
+    return cups_call(cupsadmin.connect_admin, DATA_DIR, server, body.username, body.password)
+
+
+@app.delete('/api/admin/cups/servers/{server}/login')
+def cups_disconnect(server: str):
+    configured_server(server)
+    cupsadmin.disconnect_admin(DATA_DIR, server)
+    return cupsadmin.admin_status(DATA_DIR, server)
+
+
+@app.get('/api/admin/cups/servers/{server}/devices')
+def cups_devices(server: str):
+    conn = cups_call(cupsadmin.connection, DATA_DIR, configured_server(server), admin=True)
+    return {'devices': cups_call(cupsadmin.discover, conn)}
+
+
+@app.get('/api/admin/cups/servers/{server}/makes')
+def cups_makes(server: str):
+    conn = cupsadmin.connection(DATA_DIR, configured_server(server))
+    return {'makes': cups_call(cupsadmin.makes, conn)}
+
+
+@app.get('/api/admin/cups/servers/{server}/drivers')
+def cups_drivers(server: str, make: str, model: str = ''):
+    if not 1 <= len(make) <= 80 or len(model) > 120:
+        raise HTTPException(400, 'Choose a manufacturer')
+    conn = cupsadmin.connection(DATA_DIR, configured_server(server))
+    drivers = cups_call(cupsadmin.models, conn, make)
+    return {'drivers': cupsadmin.rank_drivers(drivers, model, limit=60), 'total': len(drivers)}
+
+
+@app.post('/api/admin/cups/servers/{server}/printers', status_code=202)
+def cups_add_printer(server: str, body: AddPrinterBody, request: Request):
+    conn = cups_call(cupsadmin.connection, DATA_DIR, configured_server(server), admin=True)
+    if body.device_uri:
+        if not cupsadmin.was_discovered(server, body.device_uri):
+            raise HTTPException(400, 'That printer is no longer in the list of detected devices. Press Find printers again.')
+        device_uri = body.device_uri
+    elif body.connection and body.address:
+        device_uri = cups_call(cupsadmin.manual_uri, body.connection, body.address, body.port, body.path)
+    else:
+        raise HTTPException(400, 'Choose a detected printer or enter its network address')
+    if not cupsadmin.PRINTER_NAME.fullmatch(body.name):
+        raise HTTPException(400, 'Printer names use letters, numbers, dot, dash and underscore (no spaces)')
+    devices.invalidate('cups')
+    if any(q['queue'].lower() == body.name.lower() for q in devices.all_cups_queues([server])):
+        # CUPS would silently replace an existing queue of that name.
+        raise HTTPException(409, f'A printer named {body.name} already exists on {server}. Choose another name.')
+    key = devices.printer_id(server, body.name)
+
+    def work(task: tasks.Task) -> dict:
+        task.update('Setting up the printer in CUPS…', .2)
+        cups_call(cupsadmin.add_printer, conn, body.name, device_uri, body.driver, body.description, body.location)
+        cfg = registry()
+        cfg.setdefault('printers', {})[key] = {'enabled': True, 'guest': body.guest, 'member': True, 'printer': True}
+        if body.make_default or not cfg.get('default_printer'):
+            cfg['default_printer'] = key
+        persist_registry(cfg)
+        task.update('Checking the new printer…', .8)
+        return {'id': key, 'queue': body.name, 'server': server, 'state': cups_call(cupsadmin.printer_state, conn, body.name)}
+    return task_response(tasks.runner.submit('printer-setup', 'print', task_owner(request), work))
+
+
+@app.delete('/api/admin/printers/{printer}')
+def cups_remove_printer(printer: str):
+    target = known_printer(printer)
+    conn = cups_call(cupsadmin.connection, DATA_DIR, target['server'], admin=True)
+    cups_call(cupsadmin.delete_printer, conn, target['queue'])
+    cfg = registry()
+    cfg.get('printers', {}).pop(target['id'], None)
+    if cfg.get('default_printer') == target['id']:
+        cfg['default_printer'] = None
+    persist_registry(cfg)
+    return {'deleted': target['id']}
+
+
+@app.get('/api/admin/printers/{printer}/state')
+def cups_printer_state(printer: str):
+    target = known_printer(printer)
+    return cups_call(cupsadmin.printer_state, cupsadmin.connection(DATA_DIR, target['server']), target['queue'])
+
+
+@app.post('/api/admin/printers/{printer}/pause')
+def cups_pause_printer(printer: str, body: PausePrinterBody):
+    target = known_printer(printer)
+    conn = cups_call(cupsadmin.connection, DATA_DIR, target['server'], admin=True)
+    cups_call(cupsadmin.set_paused, conn, target['queue'], body.paused)
+    return cups_call(cupsadmin.printer_state, conn, target['queue'])
+
+
+@app.post('/api/admin/printers/{printer}/test-page')
+def cups_test_page(printer: str, request: Request):
+    target = known_printer(printer)
+    with tempfile.TemporaryDirectory(prefix='folio-test-page-') as tmp:
+        page = Path(tmp) / 'test-page.pdf'
+        printing.test_page(page, printer=target['queue'], server=target['server'],
+                           user=request.state.username, version=__version__)
+        return cups_receipt(print_with_cups(page, 'Folio test page', queue=target['id'],
+                                            user=request.state.username))
+
+
+@app.get('/api/admin/printers/{printer}/jobs')
+def cups_printer_jobs(printer: str, which: Literal['not-completed', 'completed'] = 'not-completed'):
+    """Everyone's jobs on one printer; titles and owners need the admin login."""
+    target = known_printer(printer)
+    admin = cupsadmin.admin_status(DATA_DIR, target['server'])['connected']
+    conn = cupsadmin.connection(DATA_DIR, target['server'], admin=admin)
+    return {'jobs': cups_call(cupsadmin.list_jobs, conn, queue=target['queue'], which=which, limit=30),
+            'details_hidden': not admin}
+
+
+@app.post('/api/admin/jobs/cancel')
+def cups_admin_cancel_job(body: CancelJobBody, request: Request):
+    conn = cups_call(cupsadmin.connection, DATA_DIR, configured_server(body.server), admin=True)
+    cups_call(cupsadmin.cancel_job, conn, body.job_id, request.state.username)
+    return {'cancelled': body.job_id}
+
+
+@app.get('/api/print/jobs')
+def my_print_jobs(request: Request):
+    """The signed-in person's recent print jobs on every CUPS server."""
+    user = request.state.username
+
+    def server_jobs(server: str) -> list[dict]:
+        conn = cupsadmin.connection(DATA_DIR, server, timeout=6)
+        active = cupsadmin.list_jobs(conn, user=user, which='not-completed', limit=20)
+        return active + cupsadmin.list_jobs(conn, user=user, which='completed', limit=10)
+    jobs, unavailable = [], []
+    reachable = [s for s in CUPS_SERVERS if not devices.cups_backoff(s)]
+    unavailable += [s for s in CUPS_SERVERS if s not in reachable]
+    if reachable:
+        with ThreadPoolExecutor(max_workers=min(4, len(reachable))) as pool:
+            futures = {server: pool.submit(server_jobs, server) for server in reachable}
+        for server, future in futures.items():
+            try:
+                jobs += future.result()
+            except ipp.IPPError:
+                devices.mark_cups_down(server)
+                unavailable.append(server)
+    jobs.sort(key=lambda job: (not job['active'], -(job['created'] or 0)))
+    return {'jobs': jobs[:20], 'unavailable': unavailable}
+
+
+@app.post('/api/print/jobs/cancel')
+def cancel_my_print_job(body: CancelJobBody, request: Request):
+    user = request.state.username
+    conn = cupsadmin.connection(DATA_DIR, configured_server(body.server))
+    # Folio checks ownership itself before acting, whichever login it uses.
+    if cups_call(cupsadmin.job_owner, conn, body.job_id, user) != user:
+        raise HTTPException(404, 'Print job not found')
+    try:
+        cupsadmin.cancel_job(conn, body.job_id, user)
+    except ipp.AuthRequired:
+        if not cupsadmin.admin_status(DATA_DIR, body.server)['connected']:
+            raise HTTPException(403, 'This CUPS server only lets administrators cancel jobs. '
+                                     'Ask an administrator to connect its login in Devices.')
+        cups_call(cupsadmin.cancel_job, cupsadmin.connection(DATA_DIR, body.server, admin=True), body.job_id, user)
+    except ipp.IPPError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return {'cancelled': body.job_id}
 
 
 @app.get('/api/scanners')

@@ -555,7 +555,7 @@ $('#saved-print-form').onsubmit=async event=>{
     const started=await api(`/api/jobs/${job.id}/print?background=true`,{method:'POST',
       headers:printHeaders('saved',savedPrint.index+1)});
     const {result}=await followTask(started.task,{onUpdate:task=>setPrintFeedback(feedback,taskText(task),'info')});
-    setPrintFeedback(feedback,`${receiptMessage(result)} · ${result.pages_selected} page(s) selected.`,'ok');
+    setPrintFeedback(feedback,`${receiptMessage(result)} · ${result.pages_selected} page(s) selected.`,'ok');loadMyJobs();
   }catch(error){setPrintFeedback(feedback,error.message,'error');problem(error);}finally{button.disabled=false;}
 };
 
@@ -625,6 +625,7 @@ async function showPrintDesk(){
     try{const s=await api('/api/auth/status');$('#guest-enable').checked=!!s.guest_print;state.guestEnabled=!!s.guest_print;}catch(e){problem(e);}
   }
   await Promise.all([loadPrintLibrary(),refreshPrintQueues()]);
+  loadMyJobs();
   await loadPrinterStatus();
 }
 async function guestStatus(){let data=await api('/api/guest/status');state.guestEnabled=data.enabled;state.guestCsrf=data.csrf;return data;}
@@ -821,7 +822,7 @@ async function submitPrintFile(event,guest){
     if(!response.ok)throw Error(started?.detail||`Print failed (${response.status})`);
     const {result}=await followTask(started.task,{guest,onUpdate:task=>setPrintFeedback(feedback,taskText(task),'info')});
     setPrintFeedback(feedback,`${receiptMessage(result)} · ${result.pages_selected} source page(s) selected.`,'ok');
-    toast(`Submitted to CUPS${result.job_id?' as '+result.job_id:''}`);
+    toast(`Submitted to CUPS${result.job_id?' as '+result.job_id:''}`);if(!guest)loadMyJobs();
   }catch(error){setPrintFeedback(feedback,error.message,'error');problem(error);}finally{
     button.disabled=guest&&!state.guestEnabled;button.innerHTML=`Send to printer ${icon('arrow')}`;
   }
@@ -1104,7 +1105,9 @@ async function openDeviceManager(){
   await refreshDeviceManager();
 }
 async function refreshDeviceManager(refresh=false){
-  const result=await api(`/api/admin/devices${refresh?'?refresh=true':''}`);
+  const [result,servers]=await Promise.all([api(`/api/admin/devices${refresh?'?refresh=true':''}`),api('/api/admin/cups/servers')]);
+  state.cupsServers=servers;renderCupsAdmin(servers);
+  const managed=new Set(servers.filter(s=>s.admin.connected).map(s=>s.server));
   $('#device-cups-server').textContent=`CUPS · ${(result.cups_servers||[]).join(', ')||'Not configured'} · ${result.printers.filter(x=>x.ready).length} ready`;
   const attach=$('#attach-scanner-select');
   attach.innerHTML=(result.unregistered||[]).map(d=>`<option value="${html(d.sane_name)}">${html(d.description||d.sane_name)}</option>`).join('')||'<option value="">No unregistered SANE devices detected</option>';
@@ -1120,13 +1123,15 @@ async function refreshDeviceManager(refresh=false){
     const settings=q.settings||{},caps=q.capabilities||{};
     const tags=[caps.color===true?'Color':caps.color===false?'Monochrome':'Color unknown',caps.duplex===true?'Duplex':caps.duplex===false?'Simplex':'Duplex unknown',caps.media?.length?caps.media.length+' paper sizes':'Sizes unknown',caps.trays?.length?caps.trays.length+' trays':null].filter(Boolean);
     return `<article class="device-card ${result.default_printer===q.id?'current':''}" data-printer="${html(q.id)}">
-       <header><div><strong>${html(q.queue)}</strong><small>${html(q.server)} · ${html(q.status||'')}</small></div><span class="device-state ${q.ready?'':'off'}">${q.ready?'Ready':'Offline'}</span></header>
+       <header><div><strong>${html(q.queue)}</strong><small>${html(q.server)} · ${html(q.status||'')}</small></div><span class="device-state ${q.ready?'':'off'}">${q.ready?'Ready':/disabled/i.test(q.status||'')?'Paused':'Offline'}</span></header>
        <div class="device-tags">${tags.map(x=>`<span>${html(x)}</span>`).join('')}</div>
        <div class="device-access">${[['enabled','Enabled'],['guest','Guest printing'],['member','Members'],['printer','Printer-only accounts']].map(([flag,label])=>`<label><input type="checkbox" data-printer-flag="${flag}" ${settings[flag]?'checked':''}> ${label}</label>`).join('')}</div>
-       <div class="device-actions"><button data-printer-action="save" ${q.status==='Not found in CUPS'?'disabled':''}>Save permissions</button>${result.default_printer!==q.id?`<button data-printer-action="default" ${q.status==='Not found in CUPS'?'disabled':''}>Make default</button>`:''}</div></article>`;
+       <div class="device-actions"><button data-printer-action="save" ${q.status==='Not found in CUPS'?'disabled':''}>Save permissions</button>${result.default_printer!==q.id?`<button data-printer-action="default" ${q.status==='Not found in CUPS'?'disabled':''}>Make default</button>`:''}${q.status!=='Not found in CUPS'?'<button data-queue-action="jobs">Jobs</button><button data-queue-action="test">Test page</button>':''}${managed.has(q.server)&&q.status!=='Not found in CUPS'?`<button data-queue-action="pause">${q.ready?'Pause':'Resume'}</button><button data-queue-action="remove" class="danger-action">Remove</button>`:''}</div>
+       <div class="printer-jobs hidden"></div></article>`;
   }).join('')||'<p>No printer queues found. Add a printer through the CUPS admin interface, then refresh.</p>';
   $('#device-scanner-list').querySelectorAll('[data-scanner-action]').forEach(btn=>btn.onclick=()=>handleScannerAction(btn).catch(problem));
   $('#device-printer-list').querySelectorAll('[data-printer-action]').forEach(btn=>btn.onclick=()=>handlePrinterAction(btn).catch(problem));
+  $('#device-printer-list').querySelectorAll('[data-queue-action]').forEach(btn=>btn.onclick=()=>handleQueueAction(btn).catch(problem));
 }
 async function handleScannerAction(btn){
   const card=btn.closest('[data-scanner]'),id=card.dataset.scanner,act=btn.dataset.scannerAction;
@@ -1199,6 +1204,152 @@ async function handlePrinterAction(btn){
   await api(`/api/admin/printers/${encodeURIComponent(queue)}`,{method:'PATCH',body});
   await refreshDeviceManager();await refreshPrintQueues();toast(`Updated ${queue}`);
 }
+
+// --- Printer administration (0.11) ---------------------------------------------
+const printerPath=id=>`/api/admin/printers/${encodeURIComponent(id)}`;
+const serverPath=server=>`/api/admin/cups/servers/${encodeURIComponent(server)}`;
+function renderCupsAdmin(servers){
+  $('#cups-admin-list').innerHTML=servers.map(s=>`<article class="device-card cups-admin-card" data-cups-server="${html(s.server)}">
+    <header><div><strong>CUPS ${html(s.server)}</strong><small>${s.admin.connected?`Administration connected as ${html(s.admin.username)}${s.admin.encrypted?' · encrypted':''}`:'Administration not connected'}</small></div><span class="device-state ${s.reachable?'':'off'}">${s.reachable?'Reachable':'Not responding'}</span></header>
+    ${s.admin.connected?'<div class="device-actions"><button data-cups-action="disconnect">Disconnect login</button></div>':
+    `<form class="device-form cups-login-form"><p class="inline-note">A CUPS administrator login lets Folio add, remove and pause printers. It is stored on this Folio server only and never shown again.</p><div class="device-form-row"><label>CUPS username <input name="username" autocomplete="off" required maxlength="64"></label><label>Password <input name="password" type="password" autocomplete="new-password" required maxlength="256"></label></div><button class="button outline-button" type="submit">Connect</button></form>`}</article>`).join('')||'<p>No CUPS servers configured. Set CUPS_SERVERS in the container environment.</p>';
+  $$('.cups-login-form').forEach(form=>form.onsubmit=async event=>{
+    event.preventDefault();const server=form.closest('[data-cups-server]').dataset.cupsServer,button=form.querySelector('button');
+    button.disabled=true;button.textContent='Checking…';
+    try{await api(`${serverPath(server)}/login`,{method:'PUT',body:{username:form.username.value,password:form.password.value}});toast(`Connected to CUPS on ${server}.`);await refreshDeviceManager();}
+    catch(error){problem(error);button.disabled=false;button.textContent='Connect';}
+  });
+  $$('[data-cups-action=disconnect]').forEach(button=>button.onclick=async()=>{
+    const server=button.closest('[data-cups-server]').dataset.cupsServer;
+    if(!confirm(`Forget the CUPS administrator login for ${server}? Printing keeps working.`))return;
+    try{await api(`${serverPath(server)}/login`,{method:'DELETE'});await refreshDeviceManager();}catch(error){problem(error);}
+  });
+  const connected=servers.filter(s=>s.admin.connected),select=$('#add-printer-server'),previous=select.value;
+  $('#add-printer-form').classList.toggle('hidden',!connected.length);
+  $('#add-printer-intro').textContent=connected.length?'Folio sets the printer up in CUPS for you. Choose the printer, then its driver.':'Folio sets the printer up in CUPS for you. Connect a CUPS administrator login above to begin.';
+  select.innerHTML=connected.map(s=>`<option value="${html(s.server)}">${html(s.server)}</option>`).join('');
+  if(connected.some(s=>s.server===previous))select.value=previous;
+}
+const addPrinter={found:[],makesFor:null};
+function selectedSource(){return document.querySelector('input[name=printer-source]:checked')?.value||'manual';}
+function driverKind(){return document.querySelector('input[name=driver-kind]:checked').value;}
+function updatePrinterForm(){
+  const source=selectedSource(),device=addPrinter.found.find(d=>d.uri===source);
+  $('#manual-printer').classList.toggle('hidden',source!=='manual');
+  $('#driver-picker').classList.toggle('hidden',driverKind()!=='ppd');
+  if(driverKind()==='ppd')loadDriverMakes(device).catch(problem);
+}
+function suggestName(text){return (text.match(/[A-Za-z0-9]+/g)||[]).slice(0,4).join('_').slice(0,60);}
+$('#find-printers').onclick=async()=>{
+  const status=$('#find-printers-status'),button=$('#find-printers');button.disabled=true;status.textContent='Searching… this takes about ten seconds.';
+  try{
+    const result=await api(`${serverPath($('#add-printer-server').value)}/devices`);addPrinter.found=result.devices;
+    $('#found-printers').innerHTML=result.devices.map((d,i)=>`<label class="device-checkbox found-printer"><input type="radio" name="printer-source" value="${html(d.uri)}"${i===0?' checked':''}> <span><strong>${html(d.make_model||d.name)}</strong><small>${html(d.connection)} · ${html(d.uri)}</small></span></label>`).join('');
+    status.textContent=result.devices.length?`Found ${result.devices.length}. Not listed? Enter its address below.`:'None found. Network printers on another subnet will not appear; enter the address below.';
+    const first=result.devices[0];
+    if(first){
+      if(!$('#add-printer-name').value)$('#add-printer-name').value=suggestName(first.make_model||first.name);
+      document.querySelector(`input[name=driver-kind][value=${first.driverless?'everywhere':'ppd'}]`).checked=true;
+    }
+    $$('input[name=printer-source]').forEach(radio=>radio.onchange=()=>{
+      const device=addPrinter.found.find(d=>d.uri===radio.value);
+      if(device){$('#add-printer-name').value=suggestName(device.make_model||device.name);document.querySelector(`input[name=driver-kind][value=${device.driverless?'everywhere':'ppd'}]`).checked=true;}
+      updatePrinterForm();
+    });
+    updatePrinterForm();
+  }catch(error){status.textContent='';problem(error);}
+  finally{button.disabled=false;}
+};
+$$('input[name=printer-source],input[name=driver-kind]').forEach(radio=>radio.onchange=updatePrinterForm);
+$('#add-printer-server').onchange=()=>{addPrinter.found=[];addPrinter.makesFor=null;$('#found-printers').innerHTML='';updatePrinterForm();};
+async function loadDriverMakes(device){
+  const server=$('#add-printer-server').value;
+  if(addPrinter.makesFor!==server){
+    const {makes}=await api(`${serverPath(server)}/makes`);addPrinter.makesFor=server;
+    $('#driver-make').innerHTML='<option value="">Choose…</option>'+makes.map(m=>`<option>${html(m)}</option>`).join('');
+  }
+  if(device?.make_model){
+    const make=[...$('#driver-make').options].find(o=>o.value&&device.make_model.toLowerCase().startsWith(o.value.toLowerCase()));
+    if(make&&$('#driver-make').value!==make.value){$('#driver-make').value=make.value;$('#driver-model').value=device.make_model.slice(make.value.length).trim();}
+  }
+  if($('#driver-make').value)await loadDrivers();
+}
+let driverSearch=0;
+async function loadDrivers(){
+  const make=$('#driver-make').value,serial=++driverSearch;if(!make){$('#driver-choice').innerHTML='';return;}
+  const result=await api(`${serverPath($('#add-printer-server').value)}/drivers?make=${encodeURIComponent(make)}&model=${encodeURIComponent($('#driver-model').value)}`);
+  if(serial!==driverSearch)return;
+  $('#driver-choice').innerHTML=result.drivers.map((d,i)=>`<option value="${html(d.ppd)}"${i===0?' selected':''}>${html(d.name)}</option>`).join('');
+  $('#driver-count').textContent=result.drivers.length?`${result.drivers.length} of ${result.total} ${make} drivers shown, best match first.`:`No ${make} driver matches that model. Clear the model to see all ${result.total}, or try Generic (PCL or PostScript).`;
+}
+$('#driver-make').onchange=()=>loadDrivers().catch(problem);
+let driverTimer;$('#driver-model').oninput=()=>{clearTimeout(driverTimer);driverTimer=setTimeout(()=>loadDrivers().catch(problem),300);};
+$('#add-printer-form').onsubmit=async event=>{
+  event.preventDefault();
+  const feedback=$('#add-printer-feedback'),button=$('#add-printer-submit'),source=selectedSource();
+  const driver=driverKind()==='everywhere'?'everywhere':$('#driver-choice').value;
+  if(!driver){setPrintFeedback(feedback,'Choose a driver, or use Driverless.','error');return;}
+  const body={name:$('#add-printer-name').value.trim(),driver,location:$('#add-printer-location').value.trim(),
+    make_default:$('#add-printer-default').checked,guest:$('#add-printer-guest').checked,
+    ...(source==='manual'?{connection:$('#add-printer-connection').value,address:$('#add-printer-address').value.trim()}:{device_uri:source})};
+  button.disabled=true;
+  try{
+    const started=await api(`${serverPath($('#add-printer-server').value)}/printers`,{method:'POST',body});
+    const {result}=await followTask(started.task,{onUpdate:task=>setPrintFeedback(feedback,taskText(task),'info')});
+    setPrintFeedback(feedback,`${result.queue} is ready${result.state?.driver?` (${result.state.driver})`:''}. Use Test page on its card to check it.`,'ok');
+    $('#add-printer-form').reset();addPrinter.found=[];$('#found-printers').innerHTML='';updatePrinterForm();
+    await refreshDeviceManager(true);await refreshPrintQueues(true);
+  }catch(error){setPrintFeedback(feedback,error.message,'error');}
+  finally{button.disabled=false;}
+};
+const reasonText={'media-empty':'Out of paper','media-needed':'Load paper','media-jam':'Paper jam','toner-empty':'Out of toner','marker-supply-empty':'Out of toner or ink','door-open':'A cover is open','paused':'Printer paused','offline':'Printer offline','connecting-to-device':'Connecting to the printer','job-printing':'','none':''};
+function jobRows(jobs,{showUser=false,cancel='mine'}={}){
+  if(!jobs.length)return '<p class="muted">No print jobs.</p>';
+  return jobs.map(job=>{
+    const reasons=job.reasons.map(r=>reasonText[r]??'').filter(Boolean),detail=[...reasons,job.active?job.message:''].filter(Boolean).join(' · ');
+    const when=job.created?new Date(job.created*1000).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+    return `<div class="job-row ${html(job.state)}" data-job="${job.id}" data-server="${html(job.server)}"><span class="job-state">${html(job.label)}</span><div><strong>${html(job.title||`Job ${job.id}`)}</strong><small>${html(job.queue)}${showUser&&job.user?' · '+html(job.user):''} · ${html(when)}</small>${detail?`<p>${html(detail)}</p>`:''}</div>${job.active?`<button type="button" class="small-link" data-cancel-job="${cancel}">Cancel</button>`:''}</div>`;
+  }).join('');
+}
+async function cancelJob(button){
+  const row=button.closest('[data-job]'),admin=button.dataset.cancelJob==='admin';
+  if(!confirm('Cancel this print job?'))return;
+  button.disabled=true;
+  try{await api(admin?'/api/admin/jobs/cancel':'/api/print/jobs/cancel',{method:'POST',body:{server:row.dataset.server,job_id:Number(row.dataset.job)}});toast('Print job cancelled.');}
+  catch(error){problem(error);}
+}
+async function handleQueueAction(button){
+  const card=button.closest('[data-printer]'),id=card.dataset.printer,action=button.dataset.queueAction;
+  if(action==='jobs'){
+    const panel=card.querySelector('.printer-jobs');
+    if(!panel.classList.contains('hidden')&&button.dataset.open){panel.classList.add('hidden');delete button.dataset.open;return;}
+    const result=await api(`${printerPath(id)}/jobs`);
+    panel.innerHTML=(result.details_hidden?'<p class="inline-note">Connect the CUPS administrator login to see titles and owners.</p>':'')+jobRows(result.jobs,{showUser:true,cancel:'admin'});
+    panel.classList.remove('hidden');button.dataset.open='1';
+    panel.querySelectorAll('[data-cancel-job]').forEach(b=>b.onclick=async()=>{await cancelJob(b);button.dataset.open='';await handleQueueAction(button);});
+    return;
+  }
+  if(action==='test'){button.disabled=true;try{const receipt=await api(`${printerPath(id)}/test-page`,{method:'POST'});toast(`Test page sent${receipt.job_id?' as '+receipt.job_id:''}.`);}finally{button.disabled=false;}return;}
+  if(action==='pause'){const pausing=button.textContent==='Pause';await api(`${printerPath(id)}/pause`,{method:'POST',body:{paused:pausing}});toast(pausing?'Printer paused; new jobs wait until it is resumed.':'Printer resumed.');await refreshDeviceManager(true);return;}
+  if(action==='remove'){
+    const queue=id.split('|').pop();
+    if(!confirm(`Remove ${queue} from CUPS? Waiting jobs on it are cancelled. This cannot be undone.`))return;
+    await api(printerPath(id),{method:'DELETE'});toast(`${queue} removed.`);await refreshDeviceManager(true);await refreshPrintQueues(true);
+  }
+}
+// The person's own print jobs on Print Desk, refreshed while any is active.
+let jobsTimer=null;
+async function loadMyJobs(){
+  clearTimeout(jobsTimer);
+  if($('#admin-print-view').classList.contains('hidden'))return;
+  try{
+    const result=await api('/api/print/jobs');
+    $('#print-jobs').innerHTML=jobRows(result.jobs)+(result.unavailable.length?`<p class="inline-note">Not responding: ${result.unavailable.map(html).join(', ')}</p>`:'');
+    $$('#print-jobs [data-cancel-job]').forEach(button=>button.onclick=async()=>{await cancelJob(button);await loadMyJobs();});
+    if(result.jobs.some(job=>job.active))jobsTimer=setTimeout(loadMyJobs,4000);
+  }catch(error){$('#print-jobs').innerHTML=`<p class="muted">${html(error.message)}</p>`;}
+}
+$('#print-jobs-refresh').onclick=()=>loadMyJobs();
 
 const diagnosticLabels={ok:'OK',warn:'Check',fail:'Problem',info:'Info'};
 async function runDiagnostics(){

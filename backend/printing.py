@@ -249,3 +249,45 @@ def convert_color(path: Path, mode: str, progress: Callable[[int, int], None] | 
         os.replace(converted,path)
     finally:
         converted.unlink(missing_ok=True)
+
+
+def test_page(output: Path, *, printer: str, server: str, user: str, version: str) -> None:
+    """A one-page PDF for checking a new queue: margins, gray levels, colour, text sizes.
+
+    Drawn on US Letter; it is printed fit-to-page, so CUPS scales it to the loaded paper.
+    """
+    from datetime import datetime
+    width, height = 612, 792
+    ink = (0.1, 0.17, 0.14)
+    with fitz.open() as doc:
+        page = doc.new_page(width=width, height=height)
+        margin = 36  # Half an inch: most printers print to within this distance of the edge
+        page.draw_rect(fitz.Rect(margin, margin, width - margin, height - margin), color=ink, width=1)
+        for x, y in ((margin, margin), (width - margin, margin), (margin, height - margin), (width - margin, height - margin)):
+            page.draw_line((x - 12, y), (x + 12, y), color=ink, width=.6)
+            page.draw_line((x, y - 12), (x, y + 12), color=ink, width=.6)
+        page.insert_text((72, 110), 'Folio test page', fontsize=30, fontname='tibo', color=ink)
+        details = [f'Printer: {printer}', f'CUPS server: {server}', f'Sent by: {user}',
+                   f'Printed: {datetime.now().strftime("%Y-%m-%d %H:%M")}', f'Folio {version}']
+        for n, line in enumerate(details):
+            page.insert_text((72, 145 + n * 17), line, fontsize=11, color=ink)
+        page.insert_text((72, 260), 'Gray levels', fontsize=10, color=ink)
+        for n in range(11):
+            level = 1 - n / 10
+            page.draw_rect(fitz.Rect(72 + n * 42, 268, 72 + (n + 1) * 42, 300), color=None, fill=(level, level, level))
+        page.draw_rect(fitz.Rect(72, 268, 72 + 11 * 42, 300), color=ink, width=.5)
+        page.insert_text((72, 330), 'Colour (prints as gray shades on a monochrome printer)', fontsize=10, color=ink)
+        swatches = [(0, 1, 1), (1, 0, 1), (1, 1, 0), (1, 0, 0), (0, 0.6, 0), (0, 0, 1), (0, 0, 0)]
+        for n, colour in enumerate(swatches):
+            page.draw_rect(fitz.Rect(72 + n * 66, 338, 72 + (n + 1) * 66 - 6, 370), color=None, fill=colour)
+        page.insert_text((72, 400), 'Text sizes', fontsize=10, color=ink)
+        y = 420
+        for size in (6, 8, 10, 12, 14):
+            page.insert_text((72, y), f'{size} pt  The quick brown fox jumps over the lazy dog 0123456789', fontsize=size, color=ink)
+            y += size + 10
+        page.insert_text((72, 560), 'Fine lines', fontsize=10, color=ink)
+        for n, line_width in enumerate((0.25, 0.5, 1, 2)):
+            page.draw_line((72, 575 + n * 12), (540, 575 + n * 12), color=ink, width=line_width)
+        page.insert_text((72, height - 60), 'If the frame and all four corner marks are visible, the page is aligned within the printable area.',
+                         fontsize=8, color=ink)
+        doc.save(output, garbage=3, deflate=True)

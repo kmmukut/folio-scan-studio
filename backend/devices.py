@@ -78,6 +78,10 @@ def mark_cups_reachable(server: str) -> None:
     _cups_down.pop(server, None)
 
 
+def mark_cups_down(server: str) -> None:
+    _cups_down[server] = time.monotonic() + CUPS_BACKOFF
+
+
 def cups_backoff(server: str) -> float:
     """Seconds until an unreachable CUPS server is probed again (0 = now)."""
     until = _cups_down.get(server, 0)

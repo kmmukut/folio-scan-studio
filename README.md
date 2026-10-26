@@ -14,9 +14,13 @@ it from any phone, tablet or computer on your network.
   scan is never modified.
 - **Export:** PDF, optionally searchable (OCR), as a background job with
   progress, so long exports aren't cut off by a reverse proxy.
+- **Set up printers:** add USB and network printers to CUPS from Folio,
+  driverless or with a driver picked by model, then test, pause or remove them.
 - **Print:** upload a PDF or image, or print a saved document, with
   page ranges, paper size and tray, envelopes, duplex, scaling, pages per
   sheet and colour mode — limited to what each printer actually reports.
+- **Follow your jobs:** see whether each print is waiting, printing, stopped
+  (and why) or done, and cancel it.
 - **Share safely:** administrator, member and print-only accounts, private
   documents, and optional rate-limited guest printing.
 
@@ -26,8 +30,8 @@ lacks (a monochrome printer will not print in colour).
 ## Requirements
 
 - Docker with Compose (Portainer works too).
-- A CUPS server with your printer queue(s) installed. Folio lists and uses
-  queues; drivers and queues are set up in CUPS.
+- A CUPS server. Folio can add printer queues to it once you connect a CUPS
+  administrator login in **Devices**, or you can set queues up in CUPS yourself.
 - For scanning: an eSCL/AirScan or WSD network scanner, or any scanner SANE
   supports that is visible inside the container.
 
@@ -46,7 +50,8 @@ then:
 
 1. **Devices → Add a network scanner**: name, IP address, protocol (WSD or
    eSCL) and, if needed, port and endpoint path. Press **Test**.
-2. **Devices → Printers**: choose a default printer and who may use each one.
+2. **Devices → Printers**: connect the CUPS administrator login, add your
+   printer, print a test page, and choose who may use it.
 3. **Devices → Run checks** to confirm storage, printers and scanners.
 
 ### Portainer
@@ -54,7 +59,7 @@ then:
 The Compose file builds the image from source (`build: .`). Either run
 `docker compose up -d --build` in the source directory and manage the
 container from Portainer, or build the image first
-(`docker build -t folio-scan-studio:0.10.0 .`), then paste `compose.yaml`
+(`docker build -t folio-scan-studio:0.11.0 .`), then paste `compose.yaml`
 into a Portainer stack without the `build:` line and set the variables there.
 
 ## Configuration

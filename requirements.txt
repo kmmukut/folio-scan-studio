@@ -1,13 +1,11 @@
-# Runtime dependencies, pinned for reproducible builds (verified with the test
-# suite on Python 3.12). Direct dependencies are listed first; the rest are
-# their resolved transitive dependencies. To upgrade: edit a direct pin, then
-# reinstall in a clean venv, run the tests, and re-pin from `pip freeze`.
+# Core runtime dependencies for both editions (Lite and Full), pinned for
+# reproducible builds and verified with the test suite on Python 3.12.
+# Full-only extras are in requirements-full.txt. To upgrade: edit a direct
+# pin, reinstall in a clean venv, run the tests, and re-pin from `pip freeze`.
 fastapi==0.162.0
 uvicorn==0.54.0
 pillow==12.3.0
 img2pdf==0.6.3
-numpy==2.5.4
-opencv-python-headless==4.14.0.94
 pymupdf==1.28.2
 
 # Transitive

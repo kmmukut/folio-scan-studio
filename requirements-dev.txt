@@ -1,5 +1,6 @@
-# Test tooling; never installed in the Docker image.
--r requirements.txt
+# Test tooling (with the Full extras); never installed in the Docker image.
+# To test the Lite edition, install requirements.txt plus the three tools below.
+-r requirements-full.txt
 pytest==9.1.1
 httpx==0.28.1
 pypdf==6.21.2

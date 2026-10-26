@@ -16,7 +16,7 @@ Most of what makes an old printer feel modern comes from the sharing layer.
 Folio's job is to make the device and sharing layers easy to set up and keep
 healthy, and to make the workflow layer excellent.
 
-## Current structure (0.11)
+## Current structure (0.12)
 
 - `backend/app.py`: FastAPI routes, auth middleware, scan and print flows.
 - `backend/devices.py`: scanner registry (`data/devices.json`), generated
@@ -29,6 +29,8 @@ healthy, and to make the workflow layer excellent.
 - `backend/diagnostics.py`: read-only System check.
 - `backend/tasks.py`: background job runner (export and print lanes),
   progress, cancellation, ownership and cleanup.
+- `backend/features.py`: which optional features this installation has
+  (Lite/Full editions, D10).
 - `backend/ipp.py`: minimal IPP client (CUPS administration and job queries).
 - `backend/cupsadmin.py`: stored CUPS admin logins, discovery, drivers,
   queue management and per-user print jobs.
@@ -66,8 +68,8 @@ data (`data/`) and secrets (`.env`) are never committed.
 ### D4 — Keep the stack small
 No frontend build step or framework, no external database or message queue.
 SQLite plus in-process background work is sufficient for the expected scale
-(a household or small office). Heavy features (OCR, deskew/OpenCV) should
-become optional at build time rather than separate editions.
+(a household or small office). Heavy features (OCR, deskew/OpenCV) are
+optional at build time; see D10.
 
 ### D5 — Previews are disposable, originals are sacred
 Previews render from a cached reduced copy; exports and printing always use
@@ -88,6 +90,21 @@ users would see nothing from it. New features go into their own modules
 (`tasks.py`, `diagnostics.py`), and existing areas move out when they are
 next changed substantially.
 
+### D10 — Lite and Full editions from one codebase (0.12)
+A build argument (`FOLIO_EDITION`) decides which optional packages go into
+the image; the code is identical. At runtime `features.py` detects what is
+installed and the API and page adapt, so nothing branches on the edition
+name. Optional Python modules are imported lazily, and a test imports the
+app with them blocked. The base stays `python:3.12-slim` (Debian): Alpine
+was measured and rejected because PyMuPDF has no musl ARM64 wheel and
+OpenCV no musl wheels, while the OS layer is not where the size is.
+
+### D11 — USB support grows with the community (2026-10)
+No USB printers or scanners are available to the maintainers for testing,
+so USB-specific work (passthrough recipes, IPP-over-USB, per-model quirks)
+is left to community contributors with hardware rather than built
+untested. Folio's design already allows it: CUPS and SANE own the devices.
+
 ### D6 — Capabilities come from the device, never from model names
 Sizes, trays, duplex, colour, scan modes and resolutions are what CUPS/SANE
 report. Folio does not fabricate options, and no device, address or network
@@ -100,12 +117,11 @@ may change with real use.
 
 1. ~~**0.10 — Background jobs.**~~ Done; see D7 and D8.
 2. ~~**0.11 — Printer management.**~~ Done; see D2 and D9.
-3. **0.12 — Appliance.** Optional CUPS + Avahi container in Compose, USB
-   passthrough, AirPrint advertising, first-run setup wizard. USB hardware
-   for testing is not available yet (2026-10).
-4. **0.13 — Scanning for every device.** USB scanner onboarding; sharing
-   scanners on the network (eSCL/saned); Lite/Full build options;
-   arm64 images.
+3. ~~**0.12 — Lite and Full editions.**~~ Done; see D10.
+4. **Next candidates:** usage statistics from CUPS's page log (jobs now
+   carry user names); arm64 image builds; an optional bundled CUPS + Avahi
+   container with AirPrint advertising and a first-run wizard. USB-specific
+   work waits for community testers (D11).
 
 Before 1.0: a fresh Raspberry Pi plus a supported USB printer reaches a first
 print in under 10 minutes; upgrades preserve data; a compatibility list

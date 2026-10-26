@@ -16,7 +16,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from backend import cupsadmin, devices
+from backend import cupsadmin, devices, features
 
 LOW_DISK_WARN = 1024 ** 3        # 1 GiB
 LOW_DISK_FAIL = 200 * 1024 ** 2  # 200 MiB
@@ -245,7 +245,8 @@ def check_scanning(registry: dict) -> list[dict]:
 def check_ocr() -> dict:
     code, output = run_tool(['ocrmypdf', '--version'])
     if code is None:
-        return check('ocr', 'Searchable PDF (OCR)', 'info', 'Not installed in this image; standard PDFs still work')
+        return check('ocr', 'Searchable PDF (OCR)', 'info',
+                     'Not included in this edition; standard PDFs still work. The Full edition adds it.')
     return check('ocr', 'Searchable PDF (OCR)', 'ok' if code == 0 else 'warn',
                  f'OCRmyPDF {output.splitlines()[0]}' if code == 0 and output else 'OCRmyPDF did not respond')
 
@@ -254,8 +255,8 @@ def run_checks(*, data_dir: Path, jobs_dir: Path, cups_servers: list[str], regis
                request, cookie_secure: bool, version: str, default_printer: str | None) -> dict:
     sections = {
         'system': [check('version', 'Folio', 'info',
-                         f'Version {version} on Python {platform.python_version()}, '
-                         f'up {int((time.time() - STARTED) // 60)} min'),
+                         f'Version {version}, {features.edition().capitalize()} edition, on Python '
+                         f'{platform.python_version()}, up {int((time.time() - STARTED) // 60)} min'),
                    *check_storage(data_dir, jobs_dir), check_memory(),
                    *check_proxy(request, cookie_secure)],
         'printing': check_printing(cups_servers, default_printer, data_dir),

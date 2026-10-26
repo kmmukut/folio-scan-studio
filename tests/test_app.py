@@ -280,6 +280,7 @@ def test_non_destructive_crop_resize_and_reset(client):
         assert im.size == (120,160)
 
 
+@pytest.mark.full_only
 def test_auto_straighten_and_old_document_defaults(client, monkeypatch):
     from PIL import ImageDraw
     from backend.processing import find_deskew_angle
@@ -468,6 +469,7 @@ def test_document_deletion_rejects_active_job(client):
     assert client.get(f'/api/jobs/{jid}').status_code==404
 
 
+@pytest.mark.full_only
 def test_preview_is_bounded_and_auto_straighten_proposes_only(client):
     jid=create(client)
     job=scan_and_wait(client,jid,count=1)
@@ -505,6 +507,7 @@ def test_existing_v03_sqlite_schema_migrates_in_place(tmp_path, monkeypatch):
     assert len(security.list_users(data))==1
 
 
+@pytest.mark.full_only
 def test_deskew_abstains_without_confident_text():
     from backend.processing import find_deskew_angle
     from PIL import ImageDraw
@@ -518,7 +521,6 @@ def test_deskew_abstains_without_confident_text():
 
 def test_brightness_contrast_auto_levels_persist_without_touching_original(client):
     from io import BytesIO
-    import numpy as np
     jid=create(client)
     job=scan_and_wait(client,jid,count=1)
     page=job['pages'][0]
@@ -543,21 +545,22 @@ def test_brightness_contrast_auto_levels_persist_without_touching_original(clien
 
 
 def test_tone_pipeline_changes_image_values():
-    from PIL import Image
-    import numpy as np
+    # Pillow only: tone editing is a core feature, available in the Lite edition too.
+    from PIL import Image, ImageStat
     from backend.processing import transform_page
-    gradient=np.tile(np.arange(40,210,dtype=np.uint8),(100,1))
-    base=Image.fromarray(gradient,mode='L')
+    base=Image.linear_gradient('L').rotate(90).resize((170,100)).point(lambda v: 40+v*170//256)
+    stat=lambda im: ImageStat.Stat(im)
     lighter=transform_page(base.copy(), {'brightness':30})
     darker=transform_page(base.copy(), {'brightness':-30})
-    assert np.asarray(lighter).mean()>np.asarray(base).mean()>np.asarray(darker).mean()
+    assert stat(lighter).mean[0]>stat(base).mean[0]>stat(darker).mean[0]
     punchy=transform_page(base.copy(), {'contrast':40})
-    assert np.asarray(punchy).std()>np.asarray(base).std()
+    assert stat(punchy).stddev[0]>stat(base).stddev[0]
     auto=transform_page(base.copy(),{'auto_levels':True})
-    assert np.ptp(np.asarray(auto)) >= np.ptp(np.asarray(base))
+    spread=lambda im: im.getextrema()[1]-im.getextrema()[0]
+    assert spread(auto) >= spread(base) and spread(base) > 100
 
 
-def test_searchable_export_option_calls_ocr_only_when_requested(client,monkeypatch):
+def test_searchable_export_option_calls_ocr_only_when_requested(client,monkeypatch,ocr_available):
     import io
     import sys
     import types
@@ -750,9 +753,15 @@ def test_print_saved_folio_document_is_per_user_and_real_pdf(client,monkeypatch)
 
 def test_crop_remains_clipped_after_straightening_and_right_angle_rotation(client):
     """A fine rotation must never expose pixels excluded by an earlier crop."""
-    from PIL import ImageDraw
+    from PIL import ImageChops, ImageDraw
+    from backend import features
     from backend.processing import transform_page
-    import numpy as np
+
+    def shows_discarded_red(image):  # Pillow only, so this also runs on the Lite edition
+        red, green, _ = image.convert('RGB').split()
+        both = ImageChops.multiply(red.point(lambda v: 255 if v > 180 else 0),
+                                   green.point(lambda v: 255 if v < 80 else 0))
+        return both.getbbox() is not None
     jid = create(client)
     job = scan_and_wait(client, jid, count=1)
     page = job['pages'][0]
@@ -766,16 +775,15 @@ def test_crop_remains_clipped_after_straightening_and_right_angle_rotation(clien
     assert response.status_code==200
     cropped=transform_page(original,response.json()['pages'][0]).convert('RGB')
     # Crop excludes all red; it must stay excluded at every deskew angle.
-    assert not np.any((np.array(cropped)[:,:,0]>180)&(np.array(cropped)[:,:,1]<80))
+    assert not shows_discarded_red(cropped)
     for angle in (-8, 3, 11.75):
         rotated=client.patch(url,json={'deskew':angle})
         assert rotated.status_code==200
         image=transform_page(original,rotated.json()['pages'][0]).convert('RGB')
-        pixels=np.array(image)
-        assert not np.any((pixels[:,:,0]>180)&(pixels[:,:,1]<80)), f'Restored discarded content at {angle}°'
+        assert not shows_discarded_red(image), f'Restored discarded content at {angle}°'
     # Auto-straighten should inspect the cropped content, not the discarded region.
     suggestion=client.post(url+'/auto-straighten')
-    assert suggestion.status_code==200
+    assert suggestion.status_code==(200 if features.available('auto_straighten') else 409)
     # Rotating 90 degrees should preserve the selected pixels and reproject crop.
     page_before=client.get(f'/api/jobs/{jid}').json()['pages'][0]
     rotated=client.patch(url,json={'rotation':90})
@@ -784,8 +792,7 @@ def test_crop_remains_clipped_after_straightening_and_right_angle_rotation(clien
     x,y,w,h=page_before['crop']
     assert page_after['crop']==pytest.approx([1-y-h,x,h,w],abs=1e-5)
     rotated_img=transform_page(original,page_after).convert('RGB')
-    pixels=np.array(rotated_img)
-    assert not np.any((pixels[:,:,0]>180)&(pixels[:,:,1]<80))
+    assert not shows_discarded_red(rotated_img)
 
 
 def test_crop_base_preview_is_unskewed_and_uncropped(client):

@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 from backend import security
 from backend.processing import transform_page, find_deskew_angle
-from backend import printing, devices, diagnostics, tasks, ipp, cupsadmin
+from backend import printing, devices, diagnostics, tasks, ipp, cupsadmin, features
 from backend.version import __version__
 
 DATA_DIR = Path(os.environ.get('DATA_DIR', '/data'))
@@ -347,7 +347,7 @@ def choose_print_queue(request: Request, authenticated: bool) -> str:
 async def guard_private_api(request: Request, call_next):
     path = request.url.path
     # No account or documents are revealed on public endpoints.
-    public = ('/api/health', '/api/auth/login', '/api/auth/status', '/api/guest/status', '/api/guest/print', '/api/guest/inspect', '/api/guest/printers')
+    public = ('/api/health', '/api/features', '/api/auth/login', '/api/auth/status', '/api/guest/status', '/api/guest/print', '/api/guest/inspect', '/api/guest/printers')
     if request.method in ('POST','PUT','PATCH','DELETE'):
         # Fail closed for cross-site browser requests, including login and guest print.
         if request.headers.get('sec-fetch-site', '').lower() == 'cross-site':
@@ -1367,6 +1367,16 @@ def health():
     return {'ok': True, 'version': __version__}
 
 
+@app.get('/api/features')
+def available_features():
+    return {'version': __version__, **features.summary()}
+
+
+@app.exception_handler(features.Unavailable)
+def feature_unavailable(request: Request, exc: features.Unavailable):
+    return JSONResponse({'detail': str(exc), 'feature': exc.feature}, status_code=409)
+
+
 @app.get('/api/admin/diagnostics')
 def admin_diagnostics(request: Request):
     cfg = registry()
@@ -2035,6 +2045,8 @@ def export_filename(j: dict, ocr: bool) -> str:
 def export_pdf(job_id: str, quality: Literal['small', 'balanced', 'best'] = 'balanced',
                ocr: bool = False):
     """Direct download, kept for scripts. The web app uses background exports."""
+    if ocr:
+        features.require('ocr')
     with lock:
         j = load_job(job_id)
     if not j['pages']:
@@ -2053,6 +2065,8 @@ class ExportRequest(BaseModel):
 @app.post('/api/jobs/{job_id}/exports', status_code=202)
 def start_export(job_id: str, body: ExportRequest, request: Request):
     """Build a PDF in the background; poll /api/tasks/{id}, then download its file."""
+    if body.ocr:
+        features.require('ocr')
     with lock:
         j = load_job(job_id)  # Snapshot: later edits don't change this export
     if not j['pages']:

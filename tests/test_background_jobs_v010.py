@@ -151,9 +151,11 @@ def test_ocr_cancellation_stops_ocr_and_every_worker_it_started(tmp_path, monkey
     assert time.monotonic() - started < 15
     worker = int(worker_pid.read_text())
     for _ in range(50):  # The worker is reaped by init once killed
-        status = Path(f'/proc/{worker}/status')
-        if not status.exists() or 'State:\tZ' in status.read_text():
-            break
+        try:
+            if 'State:\tZ' in Path(f'/proc/{worker}/status').read_text():
+                break  # Dead, awaiting reaping
+        except (FileNotFoundError, ProcessLookupError):
+            break  # Gone (it can vanish between opening and reading the file)
         time.sleep(.1)
     else:
         pytest.fail('An OCR worker process was left running after cancellation')
@@ -257,7 +259,7 @@ def test_other_accounts_cannot_see_or_download_a_task(api):
     assert TestClient(web.app).get(f"/api/tasks/{task['id']}").status_code == 401
 
 
-def test_searchable_export_can_be_cancelled_during_ocr(api, monkeypatch):
+def test_searchable_export_can_be_cancelled_during_ocr(api, monkeypatch, ocr_available):
     admin, _ = api
     in_ocr = threading.Event()
 

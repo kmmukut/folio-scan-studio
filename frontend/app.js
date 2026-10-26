@@ -82,8 +82,19 @@ async function setupPrintOnly(){
   $('#devices-tab').classList.add('hidden');
   await showPrintDesk();
 }
+// Lite and Full editions share this page; hide what this installation lacks.
+async function loadFeatures(){
+  try{state.features=await api('/api/features');}
+  catch{state.features={edition:'full',features:{ocr:true,auto_straighten:true}};}
+  const available=state.features.features;
+  $('#auto-straighten').classList.toggle('hidden',!available.auto_straighten);
+  $('.ocr-choice').classList.toggle('hidden',!available.ocr);
+  if(!available.ocr)$('#pdf-ocr').checked=false;
+  $('.rail-license').firstChild.textContent=`${state.features.edition.toUpperCase()} EDITION `;
+}
 async function boot(){
   try {const saved=JSON.parse(localStorage.getItem('folio.scanSettings')||'null');if(saved)state.settings={...state.settings,...saved};}catch{}
+  await loadFeatures();
   const status=await api('/api/auth/status').catch(()=>null);
   state.guestEnabled=!!status?.guest_print;
   if(status?.authenticated){state.csrf=status.csrf;state.user=status.username;state.role=status.role;if(state.role==='printer')await setupPrintOnly();else await setupAdmin();}

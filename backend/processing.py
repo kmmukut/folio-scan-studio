@@ -1,15 +1,17 @@
 """Non-destructive image processing for Folio Scan Studio.
 
 Auto-straighten is intentionally conservative: on ambiguous page content we
-return zero, rather than damaging a perfectly readable page.
+return zero, rather than damaging a perfectly readable page. It needs OpenCV
+and NumPy, which only the Full edition installs; everything else here uses
+Pillow alone, so the Lite edition can import this module.
 """
 from __future__ import annotations
 
 import math
 
-import cv2
-import numpy as np
 from PIL import Image, ImageOps, ImageEnhance
+
+from backend import features
 
 
 def find_deskew_angle(image: Image.Image) -> tuple[float, int]:
@@ -18,6 +20,9 @@ def find_deskew_angle(image: Image.Image) -> tuple[float, int]:
     Returns (angle in PIL CCW degrees, independent supporting line groups).
     Photographs, sparse diagrams and uncertain scans are left unchanged.
     """
+    features.require('auto_straighten')
+    import cv2
+    import numpy as np
     mono = ImageOps.grayscale(image)
     if mono.width < 250 or mono.height < 250:
         return 0.0, 0

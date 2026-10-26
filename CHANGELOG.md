@@ -4,6 +4,53 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.12.0 — Lite and Full editions from one codebase
+
+Folio can now be built in two editions from the same source, chosen with a
+single build setting (`FOLIO_EDITION=full` or `lite`):
+
+| | Full (default) | Lite |
+|---|---|---|
+| Image size (x86-64, uncompressed) | 1.2 GB | **659 MB** |
+| Scanning, editing, PDF export, printing, printer management, accounts | ✓ | ✓ |
+| Searchable PDF (OCR) | ✓ | — |
+| Automatic straightening suggestion (manual straightening works in both) | ✓ | — |
+
+Lite leaves out OCRmyPDF, Tesseract and Ghostscript (which also pulled in a
+second Python, Perl and several video codecs) and OpenCV/NumPy. The page
+hides what an installation lacks, and the API answers a clear
+"not included in the Lite edition" (HTTP 409) instead of failing. Features
+are detected from what is installed, not from the edition name.
+
+### Also
+- OpenCV now loads only when auto-straighten is actually used, so the Full
+  edition's idle memory dropped too: 76 MB in 0.11 → 60 MB (Full) and
+  59 MB (Lite), measured right after startup. Under load (previews and a
+  PDF export of six 300 DPI pages) all editions peak around 365–385 MB,
+  because decoding scans dominates; Lite saves disk and download, not
+  working memory.
+- System check shows the edition; `/api/features` reports it.
+- The image keeps Debian slim as its base. Alpine was evaluated and
+  rejected: PyMuPDF publishes no Alpine wheel for ARM64 (a Raspberry Pi
+  would compile MuPDF during every build) and OpenCV none at all.
+
+### Verified
+- The whole test suite runs inside both built images: Full 134 passed;
+  Lite 131 passed and 3 skipped (the auto-straighten tests), three
+  consecutive runs each, with NumPy, OpenCV and OCRmyPDF genuinely absent
+  in Lite. A test also imports Folio with those modules blocked.
+- In headless Chrome: Lite shows "Lite edition" and hides Searchable PDF and
+  Auto straighten; Full shows both.
+- **Not verified:** building or running on ARM64 / a Raspberry Pi. The
+  wheels Folio needs exist for ARM64 (glibc), but no image was built there.
+
+### Upgrading
+Existing setups stay on Full and need no change; the image tag is now
+`folio-scan-studio:0.12.0-full` (or `-lite`). To switch an installation to
+Lite, set `FOLIO_EDITION=lite` in `.env` or the Portainer stack variables and
+rebuild. Data is shared between editions; documents exported as searchable
+PDFs before the switch stay searchable.
+
 ## 0.11.0 — Printer management and print jobs
 
 Folio can now set printers up in CUPS, and everyone can see what happened

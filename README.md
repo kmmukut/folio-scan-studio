@@ -27,6 +27,16 @@ it from any phone, tablet or computer on your network.
 Folio unlocks what the hardware can do; it cannot add features the device
 lacks (a monochrome printer will not print in colour).
 
+## Editions
+
+One codebase, two images. Pick with `FOLIO_EDITION` in `.env`:
+
+- **Full** (default, ~1.2 GB): everything, including searchable PDFs (OCR)
+  and automatic straightening suggestions.
+- **Lite** (~660 MB): for Raspberry Pi–class computers. Identical except it
+  leaves out OCR and automatic straightening; manual straightening, PDF
+  export, printing and printer management are all there.
+
 ## Requirements
 
 - Docker with Compose (Portainer works too).
@@ -59,13 +69,14 @@ then:
 The Compose file builds the image from source (`build: .`). Either run
 `docker compose up -d --build` in the source directory and manage the
 container from Portainer, or build the image first
-(`docker build -t folio-scan-studio:0.11.0 .`), then paste `compose.yaml`
+(`docker build --build-arg FOLIO_EDITION=full -t folio-scan-studio:0.12.0-full .`), then paste `compose.yaml`
 into a Portainer stack without the `build:` line and set the variables there.
 
 ## Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `FOLIO_EDITION` | `full` | `full` or `lite` (build setting; see Editions) |
 | `SCAN_STUDIO_ADMIN_PASSWORD` | — (required) | First administrator's password, used only when no accounts exist |
 | `SCAN_STUDIO_ADMIN_USER` | `admin` | First administrator's username |
 | `CUPS_SERVERS` | empty | Comma-separated CUPS servers, e.g. `cups:631,192.168.1.10:631` |
@@ -113,5 +124,13 @@ docker run --rm -v "$PWD/frontend:/src:ro" node:22-alpine node --check /src/app.
 ```
 
 Tests simulate scanners and CUPS; they never need hardware or write outside
-temporary directories. Design decisions and direction are in
+temporary directories. `requirements-dev.txt` includes the Full extras. To
+test the Lite edition, run the suite inside its image (tests needing OpenCV
+are skipped automatically):
+
+```bash
+docker build --build-arg FOLIO_EDITION=lite -t folio-scan-studio:lite .
+docker run --rm --entrypoint sh -v "$PWD:/src:ro" -w /src folio-scan-studio:lite \
+  -c 'pip install -q pytest httpx pypdf && python -m pytest -q -p no:cacheprovider'
+``` Design decisions and direction are in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

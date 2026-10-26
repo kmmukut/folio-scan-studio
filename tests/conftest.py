@@ -14,6 +14,24 @@ os.environ.setdefault('FOLIO_DEVICE_CACHE', 'off')
 import pytest  # noqa: E402
 
 
+def pytest_collection_modifyitems(config, items):
+    from backend import features
+    if features.available('auto_straighten'):
+        return
+    skip = pytest.mark.skip(reason='Lite edition: OpenCV/NumPy not installed')
+    for item in items:
+        if 'full_only' in item.keywords:
+            item.add_marker(skip)
+
+
+@pytest.fixture
+def ocr_available(monkeypatch):
+    """For tests that replace OCRmyPDF with a stand-in: report OCR as installed."""
+    from backend import features
+    detected = {**features.detect(), 'ocr': True}
+    monkeypatch.setattr(features, 'detect', lambda: detected)
+
+
 @pytest.fixture(autouse=True)
 def _reset_device_cache():
     from backend import devices

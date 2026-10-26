@@ -1,0 +1,16 @@
+# Secrets and runtime state — never commit
+.env
+data/
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Release artifacts are built from tags, not stored in the repo
+*.zip
+*.tgz
+dist/

@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#172820">
+  <title>Folio — paper, considered.</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+<svg aria-hidden="true" class="icons" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="ico-scanner" viewBox="0 0 24 24"><path d="M5 8V5h14v3M5 16H3v-6h18v6h-2M5 14h14v6H5zM8 17h8M17 12h.01"/></symbol>
+  <symbol id="ico-document" viewBox="0 0 24 24"><path d="M14 3H5v18h14V8zM14 3v5h5M8 13h8M8 17h6"/></symbol>
+  <symbol id="ico-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></symbol>
+  <symbol id="ico-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="ico-left" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+  <symbol id="ico-right" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="ico-rotate" viewBox="0 0 24 24"><path d="M21 11a9 9 0 1 1-4-7M21 3v6h-6"/></symbol>
+  <symbol id="ico-crop" viewBox="0 0 24 24"><path d="M5 3v14a2 2 0 0 0 2 2h14M3 5h14a2 2 0 0 1 2 2v14"/></symbol>
+  <symbol id="ico-spark" viewBox="0 0 24 24"><path d="m12 2 2.3 7.7L22 12l-7.7 2.3L12 22l-2.3-7.7L2 12l7.7-2.3z"/></symbol>
+  <symbol id="ico-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v7M14 11v7M6 7l1 14h10l1-14M9 7V4h6v3"/></symbol>
+  <symbol id="ico-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M16 8V5H4v11h4"/></symbol>
+  <symbol id="ico-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4"/></symbol>
+  <symbol id="ico-printer" viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H4V9h16v9h-2M6 15h12v6H6zM17 12h.01"/></symbol>
+  <symbol id="ico-settings" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6"/></symbol>
+  <symbol id="ico-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></symbol>
+  <symbol id="ico-close" viewBox="0 0 24 24"><path d="m5 5 14 14M19 5 5 19"/></symbol>
+  <symbol id="ico-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+  <symbol id="ico-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="1"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="ico-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-7-7 7 7-7 7"/></symbol>
+  <symbol id="ico-undo" viewBox="0 0 24 24"><path d="m8 14-5-5 5-5M3 9h11a6 6 0 0 1 0 12h-1"/></symbol>
+  <symbol id="ico-upload" viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5"/></symbol>
+</svg>
+
+<!-- Accessible authentication layer. Static files are public; the API/data are not. -->
+<div id="auth-view" class="auth-view hidden">
+  <div class="auth-decor" aria-hidden="true"><div class="decoration-sheet sheet-one"></div><div class="decoration-sheet sheet-two"></div><div class="decoration-sheet sheet-three"></div><div class="auth-large-letter">F.</div></div>
+  <main class="auth-panel">
+    <div class="overline dark-line">FOLIO / PRIVATE WORKSPACE</div>
+    <div class="brand-auth"><span class="brand-symbol">F.</span><span>folio<span class="brand-period">.</span></span></div>
+    <h1>Your paper,<br><em>in good hands.</em></h1>
+    <p>Sign in to organize your scans, edit individual pages, and finish documents at your own pace.</p>
+    <form id="login-form" class="auth-form">
+      <label for="login-name">USERNAME</label><input id="login-name" autocomplete="username" required value="" maxlength="50" placeholder="Username">
+      <label for="login-password">PASSWORD</label><input id="login-password" type="password" autocomplete="current-password" required>
+      <button class="button main-button" type="submit">Open workspace <svg class="svg-icon"><use href="#ico-arrow"/></svg></button>
+    </form>
+    <button type="button" id="login-guest-button" class="text-link">Just need to print? Check guest printing →</button><p id="login-guest-status" class="guest-login-note">Guest printing is disabled until an administrator enables it.</p>
+    <div class="auth-foot">LOCAL / PRIVATE / YOURS <span>EST. 2026</span></div>
+  </main>
+</div>
+
+<div id="app-view" class="app-layout hidden">
+  <aside class="rail">
+    <div class="rail-top">
+      <div class="rail-logo"><span class="rail-monogram">F.</span><div><strong>folio</strong><small>THE PAPER DESK</small></div></div>
+      <div class="rail-heading">01 / YOUR DESK</div>
+      <button class="rail-link current" id="workspace-tab"><svg class="svg-icon"><use href="#ico-document"/></svg><span>Workbench</span><b>↗</b></button>
+      <button class="rail-link" id="print-tab"><svg class="svg-icon"><use href="#ico-printer"/></svg><span>Print desk</span><b>↗</b></button>
+      <button class="rail-link hidden" id="users-tab"><svg class="svg-icon"><use href="#ico-lock"/></svg><span>People & access</span><b>↗</b></button>
+      <button class="rail-link hidden" id="devices-tab"><svg class="svg-icon"><use href="#ico-printer"/></svg><span>Devices</span><b>↗</b></button>
+      <div class="rail-heading with-action"><span>02 / DOCUMENTS</span><button id="new-job-sidebar" aria-label="New document" title="New document"><svg class="svg-icon"><use href="#ico-plus"/></svg></button></div>
+      <div id="recent-jobs" class="recent-jobs"><p class="muted">Loading documents…</p></div>
+    </div>
+    <div class="rail-bottom">
+      <div class="machine-status"><span class="led" id="device-led"></span><div><span id="rail-scanner-name">Selected scanner</span><small id="device-status">Checking connection…</small></div></div>
+      <button class="rail-logout" id="logout-button">SIGN OUT <span>↗</span></button>
+      <div class="rail-license">PRIVATE EDITION <span>0.9.5</span></div>
+    </div>
+  </aside>
+  <div class="app-main">
+    <header class="app-topbar">
+      <div class="topbar-path">FOLIO <span>/</span> <span id="top-location">WORKBENCH</span></div>
+      <div class="topbar-right"><span class="topbar-local">● LOCALLY HOSTED</span><span class="topbar-user" id="current-user">ADMIN</span><button id="top-logout" class="topbar-logout" type="button">Sign out</button></div>
+    </header>
+    <div id="workspace-view">
+      <section class="masthead">
+        <div><div class="overline">THE DOCUMENT ATELIER <span>— 01</span></div><h1>Good paper<br><em>doesn't rush.</em></h1><p>Capture. Arrange. Refine. Make every page worth keeping.</p></div>
+        <div class="masthead-stamp" aria-hidden="true"><span>SCAN</span><b>✳</b><span>KEEP</span></div>
+      </section>
+      <div class="doc-bar">
+        <div class="doc-title-block"><div class="overline">CURRENT / DOCUMENT</div><input id="document-title" aria-label="Document name" value="Untitled document" maxlength="100"><div class="doc-subline"><span id="doc-count">0 pages</span><span class="dot">•</span><span id="doc-date">New draft</span></div></div>
+        <div class="doc-actions"><button id="new-job" class="button ghost-button"><svg class="svg-icon"><use href="#ico-plus"/></svg> New</button><button id="delete-current-job" class="button ghost-button delete-document-control" title="Delete this document"><svg class="svg-icon"><use href="#ico-trash"/></svg> Delete</button><label class="quality-select">PDF <select id="pdf-quality"><option value="balanced">Balanced</option><option value="small">Compact</option><option value="best">Best quality</option></select></label><label class="ocr-choice" title="Add a searchable text layer during export"><input type="checkbox" id="pdf-ocr"> Searchable PDF</label><a class="button dark-button" id="export-button" href="#"><svg class="svg-icon"><use href="#ico-download"/></svg> Export</a></div>
+      </div>
+      <div id="scan-alert" class="notice hidden" role="status"></div>
+      <div class="workbench">
+        <section class="capture-pane">
+          <div class="pane-heading"><span class="overline">01 / CAPTURE</span><h2>From paper<br>to pixels.</h2><p>Original scans stay untouched.</p></div>
+          <div class="form-section scanner-switcher"><label class="field-caption" for="scan-device">SELECT SCANNER</label><select id="scan-device" aria-label="Scanner to use"><option value="">Add a scanner in Devices</option></select><p id="scan-device-info" class="inline-note">Looking for scanners…</p></div>
+          <div class="form-section"><div class="field-caption">QUICK START</div><div class="preset-list"><button class="preset" data-preset="documents">Document <span>300 DPI</span></button><button class="preset" data-preset="grayscale">Fine print <span>Gray / 200</span></button><button class="preset" data-preset="photos">Photograph <span>Color / 300</span></button></div></div>
+          <div class="form-section"><div class="field-caption">FEED FROM</div><div class="toggle-row" id="source-picker"><button class="selected" data-value="ADF">Feeder</button><button data-value="Flatbed">Glass</button></div></div>
+          <div class="form-section"><div class="field-caption">COLOR PROFILE</div><div class="toggle-row" id="mode-picker"><button class="selected" data-value="Color">Color</button><button data-value="Gray">Gray</button></div></div>
+          <div class="form-section"><label class="field-caption" for="resolution">RESOLUTION</label><select id="resolution"><option>75</option><option>100</option><option>150</option><option>200</option><option selected>300</option></select></div>
+          <div class="form-section" id="batch-count-row"><div class="field-caption">PAPER COUNT</div><label class="checkline"><input type="checkbox" id="auto-count" checked> Until feeder is empty</label><label class="count-line">Fixed number <input id="batch-count" type="number" min="1" max="100" value="5" disabled></label><p class="inline-note">Tip: use a fixed count to avoid feeder-end errors.</p></div>
+          <div class="form-section"><label class="field-caption" for="batch-role">BATCH TYPE</label><select id="batch-role"><option value="normal">Regular pages</option><option value="fronts">Duplex / fronts</option><option value="backs">Duplex / backs</option></select></div>
+          <button id="scan-now" class="button scan-button"><svg class="svg-icon"><use href="#ico-scanner"/></svg> Start scan <span>↗</span></button>
+          <button id="cancel-scan" class="button cancel-button" hidden disabled>Cancel current scan</button>
+          <p class="capture-foot">No cloud involved. Just your scanner and this desk.</p>
+        </section>
+        <section class="organize-pane">
+          <div class="pane-heading horizontal"><div><span class="overline">02 / ORGANIZE</span><h2>On the table <span class="counter" id="pages-count-pill">0</span></h2></div></div>
+          <p class="drag-instructions">Select a page to edit. Drag its grip to reorder; arrow buttons also work on touch and keyboard.</p>
+          <div id="page-grid" class="page-grid" role="list" aria-label="Document pages in export order"></div>
+          <div class="duplex-editor"><div class="duplex-heading"><div><span class="overline">A HANDY EXTRA</span><h3>Two sides, one document.</h3></div><div class="duplex-symbol">↺</div></div><p>Scan fronts and backs as separate batches; we'll interleave them for you.</p><div class="duplex-selectors"><select id="front-batch" aria-label="Front-side batch"></select><select id="back-batch" aria-label="Back-side batch"></select></div><label class="checkline"><input id="reverse-backs" type="checkbox" checked> Reverse the second stack</label><button id="interleave-button" class="button outline-button">Collate both sides <svg class="svg-icon"><use href="#ico-arrow"/></svg></button></div>
+        </section>
+        <section class="inspect-pane">
+          <div class="pane-heading horizontal"><div><span class="overline">03 / REFINE</span><h2>The little details.</h2></div><span class="editor-mark">✳</span></div>
+          <div class="preview-actionbar"><button id="enlarge-preview" class="small-link" title="Open full-screen page preview">⛶ Expand page</button><label class="preview-grid-switch"><input type="checkbox" id="small-grid"> Alignment grid</label></div>
+          <div id="preview-stage" class="preview-stage"><div class="empty-preview">Select a scanned page.</div></div><div id="preview-message" class="preview-message hidden" role="status"></div>
+          <div id="preview-meta" class="preview-meta">No page selected.</div>
+          <div class="tools-topline"><span class="field-caption">PAGE TOOLS</span><span>NON-DESTRUCTIVE</span></div>
+          <div class="tool-row"><button id="rotate-left" class="tool"><svg class="svg-icon"><use href="#ico-rotate"/></svg> Turn left</button><button id="rotate-right" class="tool"><svg class="svg-icon"><use href="#ico-rotate"/></svg> Turn right</button></div>
+          <div class="tool-row"><button id="crop-button" class="tool highlighted"><svg class="svg-icon"><use href="#ico-crop"/></svg> Crop</button><button id="auto-straighten" class="tool highlighted"><svg class="svg-icon"><use href="#ico-spark"/></svg> Auto straighten</button></div>
+          <div id="auto-suggestion" class="auto-suggestion hidden" role="status"><div><strong id="suggestion-angle">Suggested rotation</strong><small>Preview only — original is unchanged</small></div><div><button id="suggestion-apply" class="small-action">Apply</button><button id="suggestion-dismiss" class="small-action subtle">Dismiss</button></div></div><div class="adjustment-group"><label for="deskew-angle">FINE STRAIGHTEN <output id="angle-output">0°</output></label><input id="deskew-angle" type="range" min="-12" max="12" step="0.25" value="0"><p class="inline-note">Drag to see a live correction. Release to save.</p></div>
+          <div class="adjustment-group tone-controls"><div class="tone-heading"><span>LIGHT & CONTRAST</span><button id="reset-tones" class="small-link" type="button">Reset</button></div>
+            <label for="brightness">BRIGHTNESS <output id="brightness-value">0</output></label><input type="range" id="brightness" min="-80" max="80" step="1" value="0">
+            <label for="contrast">CONTRAST <output id="contrast-value">0</output></label><input type="range" id="contrast" min="-80" max="80" step="1" value="0">
+            <label class="auto-level-label"><input type="checkbox" id="auto-levels"> Auto levels <span>· balances page tones automatically</span></label>
+            <p class="inline-note">Drag to preview, release to save. Original images never change.</p>
+          </div>
+          <div class="adjustment-group columns"><div><label for="page-size">RESIZE</label><select id="page-size"><option value="50">50%</option><option value="75">75%</option><option value="100" selected>Original / 100%</option><option value="125">125%</option><option value="150">150%</option><option value="200">200%</option></select></div><div><label for="page-output">COLOR OUTPUT</label><select id="page-output"><option value="Original">As scanned</option><option value="Gray">Grayscale</option></select></div></div>
+          <div class="tool-row quiet-tools page-actions"><button id="duplicate" class="tool"><svg class="svg-icon"><use href="#ico-copy"/></svg> Duplicate</button><button id="delete" class="tool danger"><svg class="svg-icon"><use href="#ico-trash"/></svg> Remove</button><button id="undo-delete" class="tool restore-deleted-action" type="button" disabled title="Restore the last removed page at its original position"><svg class="svg-icon"><use href="#ico-undo"/></svg><span>Restore deleted page</span><span id="deleted-page-count" class="deleted-page-count" aria-hidden="true">0</span></button></div>
+          <div class="restore-original-panel"><button id="reset-edits" class="restore-original-button" type="button" title="Restore the selected page exactly as scanned">↺ Reset View <span>· Original scan</span></button><p>Restore this page to its original scan. Removes crop, rotation, straightening, resizing, and tone edits.</p></div>
+          <div class="page-stepper"><button id="prev-page"><svg class="svg-icon"><use href="#ico-left"/></svg> Earlier</button><span id="page-position">— / —</span><button id="next-page">Later <svg class="svg-icon"><use href="#ico-right"/></svg></button></div>
+        </section>
+      </div>
+      <footer class="work-footer"><span>FOLIO / MADE FOR THE PAGES THAT MATTER.</span><span id="footer-scanner-label">SCANNER: SELECT A DEVICE</span></footer>
+    </div>
+    <section id="admin-print-view" class="print-desk hidden">
+      <div class="overline">PRINT DESK / 04</div>
+      <div class="print-desk-heading"><div><h1>From screen<br><em>to paper.</em></h1><p>Print a file from your device, or send one of your finished Folio documents straight to CUPS.</p></div><div class="queue-health"><span class="led" id="print-status-led"></span><div><strong id="print-queue-name">Selected CUPS queue</strong><small id="print-status-text">Checking CUPS queue…</small></div><button type="button" id="print-refresh" title="Refresh printer status">↻</button></div></div>
+      <div class="print-desk-layout">
+        <section class="print-panel print-send-panel"><span class="overline">01 / SEND A FILE</span><h2>Your next print.</h2><p class="print-panel-intro">Signed-in printing has no 10 MB or 20-page guest restriction. PDF, PNG, and JPEG are supported.</p>
+          <form id="member-print-form">
+            <label id="member-upload-area" class="upload-area print-upload" tabindex="0" aria-label="Choose or drop a file to print"><svg class="svg-icon"><use href="#ico-upload"/></svg><span>Drop a file here</span><small>or click to browse · PDF, PNG, JPEG</small><input id="member-print-file" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"></label>
+            <div id="member-chosen-file" class="chosen-file" aria-live="polite">No file selected</div><div class="upload-tray-panel" aria-label="Paper tray selection for uploaded files">
+        <div class="upload-tray-heading"><span>INPUT TRAY / PAPER SOURCE</span><button type="button" id="member-source-refresh" class="small-link" title="Reload supported trays from CUPS">↻ Refresh trays</button></div>
+        <label for="member-source">Paper source / input tray
+          <select id="member-source" aria-label="Choose paper source"><option value="default">Printer default</option></select>
+        </label>
+        <p id="member-source-hint" class="upload-tray-hint" role="status" aria-live="polite">Choose a printer to load supported trays.</p>
+      </div>
+            <div id="member-file-preview" class="file-preview hidden" aria-label="Selected file preview"></div>
+            <section class="print-settings" aria-label="Print settings">
+      <div class="print-settings-title">PRINT SETTINGS <small>Choose before sending this job</small></div>
+      <div class="print-options">
+        <label>Printer <select id="member-printer" aria-label="Choose printer"><option value="">Default CUPS printer</option></select></label>
+        <label>Color handling <select id="member-color"><option value="auto">Printer default</option><option value="color">Full color</option><option value="gray">Grayscale</option><option value="bw">Black &amp; white (1-bit)</option></select></label>
+        <label>Copies <input id="member-copies" type="number" min="1" max="50" value="1" ></label>
+        <label>Paper size <select id="member-media"><option value="default">Printer default</option><option value="letter">US Letter · 8.5 × 11 in (216 × 279 mm)</option><option value="legal">US Legal · 8.5 × 14 in (216 × 356 mm)</option><option value="a4">A4 · 210 × 297 mm (8.27 × 11.69 in)</option><option value="a5">A5 · 148 × 210 mm (5.83 × 8.27 in)</option><option value="a6">A6 · 105 × 148 mm (4.13 × 5.83 in)</option><option value="b5">B5 (ISO) · 176 × 250 mm (6.93 × 9.84 in)</option><option value="executive">Executive · 7.25 × 10.5 in (184 × 267 mm)</option><option value="statement">Statement · 5.5 × 8.5 in (140 × 216 mm)</option><option value="folio">Folio · 8.5 × 13 in (216 × 330 mm)</option><option value="com10">#10 envelope · 4⅛ × 9½ in (105 × 241 mm)</option><option value="dl">DL envelope · 110 × 220 mm (4.33 × 8.66 in)</option><option value="c5">C5 envelope · 162 × 229 mm (6.38 × 9.02 in)</option><option value="c6">C6 envelope · 114 × 162 mm (4.49 × 6.38 in)</option><option value="monarch">Monarch envelope · 3⅞ × 7½ in (98 × 191 mm)</option></select></label><p id="member-media-hint" class="paper-media-hint" aria-live="polite"></p>
+
+        <label>Duplex <select id="member-sides"><option value="one-sided">One-sided</option><option value="two-sided-long-edge">Double-sided · long edge</option><option value="two-sided-short-edge">Double-sided · short edge</option></select></label>
+        <label>Orientation <select id="member-orientation"><option value="auto">Auto / as document</option><option value="portrait">Portrait</option><option value="landscape">Landscape</option><option value="reverse-portrait">Reverse portrait</option><option value="reverse-landscape">Reverse landscape</option></select></label>
+        <label>Pages per sheet <select id="member-nup"><option value="1">1 page</option><option value="2">2 pages</option><option value="4">4 pages</option><option value="6">6 pages</option><option value="9">9 pages</option><option value="16">16 pages</option></select></label>
+        <label>Scaling <select id="member-scale"><option value="fit">Fit to paper</option><option value="actual">Original size (100%)</option><option value="75">75%</option><option value="90">90%</option><option value="110">110%</option><option value="125">125%</option><option value="custom">Custom percentage…</option></select></label>
+        <label class="print-custom-scale hidden" id="member-scale-box">Custom scale % <input id="member-scale-percent" type="number" min="50" max="200" value="100"></label>
+        <label>Quality <select id="member-quality"><option value="default">Printer default</option><option value="draft">Draft</option><option value="normal">Normal</option><option value="best">Best</option></select></label>
+        <label>Page border (multi-up) <select id="member-border"><option value="none">None</option><option value="single">Single line</option><option value="double">Double line</option></select></label>
+        <label class="print-check"><input id="member-collate" type="checkbox" checked> Collate copies</label>
+      </div>
+      <div class="page-range-line">
+        <label>Pages to print <select id="member-range-mode"><option value="all">All pages</option><option value="current">Current preview page</option><option value="custom">Custom range</option></select></label>
+        <label class="print-pages-custom hidden" id="member-range-box">Custom pages <input id="member-pages" type="text" placeholder="e.g. 1,3-5,8" maxlength="120" autocomplete="off"></label>
+      </div>
+      <p class="print-help">Page selection applies before pages-per-sheet layout. Paper sizes, trays and duplex options come from the selected CUPS queue; unavailable trays are not offered.</p>
+    </section>
+            <button class="button dark-button print-send-button" type="submit">Send to printer <svg class="svg-icon"><use href="#ico-arrow"/></svg></button><div id="member-print-feedback" class="print-feedback hidden" role="status" aria-live="polite"></div>
+          </form>
+        </section>
+        <aside class="print-desk-aside">
+          <section class="print-panel print-doc-panel"><span class="overline">02 / FROM YOUR LIBRARY</span><h2>Ready when you are.</h2><p>Open a scanned document in the workbench or print its current edited pages directly.</p><div id="print-library" class="print-library"><p class="muted">Loading documents…</p></div><div id="print-document-feedback" class="print-feedback hidden" role="status" aria-live="polite"></div></section>
+          <section id="guest-settings-panel" class="print-panel print-guest-settings hidden"><span class="overline">03 / ADMINISTRATION</span><h2>The guest pass.</h2><label class="switch-line"><input id="guest-enable" type="checkbox"> <span>Allow guests to print without an account</span></label><p>Guest-only rules: PDF, PNG or JPEG; max 10 MB, 20 pages, one copy, with rate limits. Signed-in users are not subject to these guest quotas.</p><div class="print-admin-actions"><button class="button outline-button" id="save-guest" type="button">Save guest access</button><button class="small-link" id="open-guest-view" type="button">Open guest page →</button></div></section>
+        </aside>
+      </div>
+      <div class="security-note"><svg class="svg-icon"><use href="#ico-lock"/></svg> A queued job is not the same as a completed physical print. Folio only reports CUPS submission; native AirPrint is managed separately by CUPS and Avahi.</div>
+    </section>
+    <section id="admin-users-view" class="people-desk hidden">
+      <div class="overline">ACCESS / 05</div><h1>People, with<br><em>the right keys.</em></h1>
+      <p>Create accounts for family or colleagues. Members work in their own document libraries. Printer-only accounts can upload print jobs but cannot see scans. Anonymous guest printing is controlled separately under Print desk.</p>
+      <div class="people-grid">
+        <section class="people-panel"><span class="overline">ADD AN ACCOUNT</span><h2>Invite someone in.</h2>
+          <form id="add-user-form" class="people-form">
+            <label>Username <input id="new-username" required minlength="3" maxlength="32" autocomplete="off" placeholder="e.g. alex"></label>
+            <label>Temporary password (12+ characters) <input id="new-password" type="password" required minlength="12" autocomplete="new-password"></label>
+            <label>Account type <select id="new-role"><option value="member">Member · own scans and printing</option><option value="printer">Printer only · no scanner or documents</option><option value="admin">Administrator · full control</option></select></label>
+            <button class="button dark-button" type="submit">Create account →</button>
+          </form>
+        </section>
+        <section class="people-panel"><span class="overline">EXISTING ACCOUNTS</span><h2>Manage access.</h2>
+          <div id="user-list" class="user-list"><p>Loading accounts…</p></div>
+        </section>
+      </div>
+      <div class="security-note">Changing a user's role, password or enabled status ends their active sessions. Deleting an account preserves its scans for administrators to recover.</div>
+    </section>
+    <section id="admin-devices-view" class="devices-desk hidden">
+      <div class="overline">EQUIPMENT / 06</div><h1>Tools of<br><em>the trade.</em></h1>
+      <p>Add, edit or remove scanners right here; Folio writes the SANE configuration automatically. Printers are installed in CUPS and appear here after Refresh. Neither workflow requires a Docker restart.</p>
+      <div class="device-intro"><span class="led on"></span><strong id="device-cups-server">CUPS server</strong><button class="button outline-button" type="button" id="devices-refresh">Refresh devices ↻</button></div>
+      <div class="device-grid">
+        <div class="device-column">
+          <div class="device-heading"><span class="overline">01 / SCANNERS</span><h2>Capture devices.</h2><p>Choose the default, check capabilities, or edit network endpoints.</p></div>
+          <div id="device-scanner-list" class="device-list"><p>Discovering scanners…</p></div>
+          <div class="device-add-panel"><h3>Attach a detected scanner</h3><p>For USB or other devices already visible to SANE inside this container.</p><form id="attach-scanner-form" class="device-form"><label>SANE scanner <select id="attach-scanner-select"><option value="">No unregistered devices detected</option></select></label><label>Display name <input id="attach-scanner-name" maxlength="75" placeholder="Document scanner" required></label><button class="button outline-button" type="submit">Attach scanner</button></form></div>
+          <div class="device-add-panel"><h3 id="scanner-form-title">Add a network scanner</h3>
+            <form id="scanner-device-form" class="device-form">
+              <label>Display name <input id="device-scanner-name" maxlength="75" placeholder="Office scanner" required></label>
+              <label>IP address <input id="device-scanner-ip" placeholder="192.0.2.124" required inputmode="decimal"></label>
+              <div class="device-form-row"><label>Protocol <select id="device-scanner-protocol"><option value="WSD">WSD</option><option value="eSCL">eSCL / AirScan</option></select></label><label>Port <input id="device-scanner-port" type="number" min="1" max="65535" value="8018"></label></div>
+              <label>Endpoint path <input id="device-scanner-path" value="/wsd/scan" placeholder="/wsd/scan"></label>
+              <label class="device-checkbox"><input id="device-scanner-default" type="checkbox"> Make default scanner</label>
+              <div class="device-form-row"><button class="button dark-button" type="submit" id="scanner-form-save">Add scanner</button><button class="button outline-button hidden" id="scanner-form-cancel" type="button">Cancel edit</button></div>
+            </form><p class="inline-note">For VLAN-separated scanners, enter their reachable IP and endpoint. Folio writes the configuration into persistent storage. Nothing to mount in Docker Compose. If this is your first scanner, it becomes the default automatically.</p>
+          </div>
+        </div>
+        <div class="device-column">
+          <div class="device-heading"><span class="overline">02 / PRINTERS</span><h2>Output devices.</h2><p>Add queues in CUPS; Folio reads available options and controls access.</p></div>
+          <div id="device-printer-list" class="device-list"><p>Discovering CUPS printers…</p></div>
+          <div class="device-add-panel"><h3>Need another printer?</h3><p>Install its driver and queue in CUPS first. Then press Refresh devices. Folio will find it automatically—no privileged printer administration is exposed to the web app.</p><p class="inline-note">AirPrint discovery for each new queue remains separately configured in Avahi, if needed.</p></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<section id="guest-view" class="guest-view hidden"><header class="guest-header"><div class="guest-brand">F<span>.</span> <small>FOLIO / GUEST PRINTING</small></div><button id="guest-back" class="small-link" type="button">← Sign in</button></header>
+  <div class="guest-content"><div class="overline">THE GUEST PASS</div><h1>Here to print?<br><em>You're in the right place.</em></h1><p>Drop a PDF or image here. Guest printing can't open anyone's documents or control the scanner.</p>
+    <div id="guest-availability" class="guest-availability hidden" role="status"></div>
+    <form id="guest-print-form"><label class="upload-area" id="upload-area" tabindex="0" aria-label="Choose or drop a file to print"><svg class="svg-icon"><use href="#ico-upload"/></svg><span>Drop your file here</span><small>or click to browse · PDF / PNG / JPEG · max 10 MB and 20 pages</small><input id="guest-print-file" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"></label><div id="chosen-file" class="chosen-file" aria-live="polite">No file selected yet</div><div class="upload-tray-panel" aria-label="Paper tray selection for uploaded files">
+        <div class="upload-tray-heading"><span>INPUT TRAY / PAPER SOURCE</span><button type="button" id="guest-source-refresh" class="small-link" title="Reload supported trays from CUPS">↻ Refresh trays</button></div>
+        <label for="guest-source">Paper source / input tray
+          <select id="guest-source" aria-label="Choose paper source"><option value="default">Printer default</option></select>
+        </label>
+        <p id="guest-source-hint" class="upload-tray-hint" role="status" aria-live="polite">Choose a printer to load supported trays.</p>
+      </div><div id="guest-file-preview" class="file-preview hidden" aria-label="Selected file preview"></div><section class="print-settings" aria-label="Print settings">
+      <div class="print-settings-title">PRINT SETTINGS <small>Choose before sending this job</small></div>
+      <div class="print-options">
+        <label>Printer <select id="guest-printer" aria-label="Choose printer"><option value="">Default CUPS printer</option></select></label>
+        <label>Color handling <select id="guest-color"><option value="auto">Printer default</option><option value="color">Full color</option><option value="gray">Grayscale</option><option value="bw">Black &amp; white (1-bit)</option></select></label>
+        <label>Copies <input id="guest-copies" type="number" min="1" max="1" value="1" disabled></label>
+        <label>Paper size <select id="guest-media"><option value="default">Printer default</option><option value="letter">US Letter · 8.5 × 11 in (216 × 279 mm)</option><option value="legal">US Legal · 8.5 × 14 in (216 × 356 mm)</option><option value="a4">A4 · 210 × 297 mm (8.27 × 11.69 in)</option><option value="a5">A5 · 148 × 210 mm (5.83 × 8.27 in)</option><option value="a6">A6 · 105 × 148 mm (4.13 × 5.83 in)</option><option value="b5">B5 (ISO) · 176 × 250 mm (6.93 × 9.84 in)</option><option value="executive">Executive · 7.25 × 10.5 in (184 × 267 mm)</option><option value="statement">Statement · 5.5 × 8.5 in (140 × 216 mm)</option><option value="folio">Folio · 8.5 × 13 in (216 × 330 mm)</option><option value="com10">#10 envelope · 4⅛ × 9½ in (105 × 241 mm)</option><option value="dl">DL envelope · 110 × 220 mm (4.33 × 8.66 in)</option><option value="c5">C5 envelope · 162 × 229 mm (6.38 × 9.02 in)</option><option value="c6">C6 envelope · 114 × 162 mm (4.49 × 6.38 in)</option><option value="monarch">Monarch envelope · 3⅞ × 7½ in (98 × 191 mm)</option></select></label><p id="guest-media-hint" class="paper-media-hint" aria-live="polite"></p>
+
+        <label>Duplex <select id="guest-sides"><option value="one-sided">One-sided</option><option value="two-sided-long-edge">Double-sided · long edge</option><option value="two-sided-short-edge">Double-sided · short edge</option></select></label>
+        <label>Orientation <select id="guest-orientation"><option value="auto">Auto / as document</option><option value="portrait">Portrait</option><option value="landscape">Landscape</option><option value="reverse-portrait">Reverse portrait</option><option value="reverse-landscape">Reverse landscape</option></select></label>
+        <label>Pages per sheet <select id="guest-nup"><option value="1">1 page</option><option value="2">2 pages</option><option value="4">4 pages</option><option value="6">6 pages</option><option value="9">9 pages</option><option value="16">16 pages</option></select></label>
+        <label>Scaling <select id="guest-scale"><option value="fit">Fit to paper</option><option value="actual">Original size (100%)</option><option value="75">75%</option><option value="90">90%</option><option value="110">110%</option><option value="125">125%</option><option value="custom">Custom percentage…</option></select></label>
+        <label class="print-custom-scale hidden" id="guest-scale-box">Custom scale % <input id="guest-scale-percent" type="number" min="50" max="200" value="100"></label>
+        <label>Quality <select id="guest-quality"><option value="default">Printer default</option><option value="draft">Draft</option><option value="normal">Normal</option><option value="best">Best</option></select></label>
+        <label>Page border (multi-up) <select id="guest-border"><option value="none">None</option><option value="single">Single line</option><option value="double">Double line</option></select></label>
+        <label class="print-check"><input id="guest-collate" type="checkbox" checked> Collate copies</label>
+      </div>
+      <div class="page-range-line">
+        <label>Pages to print <select id="guest-range-mode"><option value="all">All pages</option><option value="current">Current preview page</option><option value="custom">Custom range</option></select></label>
+        <label class="print-pages-custom hidden" id="guest-range-box">Custom pages <input id="guest-pages" type="text" placeholder="e.g. 1,3-5,8" maxlength="120" autocomplete="off"></label>
+      </div>
+      <p class="print-help">Page selection applies before pages-per-sheet layout. Paper sizes, trays and duplex options come from the selected CUPS queue; unavailable trays are not offered.</p>
+    </section><button class="button main-button" type="submit">Send to printer <svg class="svg-icon"><use href="#ico-arrow"/></svg></button><div id="guest-print-feedback" class="print-feedback hidden" role="status" aria-live="polite"></div></form>
+    <div class="guest-privacy"><svg class="svg-icon"><use href="#ico-lock"/></svg> Guest jobs are limited to one copy and rate-limited. Temporary previews expire after 15 minutes and never enter the Folio document library.</div></div>
+</section>
+
+<dialog id="saved-print-dialog" class="saved-print-dialog" aria-label="Print a saved document">
+  <div class="saved-print-head"><div><span class="overline">PRINT FROM LIBRARY</span><h2 id="saved-print-title">Print a document</h2><p>Review the document and choose the pages before printing.</p></div><button type="button" id="saved-print-close" class="round-close" aria-label="Close">✕</button></div>
+  <div class="saved-print-layout"><div class="saved-preview"><div class="preview-navigation"><button type="button" id="saved-prev">←</button><span id="saved-page-label">Page 1 of 1</span><button type="button" id="saved-next">→</button></div><img id="saved-preview-image" alt="Selected saved document page"><p>Preview uses your current non-destructive edits.</p></div>
+  <form id="saved-print-form"><section class="print-settings" aria-label="Print settings">
+      <div class="print-settings-title">PRINT SETTINGS <small>Choose before sending this job</small></div>
+      <div class="print-options">
+        <label>Printer <select id="saved-printer" aria-label="Choose printer"><option value="">Default CUPS printer</option></select></label>
+        <label>Color handling <select id="saved-color"><option value="auto">Printer default</option><option value="color">Full color</option><option value="gray">Grayscale</option><option value="bw">Black &amp; white (1-bit)</option></select></label>
+        <label>Copies <input id="saved-copies" type="number" min="1" max="50" value="1" ></label>
+        <label>Paper size <select id="saved-media"><option value="default">Printer default</option><option value="letter">US Letter · 8.5 × 11 in (216 × 279 mm)</option><option value="legal">US Legal · 8.5 × 14 in (216 × 356 mm)</option><option value="a4">A4 · 210 × 297 mm (8.27 × 11.69 in)</option><option value="a5">A5 · 148 × 210 mm (5.83 × 8.27 in)</option><option value="a6">A6 · 105 × 148 mm (4.13 × 5.83 in)</option><option value="b5">B5 (ISO) · 176 × 250 mm (6.93 × 9.84 in)</option><option value="executive">Executive · 7.25 × 10.5 in (184 × 267 mm)</option><option value="statement">Statement · 5.5 × 8.5 in (140 × 216 mm)</option><option value="folio">Folio · 8.5 × 13 in (216 × 330 mm)</option><option value="com10">#10 envelope · 4⅛ × 9½ in (105 × 241 mm)</option><option value="dl">DL envelope · 110 × 220 mm (4.33 × 8.66 in)</option><option value="c5">C5 envelope · 162 × 229 mm (6.38 × 9.02 in)</option><option value="c6">C6 envelope · 114 × 162 mm (4.49 × 6.38 in)</option><option value="monarch">Monarch envelope · 3⅞ × 7½ in (98 × 191 mm)</option></select></label><p id="saved-media-hint" class="paper-media-hint" aria-live="polite"></p>
+        <label>Paper source <select id="saved-source" aria-label="Choose paper source"><option value="default">Printer default</option></select><small class="saved-tray-hint" id="saved-source-hint" aria-live="polite"></small></label>
+        <label>Duplex <select id="saved-sides"><option value="one-sided">One-sided</option><option value="two-sided-long-edge">Double-sided · long edge</option><option value="two-sided-short-edge">Double-sided · short edge</option></select></label>
+        <label>Orientation <select id="saved-orientation"><option value="auto">Auto / as document</option><option value="portrait">Portrait</option><option value="landscape">Landscape</option><option value="reverse-portrait">Reverse portrait</option><option value="reverse-landscape">Reverse landscape</option></select></label>
+        <label>Pages per sheet <select id="saved-nup"><option value="1">1 page</option><option value="2">2 pages</option><option value="4">4 pages</option><option value="6">6 pages</option><option value="9">9 pages</option><option value="16">16 pages</option></select></label>
+        <label>Scaling <select id="saved-scale"><option value="fit">Fit to paper</option><option value="actual">Original size (100%)</option><option value="75">75%</option><option value="90">90%</option><option value="110">110%</option><option value="125">125%</option><option value="custom">Custom percentage…</option></select></label>
+        <label class="print-custom-scale hidden" id="saved-scale-box">Custom scale % <input id="saved-scale-percent" type="number" min="50" max="200" value="100"></label>
+        <label>Quality <select id="saved-quality"><option value="default">Printer default</option><option value="draft">Draft</option><option value="normal">Normal</option><option value="best">Best</option></select></label>
+        <label>Page border (multi-up) <select id="saved-border"><option value="none">None</option><option value="single">Single line</option><option value="double">Double line</option></select></label>
+        <label class="print-check"><input id="saved-collate" type="checkbox" checked> Collate copies</label>
+      </div>
+      <div class="page-range-line">
+        <label>Pages to print <select id="saved-range-mode"><option value="all">All pages</option><option value="current">Current preview page</option><option value="custom">Custom range</option></select></label>
+        <label class="print-pages-custom hidden" id="saved-range-box">Custom pages <input id="saved-pages" type="text" placeholder="e.g. 1,3-5,8" maxlength="120" autocomplete="off"></label>
+      </div>
+      <p class="print-help">Page selection applies before pages-per-sheet layout. Paper sizes, trays and duplex options come from the selected CUPS queue; unavailable trays are not offered.</p>
+    </section><button type="submit" class="button dark-button print-send-button">Print this document →</button><div id="saved-print-feedback" class="print-feedback hidden" role="status"></div></form></div>
+</dialog>
+
+<dialog id="preview-dialog" class="preview-dialog" aria-label="Large page preview and alignment editor">
+  <div class="large-editor-heading"><div><span class="overline">FULL PAGE / ALIGNMENT</span><h2>Inspect the details.</h2><p id="large-page-meta">Fine-tune against the horizontal and vertical guides.</p></div><button id="large-close" class="round-close" aria-label="Close large preview">✕</button></div>
+  <div class="large-editor-toolbar"><div class="zoom-actions"><button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button><output id="zoom-label">100%</output><button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button><button id="zoom-fit" title="Fit page in preview without changing edits">Fit page</button><button id="large-pan-toggle" type="button" class="pan-tool active" aria-pressed="true" title="Drag the zoomed page to pan">✋ Pan</button></div><label class="preview-grid-switch"><input id="large-grid" type="checkbox" checked> Alignment grid</label><button id="view-reset" class="view-reset" type="button" title="Discard edits and restore the original scanned page">↺ Reset View · Original scan</button></div>
+  <div class="large-scene" id="large-scene"><div id="large-viewport" class="large-viewport"><div id="large-image-wrap" class="large-image-wrap"><img id="large-preview-image" alt="Enlarged scanned page"></div></div><div id="large-guide-grid" class="large-guide-grid" aria-hidden="true"></div></div>
+  <div class="large-editor-bottom"><label for="large-angle">FINE STRAIGHTEN <output id="large-angle-output">0°</output></label><input id="large-angle" type="range" min="-12" max="12" step="0.25" value="0"><span>Use Pan and drag to inspect zoomed areas. Fit page changes zoom only; Reset View restores the original scan and discards edits.</span></div>
+</dialog>
+
+<dialog id="crop-dialog" class="crop-dialog"><div class="crop-header"><div><div class="overline">PAGE TOOL / CROP</div><h2>Find the edges.</h2><p>Drag outside the frame to draw a new crop. Drag inside to move; use the eight handles to fine-tune edges.</p></div><button id="crop-close" class="round-close" aria-label="Close crop editor"><svg class="svg-icon"><use href="#ico-close"/></svg></button></div>
+  <div class="crop-topbar"><div class="zoom-actions"><button id="crop-zoom-out" aria-label="Crop zoom out" title="Zoom out">−</button><output id="crop-zoom-label">100%</output><button id="crop-zoom-in" aria-label="Crop zoom in" title="Zoom in">+</button><button id="crop-zoom-fit" type="button">Fit page</button><button id="crop-pan-toggle" type="button" class="pan-tool" aria-pressed="false" title="Drag to move around the zoomed page">✋ Pan</button></div><span>Resize with handles · Pan to inspect edges</span></div>
+  <div id="crop-canvas" class="crop-canvas"><div id="crop-image-wrap" class="crop-image-wrap"><img id="crop-image" draggable="false" alt="Page to crop"><div id="crop-selection" class="crop-selection hidden" role="group" aria-label="Adjustable crop selection"><span class="crop-handle" data-handle="nw" title="Resize top-left"></span><span class="crop-handle" data-handle="n" title="Resize top"></span><span class="crop-handle" data-handle="ne" title="Resize top-right"></span><span class="crop-handle" data-handle="e" title="Resize right"></span><span class="crop-handle" data-handle="se" title="Resize bottom-right"></span><span class="crop-handle" data-handle="s" title="Resize bottom"></span><span class="crop-handle" data-handle="sw" title="Resize bottom-left"></span><span class="crop-handle" data-handle="w" title="Resize left"></span></div></div></div>
+  <div class="crop-toolbar"><button id="crop-reset" class="button outline-button" type="button">Use full page</button><button id="crop-save" class="button dark-button" type="button">Apply crop <svg class="svg-icon"><use href="#ico-check"/></svg></button></div></dialog>
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+</body>
+</html>

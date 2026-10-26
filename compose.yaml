@@ -1,0 +1,23 @@
+services:
+  scan-studio:
+    build: .
+    image: folio-scan-studio:0.9.5
+    container_name: scan-studio
+    restart: unless-stopped
+    stop_grace_period: 45s
+    ports:
+      - "8870:8870"
+    environment:
+      DATA_DIR: /data
+      SCANNER_DEVICE: ""  # No hardcoded scanner; managed through Folio > Devices
+      FOLIO_AIRSCAN_DISCOVERY: "off"  # Avoid multicast probes on VLAN-heavy Docker hosts
+      SCAN_TIMEOUT_SECONDS: "900"
+      SCAN_GRACE_SECONDS: "30"
+      SCAN_STUDIO_ADMIN_USER: "${SCAN_STUDIO_ADMIN_USER:-admin}"
+      SCAN_STUDIO_ADMIN_PASSWORD: "${SCAN_STUDIO_ADMIN_PASSWORD:?Set a strong admin password in .env or Portainer variables}"
+      COOKIE_SECURE: "false"  # Set true behind an HTTPS reverse proxy
+      CUPS_SERVERS: "${CUPS_SERVERS:-198.51.100.2:631}"
+      # Default printer/guest permissions are selected in Folio > Devices.
+      USER_PRINT_MAX_MB: "${USER_PRINT_MAX_MB:-256}"
+    volumes:
+      - ./data:/data

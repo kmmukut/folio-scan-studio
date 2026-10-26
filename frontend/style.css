@@ -313,3 +313,14 @@
 /* Folio v0.9.5: explain queue-specific envelope compatibility without hiding sizes. */
 .paper-media-hint{margin:0!important;grid-column:1/-1;color:#596c59;font:12px/1.5 Arial,sans-serif;letter-spacing:0}
 .paper-media-hint:empty{display:none}
+/* v0.9.6 diagnostics */
+.diagnostics-panel{margin-top:38px;padding-top:26px;border-top:1px solid #d9e0d4}
+.diagnostics-results{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:22px;margin-top:20px}
+.diagnostic-group h3{font:700 10px/1.6 "SFMono-Regular",Consolas,"Liberation Mono",monos;letter-spacing:1.45px;text-transform:uppercase;color:#8c6454;margin:0 0 10px}
+.diagnostic-row{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;align-items:start;border:1px solid #d7dfd1;background:#fbfcf6;padding:12px 14px;margin-bottom:8px}
+.diagnostic-row strong{font:normal 16px Georgia,serif;color:#294330}
+.diagnostic-row p{margin:4px 0 0;font-size:12px;line-height:1.55;color:#5f705f;overflow-wrap:anywhere}
+.diagnostic-state{font:10px Consolas,monos;padding:4px 7px;text-align:center;background:#eef0e8;color:#5f705f}
+.diagnostic-row.ok .diagnostic-state{background:#e8eee4;color:#4d7357}
+.diagnostic-row.warn{border-color:#e2cfa8}.diagnostic-row.warn .diagnostic-state{background:#f6ecd6;color:#8a6420}
+.diagnostic-row.fail{border-color:#e3c3b5}.diagnostic-row.fail .diagnostic-state{background:#f3e7e0;color:#955641}

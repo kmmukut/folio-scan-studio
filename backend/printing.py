@@ -10,7 +10,7 @@ import os
 import re
 from pathlib import Path
 from PIL import Image, ImageOps
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF (the 'fitz' name is deprecated)
 
 # A name/CUPS media combination is only shown as definitely supported when the
 # actual queue advertises it (via lpoptions). These are safe optional presets.

@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 import secrets
+from contextlib import asynccontextmanager
 from urllib.parse import unquote
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,7 +30,8 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 from backend import security
 from backend.processing import transform_page, find_deskew_angle
-from backend import printing, devices
+from backend import printing, devices, diagnostics
+from backend.version import __version__
 
 DATA_DIR = Path(os.environ.get('DATA_DIR', '/data'))
 JOBS_DIR = DATA_DIR / 'jobs'
@@ -48,13 +50,25 @@ SCAN_TIMEOUT_SECONDS = max(30.0, float(os.environ.get('SCAN_TIMEOUT_SECONDS', '9
 SCAN_GRACE_SECONDS = max(2.0, float(os.environ.get('SCAN_GRACE_SECONDS', '30')))
 scan_state = {"active": False, "message": "Ready", "job_id": None, "pages_added": 0,
               "error": None, "cancel_requested": False, "cancelled": False, "updated": 0}
+# Full-resolution decodes of 300 DPI scans take ~25-100 MB each. Bound how
+# many run at once so a page strip of 40 thumbnails can't exhaust a small host.
+RENDER_SLOTS = threading.BoundedSemaphore(max(1, min(8, int(
+    os.environ.get('FOLIO_RENDER_CONCURRENCY', '').strip() or min(2, os.cpu_count() or 1)))))
+# Bump when preview rendering changes so stale cached JPEGs are not served.
+RENDER_VERSION = 1
+PREVIEW_SIZES = {  # (downscale before edits, final bound after edits)
+    'thumb': ((520, 700), (520, 700)),
+    'normal': ((1150, 1500), (1250, 1650)),
+    'large': ((2250, 3000), (2350, 3200)),
+}
+PROXY_SIZE = PREVIEW_SIZES['large'][0]
 
-app = FastAPI(title='Folio Scan Studio', version='0.9.5', docs_url=None, redoc_url=None)
 COOKIE_SECURE = os.environ.get('COOKIE_SECURE', 'false').lower() in ('true','1','yes')
 # Multiple CUPS servers, scoped by host+queue.  Legacy env vars are optional
 # migration inputs only; new installations select their default in Devices.
+# There is deliberately no default server: Folio must not assume any network.
 CUPS_SERVERS = devices.parse_cups_servers(os.environ.get(
-    'CUPS_SERVERS', os.environ.get('CUPS_SERVER', '198.51.100.2:631')))
+    'CUPS_SERVERS', os.environ.get('CUPS_SERVER', '')))
 CUPS_SERVER = CUPS_SERVERS[0] if CUPS_SERVERS else ''
 CUPS_QUEUE = os.environ.get('CUPS_QUEUE', '').strip()
 GUEST_MAX_BYTES = 10 * 1024 * 1024
@@ -63,9 +77,27 @@ GUEST_MAX_PAGES = 20
 # Authenticated accounts have no 10 MB or 20-page guest restriction.
 USER_PRINT_MAX_BYTES = max(64, min(2048, int(os.environ.get('USER_PRINT_MAX_MB', '256')))) * 1024 * 1024
 PRINT_MEDIA = {key: info[0] for key,info in printing.MEDIA.items()}
-PREVIEW_ROOT = DATA_DIR / 'print-previews'
+PREVIEW_ROOT: Path | None = None  # Override; defaults to DATA_DIR/print-previews
 PREVIEW_TTL = 15 * 60
 PRINT_SIDES = {'one-sided', 'two-sided-long-edge', 'two-sided-short-edge'}
+
+
+def preview_root() -> Path:
+    # Resolved on use, so DATA_DIR changes (tests, future config) apply here too.
+    return PREVIEW_ROOT or DATA_DIR / 'print-previews'
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    ensure_directories()
+    try:
+        yield
+    finally:
+        await asyncio.to_thread(gracefully_stop_on_server_shutdown)
+
+
+app = FastAPI(title='Folio Scan Studio', version=__version__, docs_url=None, redoc_url=None,
+              lifespan=lifespan)
 app.mount('/assets', StaticFiles(directory=str(WEB_DIR)), name='assets')
 
 
@@ -231,6 +263,8 @@ def registry() -> dict:
 def persist_registry(state: dict) -> None:
     devices.save_config(DATA_DIR, state)
     devices.write_managed_sane_config(state, managed_sane_path())
+    # SANE sees new or changed endpoints on its next query; don't serve old answers.
+    devices.invalidate('sane')
 
 
 def printer_inventory() -> tuple[dict, list[dict]]:
@@ -631,14 +665,14 @@ def preview_owner(request: Request, guest: bool) -> str:
 def preview_folder(token: str) -> Path:
     if not re.fullmatch(r'[A-Za-z0-9_-]{32}',token):
         raise HTTPException(404, 'Preview not found')
-    return PREVIEW_ROOT / token
+    return preview_root() / token
 
 
 def trim_preview_budget(owner: str):
     # Bound the space taken by file previews even if visitors repeatedly upload
     # and never print. Two previews per session, at most 20 globally / 768 MB.
     previews=[]
-    for directory in PREVIEW_ROOT.iterdir():
+    for directory in preview_root().iterdir():
         if not directory.is_dir():
             continue
         try:
@@ -678,8 +712,9 @@ def preview_record(request: Request, token: str, guest: bool) -> tuple[Path, dic
 
 def clear_old_previews():
     """Bound the temporary disk footprint. Preview files aren't scan library data."""
-    PREVIEW_ROOT.mkdir(parents=True,exist_ok=True,mode=0o700)
-    for directory in PREVIEW_ROOT.iterdir():
+    root=preview_root()
+    root.mkdir(parents=True,exist_ok=True,mode=0o700)
+    for directory in root.iterdir():
         if not directory.is_dir():
             continue
         try:
@@ -781,7 +816,9 @@ async def submit_guest_preview(request: Request, body: PreviewPrintRequest):
 
 
 @app.get('/api/printers')
-def printers_available(request: Request):
+def printers_available(request: Request, refresh: bool = False):
+    if refresh:
+        devices.invalidate('cups')
     cfg, records=printer_inventory()
     queues=visible_printers(cfg,records,request.state.role)
     return {'default':print_default(cfg,records),
@@ -820,7 +857,9 @@ def print_status(request: Request, queue: str | None = None):
 
 
 @app.get('/api/admin/devices')
-def admin_devices():
+def admin_devices(refresh: bool = False):
+    if refresh:
+        devices.invalidate()
     cfg, records=printer_inventory()
     discovered={q['id']:q for q in records}
     all_keys=list(dict.fromkeys([*discovered,*cfg.get('printers',{})]))
@@ -971,6 +1010,8 @@ def unregister_scanner(scanner_id: str):
 
 @app.get('/api/admin/scanners/{scanner_id}/test')
 def test_scanner(scanner_id: str):
+    # A test is an explicit request to talk to the device, never a cached answer.
+    devices.invalidate('sane')
     entry,name=get_selected_scanner(scanner_id)
     return {'scanner':scanner_id, 'name':entry['name'], 'device':name,
             'capabilities':devices.scanner_capabilities(name)}
@@ -1053,7 +1094,20 @@ def homepage():
 
 @app.get('/api/health')
 def health():
-    return {'ok': True, 'scanner': 'SANE scanner service', 'device': registry().get('default_scanner')}
+    """Cheap liveness check for Docker/Portainer; reveals no configuration."""
+    problems = diagnostics.storage_problems(DATA_DIR)
+    if problems:
+        return JSONResponse({'ok': False, 'version': __version__, 'detail': problems}, status_code=503)
+    return {'ok': True, 'version': __version__}
+
+
+@app.get('/api/admin/diagnostics')
+def admin_diagnostics(request: Request):
+    cfg = registry()
+    return diagnostics.run_checks(
+        data_dir=DATA_DIR, jobs_dir=JOBS_DIR, cups_servers=CUPS_SERVERS, registry=cfg,
+        request=request, cookie_secure=COOKIE_SECURE, version=__version__,
+        default_printer=cfg.get('default_printer'))
 
 
 @app.get('/api/scanner')
@@ -1068,6 +1122,7 @@ def scanner():
     matching=next((e for e in devices.scanners_state(cfg) if e['id']==cfg['default_scanner']),None)
     return {'connected':bool(matching and matching['connected']),
             'name':matching['name'] if matching else 'Scanner',
+            'protocol':(matching.get('protocol') or 'SANE') if matching else None,
             **(matching['capabilities'] if matching else {}),
             'device':matching['sane_name'] if matching else None}
 
@@ -1272,6 +1327,9 @@ def execute_scan(job_id: str, req: ScanRequest, sane_device: str) -> None:
                                            'scanner_id':req.scanner_id or registry()['default_scanner']})
                     save_job(job)
 
+                if problem and not cancelled:
+                    # The device may have gone away; re-probe instead of trusting the cache.
+                    devices.invalidate('sane')
                 message = f'Added {len(imported)} page(s)' if imported else 'No scanned pages received'
                 if problem:
                     message += f' · {problem}' if cancelled else ' · Feeder stopped; completed pages were kept'
@@ -1498,11 +1556,96 @@ def interleave(job_id: str, request: InterleaveRequest):
 
 def load_page_image(job_id: str, page: dict, *, apply_edit=True, uncropped=False) -> Image.Image:
     file = job_path(job_id) / 'pages' / page['file']
-    image = Image.open(file)
-    image.load()
+    with RENDER_SLOTS:
+        image = Image.open(file)
+        image.load()
     if apply_edit:
         image = transform_page(image, page, uncropped=uncropped)
     return image
+
+
+def write_atomic(path: Path, data: bytes) -> None:
+    tmp = path.with_name(f'.{path.name}.{uuid4().hex[:8]}.tmp')
+    try:
+        tmp.write_bytes(data)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def page_proxy(job_id: str, page: dict) -> Path:
+    """A reduced JPEG copy of the immutable scan, used only for on-screen previews.
+
+    Decoding a 300 DPI PNG for every thumbnail and every slider change is the
+    most expensive thing Folio does on a small host. The proxy is built once
+    per scanned file; exports and printing always use the original pixels.
+    """
+    cache = job_path(job_id) / 'cache'
+    proxy = cache / f"{Path(page['file']).stem}.proxy.jpg"
+    if not proxy.is_file():
+        original = load_page_image(job_id, page, apply_edit=False)
+        # Resizing a page that is only slightly larger than the proxy costs more
+        # than it saves (A4 at 300 DPI is 2480x3508); keep its pixels and let
+        # each preview size downscale from the JPEG instead.
+        if original.width > PROXY_SIZE[0] * 1.25 or original.height > PROXY_SIZE[1] * 1.25:
+            original.thumbnail(PROXY_SIZE, Image.Resampling.LANCZOS)
+        if original.mode not in ('RGB', 'L'):
+            original = original.convert('L' if original.mode in ('1', 'LA', 'I', 'I;16') else 'RGB')
+        buffer = io.BytesIO()
+        original.save(buffer, 'JPEG', quality=90)
+        cache.mkdir(exist_ok=True)
+        write_atomic(proxy, buffer.getvalue())
+    return proxy
+
+
+def preview_variant(thumb: bool, large: bool, uncropped: bool) -> str:
+    return ('thumb' if thumb else 'large' if large else 'normal') + ('-uncropped' if uncropped else '')
+
+
+def render_preview_jpeg(job_id: str, page: dict, variant: str) -> bytes:
+    """Render (or reuse) the preview JPEG for one page state and size."""
+    size_name, _, crop_mode = variant.partition('-')
+    before, after = PREVIEW_SIZES[size_name]
+    # Preview never renders at full-resolution plus 200% scaling. That can
+    # consume hundreds of MB of RAM and cause the browser image to vanish.
+    # Scale is an export pixel-density setting, not a visual zoom control.
+    preview_page = {**page, 'scale': 100}
+    if crop_mode == 'uncropped':
+        # The crop editor displays the right-angle-oriented ORIGINAL, without
+        # fine deskew/tone adjustments, so normalized crop edges remain stable.
+        preview_page.update(crop=None, deskew=0.0, brightness=0, contrast=0,
+                            auto_levels=False, export_mode='Original')
+    # The key covers every input that changes pixels, so an edit (or undoing it)
+    # selects a different cached file, and duplicates of a page share one.
+    state = {k: preview_page.get(k) for k in ('file', 'rotation', 'crop', 'deskew', 'brightness',
+                                               'contrast', 'auto_levels', 'export_mode')}
+    key = hashlib.sha256(json.dumps([RENDER_VERSION, variant, state], sort_keys=True)
+                         .encode()).hexdigest()[:16]
+    cache = job_path(job_id) / 'cache'
+    stem = Path(page['file']).stem
+    target = cache / f'{stem}.{variant}.{key}.jpg'
+    try:
+        return target.read_bytes()
+    except FileNotFoundError:
+        pass
+    proxy = page_proxy(job_id, page)  # Takes its own render slot when building
+    with RENDER_SLOTS:
+        with Image.open(proxy) as source:
+            source.draft(source.mode, before)  # Fast JPEG DCT downscale when possible
+            image = source.copy()
+        image.thumbnail(before, Image.Resampling.LANCZOS)
+        # The normal preview and exported PDF use the same transformation order.
+        image = transform_page(image, preview_page)
+        image.thumbnail(after, Image.Resampling.LANCZOS)
+        output = io.BytesIO()
+        image.convert('RGB').save(output, 'JPEG', quality=82)
+    data = output.getvalue()
+    # Keep only the newest render per page variant; older edit states are
+    # cheap to regenerate from the proxy if the user returns to them.
+    for stale in cache.glob(f'{stem}.{variant}.*.jpg'):
+        stale.unlink(missing_ok=True)
+    write_atomic(target, data)
+    return data
 
 
 @app.get('/api/jobs/{job_id}/pages/{page_id}/image')
@@ -1513,24 +1656,9 @@ def page_image(job_id: str, page_id: str, thumb: bool = False, uncropped: bool =
         p = next((p for p in j['pages'] if p['id'] == page_id), None)
         if p is None:
             raise HTTPException(404, 'Page not found')
-    # Preview never renders at full-resolution plus 200% scaling. That can
-    # consume hundreds of MB of RAM and cause the browser image to vanish.
-    # Scale is an export pixel-density setting, not a visual zoom control.
-    original = load_page_image(job_id, p, apply_edit=False)
-    original.thumbnail((520, 700) if thumb else (2250, 3000) if large else (1150, 1500), Image.Resampling.LANCZOS)
-    # The crop editor displays the right-angle-oriented ORIGINAL, without
-    # fine deskew/tone adjustments, so normalized crop edges remain stable.
-    # The normal preview and exported PDF use the same transformation order.
-    preview_page = {**p, 'scale': 100}
-    if uncropped:
-        preview_page.update(crop=None, deskew=0.0, brightness=0, contrast=0,
-                            auto_levels=False, export_mode='Original')
-    img = transform_page(original, preview_page)
-    img.thumbnail((520, 700) if thumb else (2350, 3200) if large else (1250, 1650), Image.Resampling.LANCZOS)
-    output = io.BytesIO()
-    img.convert('RGB').save(output, 'JPEG', quality=82)
-    return StreamingResponse(io.BytesIO(output.getvalue()), media_type='image/jpeg',
-                             headers={'Cache-Control': 'no-store'})
+    data = render_preview_jpeg(job_id, p, preview_variant(thumb, large, uncropped))
+    # Scans are private documents: keep them out of shared browser caches.
+    return Response(content=data, media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
 
 
 def ocr_pdf(source: Path, target: Path, page_count: int) -> None:
@@ -1620,7 +1748,6 @@ async def print_folio_document(job_id: str, request: Request):
     return {**cups_receipt(result),'pages_selected':count}
 
 
-@app.on_event('startup')
 def ensure_directories():
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
     clear_old_previews()
@@ -1641,7 +1768,6 @@ def ensure_directories():
             continue
 
 
-@app.on_event('shutdown')
 def gracefully_stop_on_server_shutdown():
     # Docker stop / redeploy should give scanimage a chance to tell WSD to
     # release the device, rather than killing the container mid-scan.

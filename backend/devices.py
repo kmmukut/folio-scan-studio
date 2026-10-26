@@ -14,11 +14,74 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit
-from typing import Any
+from typing import Any, Callable
 from backend import printing
 
 REGISTRY_MUTEX = threading.RLock()
+
+# Device queries spawn lpstat/lpoptions/scanimage processes and may wait on
+# the network. Cache them so page loads and print submissions don't repeat the
+# same probes, and back off from unreachable CUPS servers instead of waiting
+# for a timeout on every request. Explicit "Refresh" actions clear the cache.
+DEVICE_CACHE = os.getenv('FOLIO_DEVICE_CACHE', 'on').strip().lower() not in ('off','false','no','0')
+QUEUE_TTL = 15          # Queue ready/stopped state
+CAPABILITY_TTL = 300    # lpoptions -l: sizes, trays, duplex, color
+SANE_LIST_TTL = 20      # scanimage -L
+SCANNER_CAPS_TTL = 600  # scanimage --all-options for a responsive scanner
+FAILED_PROBE_TTL = 15   # Retry soon after a scanner failed to answer
+CUPS_BACKOFF = 60       # Skip a CUPS server this long after a timeout
+_cache: dict[tuple, tuple[float, Any]] = {}
+_cache_locks: dict[tuple, threading.Lock] = {}
+_cache_mutex = threading.Lock()
+_cups_down: dict[str, float] = {}
+
+
+def cached(key: tuple, ttl: float | Callable[[Any], float], compute: Callable[[], Any]) -> Any:
+    """Return a fresh cached value, computing it at most once concurrently.
+
+    ``ttl`` may be a function of the computed value, so failed probes can
+    expire sooner than successful ones.
+    """
+    if not DEVICE_CACHE:
+        return compute()
+    with _cache_mutex:
+        hit = _cache.get(key)
+        if hit and hit[0] > time.monotonic():
+            return hit[1]
+        key_lock = _cache_locks.setdefault(key, threading.Lock())
+    with key_lock:
+        with _cache_mutex:
+            hit = _cache.get(key)
+            if hit and hit[0] > time.monotonic():
+                return hit[1]
+        value = compute()
+        lifetime = ttl(value) if callable(ttl) else ttl
+        with _cache_mutex:
+            _cache[key] = (time.monotonic() + lifetime, value)
+        return value
+
+
+def invalidate(kind: str | None = None) -> None:
+    """Forget cached device answers: all of them, or one kind ('cups', 'sane')."""
+    with _cache_mutex:
+        for key in list(_cache):
+            if kind is None or key[0] == kind:
+                del _cache[key]
+        if kind in (None, 'cups'):
+            _cups_down.clear()
+
+
+def mark_cups_reachable(server: str) -> None:
+    _cups_down.pop(server, None)
+
+
+def cups_backoff(server: str) -> float:
+    """Seconds until an unreachable CUPS server is probed again (0 = now)."""
+    until = _cups_down.get(server, 0)
+    return max(0.0, until - time.monotonic())
 QUEUENAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$')
 DEVICEID = re.compile(r'^[a-z0-9][a-z0-9-]{0,40}$')
 DEVICE_NAME = re.compile(r'^[A-Za-z0-9][\w .-]{0,75}$')
@@ -143,6 +206,10 @@ def write_managed_sane_config(registry: dict, conf_path: Path) -> None:
 
 
 def listed_sane_devices(timeout: int = 14) -> list[dict]:
+    return cached(('sane','list'), SANE_LIST_TTL, lambda: read_sane_devices(timeout))
+
+
+def read_sane_devices(timeout: int = 14) -> list[dict]:
     try:
         completed=subprocess.run(['scanimage','-L'], capture_output=True,text=True,timeout=timeout)
     except (OSError,subprocess.TimeoutExpired):
@@ -169,6 +236,12 @@ def match_scanner(entry: dict, seen: list[dict]) -> dict | None:
 
 
 def scanner_capabilities(device: str, timeout: int = 12) -> dict:
+    return cached(('sane','caps',device),
+                  lambda caps: SCANNER_CAPS_TTL if caps['available'] else FAILED_PROBE_TTL,
+                  lambda: read_scanner_capabilities(device, timeout))
+
+
+def read_scanner_capabilities(device: str, timeout: int = 12) -> dict:
     """Read actual source, mode, DPI lists from SANE, without hardcoding a model."""
     result={'sources':[], 'modes':[], 'resolutions':[], 'available':False}
     try:
@@ -219,9 +292,16 @@ def validate_queue(queue: str) -> str:
 
 
 def cups_run(args: list[str], timeout: int = 8) -> subprocess.CompletedProcess:
+    server = args[args.index('-h')+1] if '-h' in args[:-1] else None
+    if server and cups_backoff(server):
+        return subprocess.CompletedProcess(args,1,'',f'CUPS server {server} is not responding; retrying shortly')
     try:
         return subprocess.run(args,capture_output=True,text=True,timeout=timeout)
-    except (OSError,subprocess.TimeoutExpired):
+    except subprocess.TimeoutExpired:
+        if server:
+            _cups_down[server] = time.monotonic() + CUPS_BACKOFF
+        return subprocess.CompletedProcess(args,1,'','CUPS unavailable')
+    except OSError:
         return subprocess.CompletedProcess(args,1,'','CUPS unavailable')
 
 
@@ -304,6 +384,13 @@ def paper_source_label(value: str) -> str:
 
 
 def cups_capabilities(server: str, queue: str) -> dict:
+    validate_queue(queue)
+    return cached(('cups','caps',server,queue),
+                  lambda caps: CAPABILITY_TTL if caps['known'] else FAILED_PROBE_TTL,
+                  lambda: read_cups_capabilities(server, queue))
+
+
+def read_cups_capabilities(server: str, queue: str) -> dict:
     validate_queue(queue)
     result=cups_run(['lpoptions','-h',server,'-p',queue,'-l'])
     caps={'known':False, 'media':[], 'duplex':None, 'color':None,
@@ -442,9 +529,17 @@ def printer_id(server: str, queue: str) -> str:
 
 
 def all_cups_queues(servers: list[str]) -> list[dict]:
+    def server_queues(server: str) -> list[dict]:
+        return cached(('cups','queues',server), QUEUE_TTL, lambda: list_cups_queues(server))
+    # Query servers concurrently so one slow server doesn't delay the others.
+    if len(servers) > 1:
+        with ThreadPoolExecutor(max_workers=min(4, len(servers))) as pool:
+            listings = list(pool.map(server_queues, servers))
+    else:
+        listings = [server_queues(s) for s in servers]
     found=[]
-    for server in servers:
-        for record in list_cups_queues(server):
+    for server, queues in zip(servers, listings):
+        for record in queues:
             found.append({**record, 'server':server,
                           'id':printer_id(server,record['queue']),
                           'label':f"{record['queue']} ({server})"})

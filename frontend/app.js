@@ -69,7 +69,7 @@ async function setupAdmin(){
   try{let jobs=await api('/api/jobs');let saved=localStorage.getItem('folio.lastDocument');if(jobs.length)await loadJob(jobs.some(j=>j.id===saved)?saved:jobs[0].id);else await newJob();}
   catch(e){problem(e);}
   updateSettings();
-  api('/api/scanner').then(r=>{$('#device-led').classList.toggle('on',r.connected);$('#device-status').textContent=r.connected?'Connected via WSD':'Scanner unavailable';}).catch(()=>{$('#device-status').textContent='Detection unavailable';});
+  api('/api/scanner').then(r=>{$('#device-led').classList.toggle('on',r.connected);$('#device-status').textContent=r.connected?`Connected via ${r.protocol||'SANE'}`:'Scanner unavailable';}).catch(()=>{$('#device-status').textContent='Detection unavailable';});
   pollScan();
   refreshScannerChoices().catch(problem);
 }
@@ -818,7 +818,8 @@ $('#top-logout').onclick=signOut;
 $('#workspace-tab').onclick=()=>workspace(false);
 $('#print-tab').onclick=()=>showPrintDesk().catch(problem);
 $('#devices-tab').onclick=()=>openDeviceManager().catch(problem);
-$('#devices-refresh').onclick=()=>refreshDeviceManager().catch(problem);
+$('#devices-refresh').onclick=()=>refreshDeviceManager(true).catch(problem);
+$('#diagnostics-run').onclick=()=>runDiagnostics().catch(problem);
 $('#print-refresh').onclick=()=>loadPrinterStatus().catch(problem);
 // Keep a quick refresh right beside the drag-and-drop upload tray control.
 // This re-queries CUPS after an administrator changes the driver's trays.
@@ -828,7 +829,7 @@ for(const prefix of ['member','guest']){
     button.disabled=true;
     try{
       if(prefix==='guest')await refreshGuestPrintQueues();
-      else await refreshPrintQueues();
+      else await refreshPrintQueues(true);
       toast('Paper sources refreshed from CUPS.');
     }catch(error){problem(error);}
     finally{button.disabled=false;}
@@ -970,8 +971,8 @@ function applyScannerCapabilities(){
 $('#scan-device').onchange=e=>{state.settings.scanner_id=e.target.value;applyScannerCapabilities();};
 
 const printQueueData={member:null,guest:null};
-async function refreshPrintQueues(){
-  const info=await api('/api/printers');printQueueData.member=info;
+async function refreshPrintQueues(refresh=false){
+  const info=await api(`/api/printers${refresh?'?refresh=true':''}`);printQueueData.member=info;
   for(const prefix of ['member','saved'])updatePrintQueueSelect(prefix,info);
   return info;
 }
@@ -1058,8 +1059,8 @@ async function openDeviceManager(){
   workspace(false,false,true);
   await refreshDeviceManager();
 }
-async function refreshDeviceManager(){
-  const result=await api('/api/admin/devices');
+async function refreshDeviceManager(refresh=false){
+  const result=await api(`/api/admin/devices${refresh?'?refresh=true':''}`);
   $('#device-cups-server').textContent=`CUPS · ${(result.cups_servers||[]).join(', ')||'Not configured'} · ${result.printers.filter(x=>x.ready).length} ready`;
   const attach=$('#attach-scanner-select');
   attach.innerHTML=(result.unregistered||[]).map(d=>`<option value="${html(d.sane_name)}">${html(d.description||d.sane_name)}</option>`).join('')||'<option value="">No unregistered SANE devices detected</option>';
@@ -1153,6 +1154,19 @@ async function handlePrinterAction(btn){
   if(btn.dataset.printerAction==='default')body.make_default=true;
   await api(`/api/admin/printers/${encodeURIComponent(queue)}`,{method:'PATCH',body});
   await refreshDeviceManager();await refreshPrintQueues();toast(`Updated ${queue}`);
+}
+
+const diagnosticLabels={ok:'OK',warn:'Check',fail:'Problem',info:'Info'};
+async function runDiagnostics(){
+  const button=$('#diagnostics-run'),out=$('#diagnostics-results');
+  button.disabled=true;out.innerHTML='<p class="muted">Checking storage, printers and scanners…</p>';
+  try{
+    const result=await api('/api/admin/diagnostics');
+    const titles={system:'System',printing:'Printing',scanning:'Scanning'};
+    out.innerHTML=Object.entries(result.sections).map(([name,checks])=>`<div class="diagnostic-group"><h3>${html(titles[name]||name)}</h3>${checks.map(c=>`<div class="diagnostic-row ${html(c.status)}"><span class="diagnostic-state">${diagnosticLabels[c.status]||html(c.status)}</span><div><strong>${html(c.label)}</strong><p>${html(c.detail)}</p></div></div>`).join('')}</div>`).join('');
+    $('#diagnostics-summary').textContent=result.overall==='ok'?'Everything Folio can check looks healthy.':result.overall==='warn'?'Working, with items worth a look.':'Something needs attention.';
+  }catch(error){out.innerHTML='';throw error;}
+  finally{button.disabled=false;}
 }
 
 boot().catch(problem);

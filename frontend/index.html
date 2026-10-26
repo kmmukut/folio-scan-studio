@@ -66,7 +66,7 @@
     <div class="rail-bottom">
       <div class="machine-status"><span class="led" id="device-led"></span><div><span id="rail-scanner-name">Selected scanner</span><small id="device-status">Checking connection…</small></div></div>
       <button class="rail-logout" id="logout-button">SIGN OUT <span>↗</span></button>
-      <div class="rail-license">PRIVATE EDITION <span>0.9.5</span></div>
+      <div class="rail-license">PRIVATE EDITION <span>0.9.6</span></div>
     </div>
   </aside>
   <div class="app-main">
@@ -205,7 +205,7 @@
           <div class="device-add-panel"><h3 id="scanner-form-title">Add a network scanner</h3>
             <form id="scanner-device-form" class="device-form">
               <label>Display name <input id="device-scanner-name" maxlength="75" placeholder="Office scanner" required></label>
-              <label>IP address <input id="device-scanner-ip" placeholder="192.0.2.124" required inputmode="decimal"></label>
+              <label>IP address <input id="device-scanner-ip" placeholder="192.168.1.50" required inputmode="decimal"></label>
               <div class="device-form-row"><label>Protocol <select id="device-scanner-protocol"><option value="WSD">WSD</option><option value="eSCL">eSCL / AirScan</option></select></label><label>Port <input id="device-scanner-port" type="number" min="1" max="65535" value="8018"></label></div>
               <label>Endpoint path <input id="device-scanner-path" value="/wsd/scan" placeholder="/wsd/scan"></label>
               <label class="device-checkbox"><input id="device-scanner-default" type="checkbox"> Make default scanner</label>
@@ -218,6 +218,11 @@
           <div id="device-printer-list" class="device-list"><p>Discovering CUPS printers…</p></div>
           <div class="device-add-panel"><h3>Need another printer?</h3><p>Install its driver and queue in CUPS first. Then press Refresh devices. Folio will find it automatically—no privileged printer administration is exposed to the web app.</p><p class="inline-note">AirPrint discovery for each new queue remains separately configured in Avahi, if needed.</p></div>
         </div>
+      </div>
+      <div class="diagnostics-panel">
+        <div class="device-heading"><span class="overline">03 / DIAGNOSTICS</span><h2>System check.</h2><p id="diagnostics-summary">Checks storage, memory, proxy settings, every CUPS server and every scanner. Nothing is changed.</p></div>
+        <button class="button outline-button" type="button" id="diagnostics-run">Run checks</button>
+        <div id="diagnostics-results" class="diagnostics-results" aria-live="polite"></div>
       </div>
     </section>
   </div>

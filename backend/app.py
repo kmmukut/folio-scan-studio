@@ -269,9 +269,15 @@ def persist_registry(state: dict) -> None:
     devices.invalidate('sane')
 
 
+def cups_servers(config: dict | None = None) -> list[str]:
+    """Print servers in use: those in CUPS_SERVERS, then any added in Devices."""
+    added = (config if config is not None else registry()).get('cups_servers', [])
+    return list(dict.fromkeys([*CUPS_SERVERS, *added]))
+
+
 def printer_inventory() -> tuple[dict, list[dict]]:
     state=registry()
-    records=devices.all_cups_queues(CUPS_SERVERS)
+    records=devices.all_cups_queues(cups_servers())
     if devices.migrate_legacy_printers(state,records,CUPS_QUEUE):
         persist_registry(state)
     return state,records
@@ -492,8 +498,8 @@ def guest_status(response: Response):
 
 
 def _check_cups_config() -> None:
-    if not CUPS_SERVERS:
-        raise HTTPException(503, 'No CUPS servers configured. Set CUPS_SERVERS in Docker.')
+    if not cups_servers():
+        raise HTTPException(503, 'No print server yet. Add one under Devices → Print servers.')
 
 
 def print_choices(request: Request, authenticated: bool) -> dict:
@@ -516,7 +522,7 @@ def print_choices(request: Request, authenticated: bool) -> dict:
     queue = choose_print_queue(request, authenticated)
     if color_mode not in ('auto','color','gray','bw'):
         raise HTTPException(400, 'Unsupported print color mode')
-    records=devices.all_cups_queues(CUPS_SERVERS)
+    records=devices.all_cups_queues(cups_servers())
     target=devices.resolve_printer(queue,records)
     caps=(devices.cups_capabilities(target['server'],target['queue'])
           if target else {'color':None,'duplex':None,'media':[]})
@@ -895,7 +901,7 @@ def print_status(request: Request, queue: str | None = None):
                 'media':known,'capabilities':caps,
                 'paper_labels':{k:v[1] for k,v in printing.MEDIA.items()}}
     if not records:
-        return {'ready':False,'queue':queue or '', 'message':'No printers found. Check CUPS_SERVERS and connectivity.',
+        return {'ready':False,'queue':queue or '', 'message':'No printers found. Check your print servers under Devices.',
                 'available_queues':[]}
     return {'ready':False,'queue':queue or '',
             'message':'Choose a default printer under Devices, or select a permitted printer',
@@ -928,7 +934,7 @@ def admin_devices(refresh: bool = False):
     return {'scanners':devices.scanners_state(cfg), 'unregistered':unregistered,
             'default_scanner':cfg['default_scanner'],
             'printers':output, 'default_printer':print_default(cfg,records),
-            'cups_servers':CUPS_SERVERS}
+            'cups_servers':cups_servers()}
 
 
 @app.post('/api/admin/scanners',status_code=201)
@@ -1094,8 +1100,8 @@ def configure_printer(queue: str, body: PrinterSettingsBody):
 # --- Printer administration and print jobs (0.11) --------------------------------
 
 def configured_server(server: str) -> str:
-    if server not in CUPS_SERVERS:
-        raise HTTPException(404, 'Unknown CUPS server. Add it to CUPS_SERVERS first.')
+    if server not in cups_servers():
+        raise HTTPException(404, 'Unknown print server. Add it under Devices → Print servers first.')
     return server
 
 
@@ -1120,7 +1126,7 @@ def known_printer(printer: str) -> dict:
         devices.validate_printer_reference(printer)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    target = devices.resolve_printer(printer, devices.all_cups_queues(CUPS_SERVERS))
+    target = devices.resolve_printer(printer, devices.all_cups_queues(cups_servers()))
     if not target:
         raise HTTPException(404, 'Printer not found in CUPS. Refresh Devices.')
     return target
@@ -1154,10 +1160,62 @@ class CancelJobBody(BaseModel):
     job_id: int = Field(ge=1)
 
 
+class PrintServerBody(BaseModel):
+    server: str = Field(min_length=1, max_length=120)
+
+
 @app.get('/api/admin/cups/servers')
-def cups_servers():
+def list_print_servers():
     return [{'server': server, 'admin': cupsadmin.admin_status(DATA_DIR, server),
-             'reachable': not devices.cups_backoff(server)} for server in CUPS_SERVERS]
+             'reachable': not devices.cups_backoff(server),
+             # Servers from CUPS_SERVERS come back on every restart, so only
+             # the ones added here can be removed here.
+             'source': 'settings' if server in CUPS_SERVERS else 'folio'} for server in cups_servers()]
+
+
+@app.post('/api/admin/cups/servers', status_code=201)
+def add_print_server(body: PrintServerBody):
+    text = body.server.strip()
+    if text.lower().startswith(('http://', 'https://', 'ipp://')):
+        text = text.split('://', 1)[1].split('/', 1)[0]
+    try:
+        server = devices.parse_cups_servers(text)[0]
+    except (ValueError, IndexError) as exc:
+        raise HTTPException(400, 'Enter the print server’s address, such as 192.168.1.10 or cups:631') from exc
+    if ':' not in server:
+        server += ':631'  # One spelling per server keeps printer IDs stable
+    cfg = registry()
+    current = cups_servers(cfg)
+    if server in current:
+        raise HTTPException(409, f'{server} is already a print server')
+    if len(current) >= 16:
+        raise HTTPException(400, 'Folio supports up to 16 print servers')
+    probe = diagnostics.probe_cups_server(server)
+    if probe['status'] == 'fail':
+        raise HTTPException(400, f'Folio could not reach CUPS at {server}: {probe["detail"]}')
+    cfg.setdefault('cups_servers', []).append(server)
+    persist_registry(cfg)
+    devices.invalidate('cups')
+    return {'server': server, 'detail': probe['detail']}
+
+
+@app.delete('/api/admin/cups/servers/{server}')
+def remove_print_server(server: str):
+    if server in CUPS_SERVERS:
+        raise HTTPException(400, 'This server is set in CUPS_SERVERS. Remove it there and restart Folio.')
+    cfg = registry()
+    if server not in cfg.get('cups_servers', []):
+        raise HTTPException(404, 'Unknown print server')
+    cfg['cups_servers'].remove(server)
+    # Its queues disappear from Folio; forget their settings and the stored login.
+    cfg['printers'] = {key: value for key, value in cfg.get('printers', {}).items()
+                       if not key.startswith(f'{server}|')}
+    if (cfg.get('default_printer') or '').startswith(f'{server}|'):
+        cfg['default_printer'] = None
+    persist_registry(cfg)
+    cupsadmin.disconnect_admin(DATA_DIR, server)
+    devices.invalidate('cups')
+    return {'removed': server}
 
 
 @app.put('/api/admin/cups/servers/{server}/login')
@@ -1291,8 +1349,9 @@ def my_print_jobs(request: Request):
         active = cupsadmin.list_jobs(conn, user=user, which='not-completed', limit=20)
         return active + cupsadmin.list_jobs(conn, user=user, which='completed', limit=10)
     jobs, unavailable = [], []
-    reachable = [s for s in CUPS_SERVERS if not devices.cups_backoff(s)]
-    unavailable += [s for s in CUPS_SERVERS if s not in reachable]
+    servers = cups_servers()
+    reachable = [s for s in servers if not devices.cups_backoff(s)]
+    unavailable += [s for s in servers if s not in reachable]
     if reachable:
         with ThreadPoolExecutor(max_workers=min(4, len(reachable))) as pool:
             futures = {server: pool.submit(server_jobs, server) for server in reachable}
@@ -1404,7 +1463,7 @@ def feature_unavailable(request: Request, exc: features.Unavailable):
 def admin_diagnostics(request: Request):
     cfg = registry()
     return diagnostics.run_checks(
-        data_dir=DATA_DIR, jobs_dir=JOBS_DIR, cups_servers=CUPS_SERVERS, registry=cfg,
+        data_dir=DATA_DIR, jobs_dir=JOBS_DIR, cups_servers=cups_servers(), registry=cfg,
         request=request, cookie_secure=COOKIE_SECURE, version=__version__,
         default_printer=cfg.get('default_printer'))
 

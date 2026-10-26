@@ -216,28 +216,40 @@
         </div>
         <div class="device-column">
           <div class="device-heading"><span class="overline">02 / PRINTERS</span><h2>Output devices.</h2><p>Add printers, choose who may use them, and see what they are printing.</p></div>
-          <div id="cups-admin-list" class="device-list cups-admin-list"></div>
           <div id="device-printer-list" class="device-list"><p>Discovering CUPS printers…</p></div>
-          <div class="device-add-panel" id="add-printer-panel"><h3>Add a printer</h3><p id="add-printer-intro">Folio sets the printer up in CUPS for you. Connect a CUPS administrator login above to begin.</p>
-            <form id="add-printer-form" class="device-form hidden">
-              <label>CUPS server <select id="add-printer-server"></select></label>
-              <fieldset class="device-fieldset"><legend>Which printer?</legend>
-                <div class="device-form-row find-row"><button type="button" class="button outline-button" id="find-printers">Find printers</button><span id="find-printers-status" class="inline-note">Looks for USB printers and network printers CUPS can see.</span></div>
-                <div id="found-printers" class="found-printers"></div>
-                <label class="device-checkbox"><input type="radio" name="printer-source" value="manual" checked> Enter its network address</label>
-                <div id="manual-printer" class="device-form-row"><label>Address <input id="add-printer-address" placeholder="192.168.1.60" autocomplete="off"></label><label>Connection <select id="add-printer-connection"><option value="ipp">IPP / AirPrint</option><option value="socket">JetDirect (port 9100)</option><option value="lpd">LPD</option></select></label></div>
-              </fieldset>
-              <fieldset class="device-fieldset"><legend>Driver</legend>
+          <div class="device-add-panel" id="add-printer-panel"><h3>Add a printer</h3><p id="add-printer-intro">Folio creates the printer in CUPS for you. First connect an administrator login for a print server under <strong>Print servers</strong> below.</p>
+            <form id="add-printer-form" class="device-form setup-steps hidden">
+              <section class="setup-step"><h4><span>1</span> Print server</h4>
+                <p class="inline-note">The computer running CUPS that will send jobs to this printer. A USB printer must be plugged into this computer.</p>
+                <label class="visually-hidden" for="add-printer-server">Print server</label><select id="add-printer-server"></select>
+              </section>
+              <section class="setup-step"><h4><span>2</span> The printer</h4>
+                <label class="device-checkbox"><input type="radio" name="printer-way" value="manual" checked> <span><strong>Type the printer’s address</strong> · find it in the printer’s network settings or on its printed configuration page</span></label>
+                <div id="manual-printer" class="device-form-row step-indent"><label>Printer’s IP address or host name <input id="add-printer-address" placeholder="192.168.1.60" autocomplete="off"></label><label>How Folio should reach it <select id="add-printer-connection"><option value="ipp">IPP / AirPrint (most printers)</option><option value="socket">JetDirect (port 9100)</option><option value="lpd">LPD (very old printers)</option></select></label></div>
+                <label class="device-checkbox"><input type="radio" name="printer-way" value="search"> <span><strong>Search for it</strong> · finds USB printers on the print server, and network printers on the print server’s own network</span></label>
+                <div id="printer-search" class="step-indent hidden"><div class="device-form-row find-row"><button type="button" class="button outline-button" id="find-printers">Search now</button><span id="find-printers-status" class="inline-note"></span></div><div id="found-printers" class="found-printers"></div></div>
+              </section>
+              <section class="setup-step"><h4><span>3</span> Driver</h4>
                 <label class="device-checkbox"><input type="radio" name="driver-kind" value="everywhere" checked> <span><strong>Driverless</strong> · for printers that support AirPrint or IPP Everywhere (most made since about 2015)</span></label>
-                <label class="device-checkbox"><input type="radio" name="driver-kind" value="ppd"> <span><strong>Choose a driver</strong> · for older printers, USB printers and JetDirect/LPD connections</span></label>
-                <div id="driver-picker" class="hidden"><div class="device-form-row"><label>Manufacturer <select id="driver-make"><option value="">Loading…</option></select></label><label>Model <input id="driver-model" placeholder="e.g. M2885FW" autocomplete="off"></label></div><label>Driver <select id="driver-choice" size="6"></select></label><p id="driver-count" class="inline-note"></p></div>
-              </fieldset>
-              <div class="device-form-row"><label>Name <input id="add-printer-name" maxlength="60" required placeholder="Office_Laser" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]*" title="Letters, numbers, dot, dash and underscore; no spaces"></label><label>Location <input id="add-printer-location" maxlength="127" placeholder="Upstairs"></label></div>
-              <label class="device-checkbox"><input type="checkbox" id="add-printer-default"> Make default printer</label>
-              <label class="device-checkbox"><input type="checkbox" id="add-printer-guest"> Allow guest printing</label>
+                <label class="device-checkbox"><input type="radio" name="driver-kind" value="ppd"> <span><strong>Choose a driver</strong> · for older printers, USB printers and JetDirect or LPD connections</span></label>
+                <div id="driver-picker" class="step-indent hidden"><div class="device-form-row"><label>Manufacturer <select id="driver-make"><option value="">Loading…</option></select></label><label>Model <input id="driver-model" placeholder="e.g. M2885FW" autocomplete="off"></label></div><label>Driver <select id="driver-choice" size="6"></select></label><p id="driver-count" class="inline-note"></p></div>
+              </section>
+              <section class="setup-step"><h4><span>4</span> Name and access</h4>
+                <div class="device-form-row"><label>Printer name (no spaces) <input id="add-printer-name" maxlength="60" required placeholder="Office_Laser" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]*" title="Letters, numbers, dot, dash and underscore; no spaces"></label><label>Location (optional) <input id="add-printer-location" maxlength="127" placeholder="Upstairs"></label></div>
+                <label class="device-checkbox"><input type="checkbox" id="add-printer-default"> Make this the default printer</label>
+                <label class="device-checkbox"><input type="checkbox" id="add-printer-guest"> Allow guest printing</label>
+              </section>
               <button class="button dark-button" type="submit" id="add-printer-submit">Add printer</button>
               <div id="add-printer-feedback" class="print-feedback hidden" role="status" aria-live="polite"></div>
             </form></div>
+          <div class="print-servers">
+            <div class="device-heading"><h3>Print servers</h3><p>The computers running CUPS that Folio sends print jobs to. Connect an administrator login to add, pause or remove printers on one.</p></div>
+            <div id="cups-admin-list" class="device-list"></div>
+            <div class="device-add-panel"><h3>Add a print server</h3>
+              <form id="add-server-form" class="device-form"><label>Address of the computer running CUPS <input id="add-server-address" placeholder="192.168.1.10 or cups:631" required autocomplete="off"></label><button class="button outline-button" type="submit" id="add-server-submit">Add print server</button></form>
+              <p class="inline-note">Port 631 is used if you leave it out. On that computer, CUPS must accept connections from the network (in CUPS: “Share printers connected to this system”, or <code>Listen 0.0.0.0:631</code>).</p>
+            </div>
+          </div>
         </div>
       </div>
       <div class="diagnostics-panel">

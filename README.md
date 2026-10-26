@@ -40,8 +40,9 @@ One codebase, two images. Pick with `FOLIO_EDITION` in `.env`:
 ## Requirements
 
 - Docker with Compose (Portainer works too).
-- A CUPS server. Folio can add printer queues to it once you connect a CUPS
-  administrator login in **Devices**, or you can set queues up in CUPS yourself.
+- A computer running CUPS (a "print server"; it can be another container).
+  Add it in **Devices → Print servers**; Folio can then add printers to it
+  once you connect a CUPS administrator login.
 - For scanning: an eSCL/AirScan or WSD network scanner, or any scanner SANE
   supports that is visible inside the container.
 
@@ -50,7 +51,7 @@ One codebase, two images. Pick with `FOLIO_EDITION` in `.env`:
 ```bash
 git clone <repository-url> folio && cd folio
 cp .env.example .env
-nano .env          # Set SCAN_STUDIO_ADMIN_PASSWORD (12+ characters) and CUPS_SERVERS
+nano .env          # Set SCAN_STUDIO_ADMIN_PASSWORD (12+ characters)
 chmod 600 .env
 docker compose up -d --build
 ```
@@ -60,8 +61,9 @@ then:
 
 1. **Devices → Add a network scanner**: name, IP address, protocol (WSD or
    eSCL) and, if needed, port and endpoint path. Press **Test**.
-2. **Devices → Printers**: connect the CUPS administrator login, add your
-   printer, print a test page, and choose who may use it.
+2. **Devices → Print servers**: add the computer running CUPS and connect
+   its administrator login. Then **Add a printer**, print a test page, and
+   choose who may use it.
 3. **Devices → Run checks** to confirm storage, printers and scanners.
 
 ### Portainer
@@ -79,7 +81,7 @@ into a Portainer stack without the `build:` line and set the variables there.
 | `FOLIO_EDITION` | `full` | `full` or `lite` (build setting; see Editions) |
 | `SCAN_STUDIO_ADMIN_PASSWORD` | — (required) | First administrator's password, used only when no accounts exist |
 | `SCAN_STUDIO_ADMIN_USER` | `admin` | First administrator's username |
-| `CUPS_SERVERS` | empty | Comma-separated CUPS servers, e.g. `cups:631,192.168.1.10:631` |
+| `CUPS_SERVERS` | empty | Optional: print servers to always use, e.g. `cups:631,192.168.1.10:631`. More can be added in Devices |
 | `COOKIE_SECURE` | `false` | Set `true` when Folio is served over HTTPS |
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Reverse proxies to trust for the visitor's address (IPs or networks) |
 | `FOLIO_AIRSCAN_DISCOVERY` | `off` | `on` to also discover eSCL/WSD scanners by multicast |

@@ -351,3 +351,17 @@
 .job-row.stopped .job-state,.job-row.aborted .job-state{background:#f3e7e0;color:#955641}
 .job-row.completed .job-state{background:#eef0e8;color:#5f705f}
 .job-row.cancelled{opacity:.7}
+/* v0.12 printer setup in steps, print servers section */
+.setup-step{border-top:1px solid #dfe4d8;padding:14px 0 6px}
+.setup-step:first-child{border-top:0;padding-top:4px}
+.setup-step h4{display:flex;align-items:center;gap:10px;margin:0 0 8px;font:normal 18px Georgia,serif;color:#294330}
+.setup-step h4 span{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#1a3025;color:#fff;font:700 11px "SFMono-Regular",Consolas,monos}
+.setup-step .device-checkbox{display:flex;gap:8px;align-items:flex-start;line-height:1.45;margin:8px 0}
+.setup-step .device-checkbox input{margin-top:3px;flex-shrink:0}
+.step-indent{margin:4px 0 10px 24px}
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.print-servers{margin-top:30px;padding-top:22px;border-top:1px solid #d9e0d4}
+.print-servers h3{font:normal 24px Georgia,serif;color:#294330;margin:0 0 4px}
+.print-servers .device-add-panel{margin-top:12px}
+.print-servers code{font-size:11px}
+@media(max-width:640px){.step-indent{margin-left:0}}

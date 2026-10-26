@@ -180,7 +180,7 @@ def probe_cups_server(server: str) -> dict:
         status = 'ok' if queues else 'warn'
         detail = f'Reachable in {elapsed:.0f} ms; {len(queues)} queues, {ready} ready'
         if not queues:
-            detail += '. Add a printer queue in CUPS, then refresh Devices.'
+            detail += '. Add a printer under Devices → Add a printer.'
         return check(f'cups:{server}', f'CUPS {server}', status, detail)
     reason = 'did not answer within 6 s' if output == 'timed out' else (output or 'connection refused')[:160]
     return check(f'cups:{server}', f'CUPS {server}', 'fail',
@@ -190,7 +190,7 @@ def probe_cups_server(server: str) -> dict:
 def check_printing(cups_servers: list[str], default_printer: str | None, data_dir: Path | None = None) -> list[dict]:
     if not cups_servers:
         return [check('cups', 'Printing', 'warn',
-                      'No CUPS server is configured. Set CUPS_SERVERS in the container environment.')]
+                      'No print server yet. Add one under Devices → Print servers.')]
     with ThreadPoolExecutor(max_workers=min(4, len(cups_servers))) as pool:
         results = list(pool.map(probe_cups_server, cups_servers))
     if data_dir is not None:

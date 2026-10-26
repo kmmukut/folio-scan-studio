@@ -275,4 +275,4 @@ def test_diagnostics_without_cups_servers_explains_the_setting(client, monkeypat
     monkeypatch.setattr(web, 'CUPS_SERVERS', [])
     report = client.get('/api/admin/diagnostics').json()
     printing = report['sections']['printing']
-    assert printing[0]['status'] == 'warn' and 'CUPS_SERVERS' in printing[0]['detail']
+    assert printing[0]['status'] == 'warn' and 'Print servers' in printing[0]['detail']

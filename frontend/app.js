@@ -1139,7 +1139,7 @@ async function refreshDeviceManager(refresh=false){
        <div class="device-access">${[['enabled','Enabled'],['guest','Guest printing'],['member','Members'],['printer','Printer-only accounts']].map(([flag,label])=>`<label><input type="checkbox" data-printer-flag="${flag}" ${settings[flag]?'checked':''}> ${label}</label>`).join('')}</div>
        <div class="device-actions"><button data-printer-action="save" ${q.status==='Not found in CUPS'?'disabled':''}>Save permissions</button>${result.default_printer!==q.id?`<button data-printer-action="default" ${q.status==='Not found in CUPS'?'disabled':''}>Make default</button>`:''}${q.status!=='Not found in CUPS'?'<button data-queue-action="jobs">Jobs</button><button data-queue-action="test">Test page</button>':''}${managed.has(q.server)&&q.status!=='Not found in CUPS'?`<button data-queue-action="pause">${q.ready?'Pause':'Resume'}</button><button data-queue-action="remove" class="danger-action">Remove</button>`:''}</div>
        <div class="printer-jobs hidden"></div></article>`;
-  }).join('')||'<p>No printer queues found. Add a printer through the CUPS admin interface, then refresh.</p>';
+  }).join('')||'<p class="muted">No printers yet. Add one below.</p>';
   $('#device-scanner-list').querySelectorAll('[data-scanner-action]').forEach(btn=>btn.onclick=()=>handleScannerAction(btn).catch(problem));
   $('#device-printer-list').querySelectorAll('[data-printer-action]').forEach(btn=>btn.onclick=()=>handlePrinterAction(btn).catch(problem));
   $('#device-printer-list').querySelectorAll('[data-queue-action]').forEach(btn=>btn.onclick=()=>handleQueueAction(btn).catch(problem));
@@ -1221,58 +1221,72 @@ const printerPath=id=>`/api/admin/printers/${encodeURIComponent(id)}`;
 const serverPath=server=>`/api/admin/cups/servers/${encodeURIComponent(server)}`;
 function renderCupsAdmin(servers){
   $('#cups-admin-list').innerHTML=servers.map(s=>`<article class="device-card cups-admin-card" data-cups-server="${html(s.server)}">
-    <header><div><strong>CUPS ${html(s.server)}</strong><small>${s.admin.connected?`Administration connected as ${html(s.admin.username)}${s.admin.encrypted?' · encrypted':''}`:'Administration not connected'}</small></div><span class="device-state ${s.reachable?'':'off'}">${s.reachable?'Reachable':'Not responding'}</span></header>
-    ${s.admin.connected?'<div class="device-actions"><button data-cups-action="disconnect">Disconnect login</button></div>':
-    `<form class="device-form cups-login-form"><p class="inline-note">A CUPS administrator login lets Folio add, remove and pause printers. It is stored on this Folio server only and never shown again.</p><div class="device-form-row"><label>CUPS username <input name="username" autocomplete="off" required maxlength="64"></label><label>Password <input name="password" type="password" autocomplete="new-password" required maxlength="256"></label></div><button class="button outline-button" type="submit">Connect</button></form>`}</article>`).join('')||'<p>No CUPS servers configured. Set CUPS_SERVERS in the container environment.</p>';
+    <header><div><strong>${html(s.server)}</strong><small>${s.source==='settings'?'From the CUPS_SERVERS setting':'Added in Folio'} · ${s.admin.connected?`administrator login: ${html(s.admin.username)}${s.admin.encrypted?' (encrypted)':''}`:'no administrator login'}</small></div><span class="device-state ${s.reachable?'':'off'}">${s.reachable?'Reachable':'Not responding'}</span></header>
+    ${s.admin.connected?'':`<form class="device-form cups-login-form"><p class="inline-note">To add, pause or remove printers on this server, enter a CUPS administrator login (a user in CUPS’s lpadmin group). It stays on this Folio server and is never shown again.</p><div class="device-form-row"><label>CUPS username <input name="username" autocomplete="off" required maxlength="64"></label><label>Password <input name="password" type="password" autocomplete="new-password" required maxlength="256"></label></div><button class="button outline-button" type="submit">Connect login</button></form>`}
+    <div class="device-actions">${s.admin.connected?'<button data-cups-action="disconnect">Disconnect login</button>':''}${s.source==='folio'?'<button data-cups-action="remove" class="danger-action">Remove server</button>':''}</div></article>`).join('')||'<p class="muted">No print server yet. Add the computer that runs CUPS below.</p>';
   $$('.cups-login-form').forEach(form=>form.onsubmit=async event=>{
     event.preventDefault();const server=form.closest('[data-cups-server]').dataset.cupsServer,button=form.querySelector('button');
     button.disabled=true;button.textContent='Checking…';
-    try{await api(`${serverPath(server)}/login`,{method:'PUT',body:{username:form.username.value,password:form.password.value}});toast(`Connected to CUPS on ${server}.`);await refreshDeviceManager();}
-    catch(error){problem(error);button.disabled=false;button.textContent='Connect';}
+    try{await api(`${serverPath(server)}/login`,{method:'PUT',body:{username:form.username.value,password:form.password.value}});toast(`Administrator login connected for ${server}.`);await refreshDeviceManager();}
+    catch(error){problem(error);button.disabled=false;button.textContent='Connect login';}
   });
-  $$('[data-cups-action=disconnect]').forEach(button=>button.onclick=async()=>{
-    const server=button.closest('[data-cups-server]').dataset.cupsServer;
-    if(!confirm(`Forget the CUPS administrator login for ${server}? Printing keeps working.`))return;
-    try{await api(`${serverPath(server)}/login`,{method:'DELETE'});await refreshDeviceManager();}catch(error){problem(error);}
+  $$('[data-cups-action]').forEach(button=>button.onclick=async()=>{
+    const server=button.closest('[data-cups-server]').dataset.cupsServer,remove=button.dataset.cupsAction==='remove';
+    if(!confirm(remove?`Stop using ${server}? Its printers disappear from Folio; nothing is changed on that server.`:`Forget the administrator login for ${server}? Printing keeps working.`))return;
+    try{await api(remove?serverPath(server):`${serverPath(server)}/login`,{method:'DELETE'});await refreshDeviceManager(true);if(remove)await refreshPrintQueues(true);}
+    catch(error){problem(error);}
   });
   const connected=servers.filter(s=>s.admin.connected),select=$('#add-printer-server'),previous=select.value;
   $('#add-printer-form').classList.toggle('hidden',!connected.length);
-  $('#add-printer-intro').textContent=connected.length?'Folio sets the printer up in CUPS for you. Choose the printer, then its driver.':'Folio sets the printer up in CUPS for you. Connect a CUPS administrator login above to begin.';
+  $('#add-printer-intro').innerHTML=connected.length?'Folio creates the printer in CUPS for you, in four steps.':
+    (servers.length?'Folio creates the printer in CUPS for you. First connect an administrator login for a print server under <strong>Print servers</strong> below.':
+    'Folio creates the printer in CUPS for you. First add the computer that runs CUPS under <strong>Print servers</strong> below, and connect its administrator login.');
   select.innerHTML=connected.map(s=>`<option value="${html(s.server)}">${html(s.server)}</option>`).join('');
   if(connected.some(s=>s.server===previous))select.value=previous;
 }
+$('#add-server-form').onsubmit=async event=>{
+  event.preventDefault();const button=$('#add-server-submit');button.disabled=true;button.textContent='Checking…';
+  try{
+    const result=await api('/api/admin/cups/servers',{method:'POST',body:{server:$('#add-server-address').value}});
+    toast(`${result.server} added. ${result.detail}`);$('#add-server-form').reset();
+    await refreshDeviceManager(true);await refreshPrintQueues(true);
+  }catch(error){problem(error);}
+  finally{button.disabled=false;button.textContent='Add print server';}
+};
 const addPrinter={found:[],makesFor:null};
-function selectedSource(){return document.querySelector('input[name=printer-source]:checked')?.value||'manual';}
+// 'manual', a detected device's URI, or '' while searching without a choice.
+function selectedSource(){
+  if(document.querySelector('input[name=printer-way]:checked').value==='manual')return 'manual';
+  return document.querySelector('input[name=found-printer]:checked')?.value||'';
+}
 function driverKind(){return document.querySelector('input[name=driver-kind]:checked').value;}
 function updatePrinterForm(){
-  const source=selectedSource(),device=addPrinter.found.find(d=>d.uri===source);
-  $('#manual-printer').classList.toggle('hidden',source!=='manual');
+  const searching=document.querySelector('input[name=printer-way]:checked').value==='search';
+  $('#manual-printer').classList.toggle('hidden',searching);
+  $('#printer-search').classList.toggle('hidden',!searching);
   $('#driver-picker').classList.toggle('hidden',driverKind()!=='ppd');
-  if(driverKind()==='ppd')loadDriverMakes(device).catch(problem);
+  if(driverKind()==='ppd')loadDriverMakes(addPrinter.found.find(d=>d.uri===selectedSource())).catch(problem);
 }
 function suggestName(text){return (text.match(/[A-Za-z0-9]+/g)||[]).slice(0,4).join('_').slice(0,60);}
+function useFoundPrinter(device){
+  $('#add-printer-name').value=suggestName(device.make_model||device.name);
+  document.querySelector(`input[name=driver-kind][value=${device.driverless?'everywhere':'ppd'}]`).checked=true;
+  updatePrinterForm();
+}
 $('#find-printers').onclick=async()=>{
   const status=$('#find-printers-status'),button=$('#find-printers');button.disabled=true;status.textContent='Searching… this takes about ten seconds.';
   try{
     const result=await api(`${serverPath($('#add-printer-server').value)}/devices`);addPrinter.found=result.devices;
-    $('#found-printers').innerHTML=result.devices.map((d,i)=>`<label class="device-checkbox found-printer"><input type="radio" name="printer-source" value="${html(d.uri)}"${i===0?' checked':''}> <span><strong>${html(d.make_model||d.name)}</strong><small>${html(d.connection)} · ${html(d.uri)}</small></span></label>`).join('');
-    status.textContent=result.devices.length?`Found ${result.devices.length}. Not listed? Enter its address below.`:'None found. Network printers on another subnet will not appear; enter the address below.';
-    const first=result.devices[0];
-    if(first){
-      if(!$('#add-printer-name').value)$('#add-printer-name').value=suggestName(first.make_model||first.name);
-      document.querySelector(`input[name=driver-kind][value=${first.driverless?'everywhere':'ppd'}]`).checked=true;
-    }
-    $$('input[name=printer-source]').forEach(radio=>radio.onchange=()=>{
-      const device=addPrinter.found.find(d=>d.uri===radio.value);
-      if(device){$('#add-printer-name').value=suggestName(device.make_model||device.name);document.querySelector(`input[name=driver-kind][value=${device.driverless?'everywhere':'ppd'}]`).checked=true;}
-      updatePrinterForm();
-    });
-    updatePrinterForm();
+    $('#found-printers').innerHTML=result.devices.map((d,i)=>`<label class="device-checkbox found-printer"><input type="radio" name="found-printer" value="${html(d.uri)}"${i===0?' checked':''}> <span><strong>${html(d.make_model||d.name)}</strong><small>${html(d.connection)} · ${html(d.uri)}</small></span></label>`).join('');
+    status.textContent=result.devices.length?`Found ${result.devices.length}. Not the right one? Choose “Type the printer’s address” instead.`:
+      'Nothing found. Printers on a different network (another subnet or VLAN) don’t show up here; type the printer’s address instead.';
+    $$('input[name=found-printer]').forEach(radio=>radio.onchange=()=>useFoundPrinter(addPrinter.found.find(d=>d.uri===radio.value)));
+    if(result.devices[0])useFoundPrinter(result.devices[0]);
   }catch(error){status.textContent='';problem(error);}
   finally{button.disabled=false;}
 };
-$$('input[name=printer-source],input[name=driver-kind]').forEach(radio=>radio.onchange=updatePrinterForm);
-$('#add-printer-server').onchange=()=>{addPrinter.found=[];addPrinter.makesFor=null;$('#found-printers').innerHTML='';updatePrinterForm();};
+$$('input[name=printer-way],input[name=driver-kind]').forEach(radio=>radio.onchange=updatePrinterForm);
+$('#add-printer-server').onchange=()=>{addPrinter.found=[];addPrinter.makesFor=null;$('#found-printers').innerHTML='';$('#find-printers-status').textContent='';updatePrinterForm();};
 async function loadDriverMakes(device){
   const server=$('#add-printer-server').value;
   if(addPrinter.makesFor!==server){
@@ -1298,6 +1312,8 @@ let driverTimer;$('#driver-model').oninput=()=>{clearTimeout(driverTimer);driver
 $('#add-printer-form').onsubmit=async event=>{
   event.preventDefault();
   const feedback=$('#add-printer-feedback'),button=$('#add-printer-submit'),source=selectedSource();
+  if(!source){setPrintFeedback(feedback,'Search for the printer and choose it, or type its address.','error');return;}
+  if(source==='manual'&&!$('#add-printer-address').value.trim()){setPrintFeedback(feedback,'Type the printer’s IP address or host name (step 2).','error');$('#add-printer-address').focus();return;}
   const driver=driverKind()==='everywhere'?'everywhere':$('#driver-choice').value;
   if(!driver){setPrintFeedback(feedback,'Choose a driver, or use Driverless.','error');return;}
   const body={name:$('#add-printer-name').value.trim(),driver,location:$('#add-printer-location').value.trim(),
@@ -1308,7 +1324,7 @@ $('#add-printer-form').onsubmit=async event=>{
     const started=await api(`${serverPath($('#add-printer-server').value)}/printers`,{method:'POST',body});
     const {result}=await followTask(started.task,{onUpdate:task=>setPrintFeedback(feedback,taskText(task),'info')});
     setPrintFeedback(feedback,`${result.queue} is ready${result.state?.driver?` (${result.state.driver})`:''}. Use Test page on its card to check it.`,'ok');
-    $('#add-printer-form').reset();addPrinter.found=[];$('#found-printers').innerHTML='';updatePrinterForm();
+    $('#add-printer-form').reset();addPrinter.found=[];$('#found-printers').innerHTML='';$('#find-printers-status').textContent='';updatePrinterForm();
     await refreshDeviceManager(true);await refreshPrintQueues(true);
   }catch(error){setPrintFeedback(feedback,error.message,'error');}
   finally{button.disabled=false;}

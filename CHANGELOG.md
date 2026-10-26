@@ -22,6 +22,21 @@ hides what an installation lacks, and the API answers a clear
 "not included in the Lite edition" (HTTP 409) instead of failing. Features
 are detected from what is installed, not from the edition name.
 
+### Print servers in Devices, and a clearer "Add a printer"
+- **Devices → Print servers** lists every CUPS server with its status and
+  administrator login, and **Add a print server** adds one by address (Folio
+  checks it answers first; port 631 is assumed). Servers from `CUPS_SERVERS`
+  still work and are marked "From the CUPS_SERVERS setting"; only servers
+  added in Folio can be removed there. Removing one makes Folio stop using
+  it and forget its login and printer settings; nothing changes on the server.
+  `CUPS_SERVERS` is now optional.
+- **Add a printer** is four numbered steps: 1 Print server (the computer
+  running CUPS), 2 The printer (type *the printer's* IP address, or search),
+  3 Driver, 4 Name and access. A missing printer address is explained
+  instead of the button appearing to do nothing.
+- The Devices page now reads Printers → Add a printer → Print servers, so
+  server logins no longer look like printers.
+
 ### Fixed: new versions could load with old JavaScript
 After an upgrade, browsers (and Nginx Proxy Manager with "Cache Assets"
 switched on, which keeps scripts for 30 minutes whatever the server says)
@@ -44,8 +59,8 @@ so a changed file always has a new address. No proxy setting needs changing.
   would compile MuPDF during every build) and OpenCV none at all.
 
 ### Verified
-- The whole test suite runs inside both built images: Full 135 passed;
-  Lite 132 passed and 3 skipped (the auto-straighten tests), repeated
+- The whole test suite runs inside both built images: Full 142 passed;
+  Lite 139 passed and 3 skipped (the auto-straighten tests), repeated
   runs each, with NumPy, OpenCV and OCRmyPDF genuinely absent
   in Lite. A test also imports Folio with those modules blocked.
 - In headless Chrome: Lite shows "Lite edition" and hides Searchable PDF and

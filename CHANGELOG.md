@@ -44,9 +44,9 @@ so a changed file always has a new address. No proxy setting needs changing.
   would compile MuPDF during every build) and OpenCV none at all.
 
 ### Verified
-- The whole test suite runs inside both built images: Full 134 passed;
-  Lite 131 passed and 3 skipped (the auto-straighten tests), three
-  consecutive runs each, with NumPy, OpenCV and OCRmyPDF genuinely absent
+- The whole test suite runs inside both built images: Full 135 passed;
+  Lite 132 passed and 3 skipped (the auto-straighten tests), repeated
+  runs each, with NumPy, OpenCV and OCRmyPDF genuinely absent
   in Lite. A test also imports Folio with those modules blocked.
 - In headless Chrome: Lite shows "Lite edition" and hides Searchable PDF and
   Auto straighten; Full shows both.

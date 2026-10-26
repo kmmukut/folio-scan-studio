@@ -390,6 +390,11 @@ async def guard_private_api(request: Request, call_next):
         "base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
     if path.startswith('/api/'):
         response.headers.setdefault('Cache-Control', 'no-store')
+    elif path.startswith('/assets/'):
+        # A fingerprinted URL never changes content, so it can be kept; any
+        # other asset request must be checked with the server first.
+        response.headers.setdefault('Cache-Control', 'public, max-age=31536000, immutable'
+                                    if request.query_params.get('v') else 'no-cache')
     return response
 
 
@@ -1353,9 +1358,27 @@ async def receive_print_file(request: Request, *, authenticated: bool):
         return await asyncio.to_thread(run_print, incoming, info['kind'], name, choices)
 
 
+def asset_version() -> str:
+    """Fingerprint of the page's script and styles.
+
+    The page references them as /assets/app.js?v=<fingerprint>, so after an
+    upgrade browsers and caching proxies (Nginx Proxy Manager's "Cache Assets"
+    keeps them 30 minutes regardless of headers) fetch the new files at once.
+    """
+    digest = hashlib.sha256()
+    for name in ('app.js', 'style.css'):
+        digest.update((WEB_DIR / name).read_bytes())
+    return digest.hexdigest()[:12]
+
+
 @app.get('/', response_class=HTMLResponse)
 def homepage():
-    return (WEB_DIR / 'index.html').read_text(encoding='utf-8')
+    version = asset_version()
+    page = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
+    for asset in ('/assets/app.js', '/assets/style.css'):
+        page = page.replace(f'"{asset}"', f'"{asset}?v={version}"')
+    # The page itself is always revalidated; it is what points at the current assets.
+    return HTMLResponse(page, headers={'Cache-Control': 'no-cache'})
 
 
 @app.get('/api/health')

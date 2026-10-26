@@ -22,6 +22,15 @@ hides what an installation lacks, and the API answers a clear
 "not included in the Lite edition" (HTTP 409) instead of failing. Features
 are detected from what is installed, not from the edition name.
 
+### Fixed: new versions could load with old JavaScript
+After an upgrade, browsers (and Nginx Proxy Manager with "Cache Assets"
+switched on, which keeps scripts for 30 minutes whatever the server says)
+could keep running the previous `app.js` with the new page, so new buttons
+did nothing until a hard refresh. Folio never told browsers how long to keep
+its files. The page now loads `app.js` and `style.css` under a fingerprint
+of their contents (`/assets/app.js?v=…`) and is itself always revalidated,
+so a changed file always has a new address. No proxy setting needs changing.
+
 ### Also
 - OpenCV now loads only when auto-straighten is actually used, so the Full
   edition's idle memory dropped too: 76 MB in 0.11 → 60 MB (Full) and

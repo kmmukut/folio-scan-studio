@@ -1,7 +1,7 @@
 services:
   scan-studio:
     build: .
-    image: folio-scan-studio:0.9.6
+    image: folio-scan-studio:0.10.0
     container_name: scan-studio
     restart: unless-stopped
     stop_grace_period: 45s

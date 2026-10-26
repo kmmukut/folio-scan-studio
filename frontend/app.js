@@ -117,7 +117,7 @@ function renderDocument(){
   $('#undo-delete').disabled=deletedCount===0;
   $('#undo-delete').title=deletedCount?`Restore most recently deleted page (${deletedCount} available)`: 'No deleted pages to restore';
   $('#deleted-page-count').textContent=String(deletedCount);
-  const exportButton=$('#export-button');exportButton.href=j.pages.length?`/api/jobs/${j.id}/export?quality=${$('#pdf-quality').value}&ocr=${$('#pdf-ocr').checked}`:'#';exportButton.setAttribute('aria-disabled',!j.pages.length);
+  $('#export-button').setAttribute('aria-disabled',!j.pages.length);
   renderPages();renderPreview();renderBatches();
 }
 // Touch and mouse pointer-based page reordering plus accessible arrow controls.
@@ -552,12 +552,56 @@ $('#saved-print-form').onsubmit=async event=>{
   const button=$('#saved-print-form button[type=submit]'),feedback=$('#saved-print-feedback');
   button.disabled=true;setPrintFeedback(feedback,'Preparing document pages…','info');
   try{
-    const result=await api(`/api/jobs/${job.id}/print`,{method:'POST',
+    const started=await api(`/api/jobs/${job.id}/print?background=true`,{method:'POST',
       headers:printHeaders('saved',savedPrint.index+1)});
+    const {result}=await followTask(started.task,{onUpdate:task=>setPrintFeedback(feedback,taskText(task),'info')});
     setPrintFeedback(feedback,`${receiptMessage(result)} · ${result.pages_selected} page(s) selected.`,'ok');
   }catch(error){setPrintFeedback(feedback,error.message,'error');problem(error);}finally{button.disabled=false;}
 };
 
+// Slow work (PDF export, OCR, print preparation) runs as a background job on
+// the server, so it is never cut off by a reverse proxy's request timeout.
+const finishedTask=new Set(['done','failed','cancelled']);
+async function followTask(task,{guest=false,onUpdate}={}){
+  const base=guest?'/api/guest/tasks':'/api/tasks';let delay=600,failures=0;
+  onUpdate?.(task);
+  while(!finishedTask.has(task.status)){
+    await new Promise(resolve=>setTimeout(resolve,delay));delay=Math.min(delay*1.3,2500);
+    try{task=await api(`${base}/${task.id}`);failures=0;}
+    catch(error){if(++failures>=4)throw error;continue;}  // Ride out brief network blips
+    onUpdate?.(task);
+  }
+  if(task.status==='failed')throw Error(task.error||'The job could not be completed');
+  if(task.status==='cancelled')throw Object.assign(Error('Cancelled'),{cancelled:true});
+  return task;
+}
+function taskText(task){
+  const percent=task.status==='running'&&task.progress!=null?` · ${Math.round(task.progress*100)}%`:'';
+  return `${task.message}${percent}`;
+}
+let exportTask=null;
+async function exportDocument(event){
+  event.preventDefault();
+  if(exportTask){
+    if(confirm('Cancel this PDF export?'))api(`/api/tasks/${exportTask.id}`,{method:'DELETE'}).catch(problem);
+    return;
+  }
+  if(!state.job?.pages.length){toast('Scan at least one page to export.');return;}
+  const button=$('#export-button'),label=button.innerHTML,ocr=$('#pdf-ocr').checked;
+  try{
+    const started=await api(`/api/jobs/${state.job.id}/exports`,{method:'POST',body:{quality:$('#pdf-quality').value,ocr}});
+    exportTask=started.task;button.classList.add('busy');button.title='Click to cancel this export';
+    if(ocr)toast('Making a searchable PDF. Text recognition can take a few minutes; you can keep working.');
+    const done=await followTask(started.task,{onUpdate:task=>{
+      exportTask=task;
+      button.innerHTML=`${icon('download')} ${task.status==='queued'?'Waiting…':`Exporting${task.progress!=null?' '+Math.round(task.progress*100)+'%':'…'}`}`;
+    }});
+    const link=document.createElement('a');link.href=`/api/tasks/${done.id}/file`;link.download=done.filename||'';
+    document.body.append(link);link.click();link.remove();
+    toast(ocr?'Searchable PDF ready.':'PDF ready.');
+  }catch(error){if(error.cancelled)toast('Export cancelled.');else problem(error);}
+  finally{exportTask=null;button.classList.remove('busy');button.title='';button.innerHTML=label;}
+}
 function setPrintFeedback(element,message,kind){element.textContent=message;element.className=`print-feedback ${kind}`;}
 function receiptMessage(result){return result.job_id?`Accepted by CUPS as ${result.job_id}. Check the printer for completion.`:`${result.message}. ${result.cups_response||''}`;}
 async function loadPrinterStatus(){
@@ -771,10 +815,11 @@ async function submitPrintFile(event,guest){
   try{
     const headers={'Content-Type':'application/json',...printHeaders(key,meta.current),
       ...(guest?{'X-Guest-CSRF':state.guestCsrf}:{'X-CSRF-Token':state.csrf})};
-    const response=await fetch(guest?'/api/guest/submit-preview':'/api/print/submit-preview',{
+    const response=await fetch(`${guest?'/api/guest/submit-preview':'/api/print/submit-preview'}?background=true`,{
       method:'POST',credentials:'same-origin',headers,body:JSON.stringify({token:meta.token})});
-    const result=await response.json().catch(()=>null);
-    if(!response.ok)throw Error(result?.detail||`Print failed (${response.status})`);
+    const started=await response.json().catch(()=>null);
+    if(!response.ok)throw Error(started?.detail||`Print failed (${response.status})`);
+    const {result}=await followTask(started.task,{guest,onUpdate:task=>setPrintFeedback(feedback,taskText(task),'info')});
     setPrintFeedback(feedback,`${receiptMessage(result)} · ${result.pages_selected} source page(s) selected.`,'ok');
     toast(`Submitted to CUPS${result.job_id?' as '+result.job_id:''}`);
   }catch(error){setPrintFeedback(feedback,error.message,'error');problem(error);}finally{
@@ -843,8 +888,7 @@ $('#guest-back').onclick=closeGuest;
 $('#new-job').onclick=()=>newJob().catch(problem);$('#new-job-sidebar').onclick=()=>{workspace(false);newJob().catch(problem);};
 $('#delete-current-job').onclick=()=>{const id=state.job?.id;if(id){const btn=document.querySelector(`.delete-job[data-delete-job="${id}"]`);if(btn)btn.click();}};
 $('#document-title').onchange=async e=>{if(!state.job)return;try{state.job=await api(`/api/jobs/${state.job.id}`,{method:'PATCH',body:{title:e.target.value.trim()||'Untitled document'}});await refreshJobs();renderDocument();}catch(err){problem(err);}};
-$('#pdf-quality').onchange=renderDocument;$('#pdf-ocr').onchange=renderDocument;
-$('#export-button').onclick=e=>{if(!state.job?.pages.length){e.preventDefault();toast('Scan at least one page to export.');}};
+$('#export-button').onclick=exportDocument;
 for(const group of ['source','mode'])$$(`#${group}-picker button`).forEach(b=>b.onclick=()=>{state.settings[group]=b.dataset.value;updateSettings();});
 $('#resolution').onchange=e=>{state.settings.resolution=Number(e.target.value);updateSettings();};
 $('#auto-count').onchange=e=>{state.settings.auto=e.target.checked;updateSettings();};

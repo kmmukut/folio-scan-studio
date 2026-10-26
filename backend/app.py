@@ -24,13 +24,13 @@ from typing import Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 from backend import security
 from backend.processing import transform_page, find_deskew_angle
-from backend import printing, devices, diagnostics
+from backend import printing, devices, diagnostics, tasks
 from backend.version import __version__
 
 DATA_DIR = Path(os.environ.get('DATA_DIR', '/data'))
@@ -40,6 +40,7 @@ DEVICE = os.environ.get('SCANNER_DEVICE', '').strip()  # Blank for a Folio-manag
 RESOLUTIONS = (75, 100, 150, 200, 300)
 JOB_ID_RE = re.compile(r'^[a-f0-9]{12}$')
 PAGE_ID_RE = re.compile(r'^[a-f0-9]{16}$')
+TASK_ID_RE = re.compile(r'^[a-f0-9]{32}$')
 lock = threading.RLock()
 scanner_lock = threading.Lock()
 ocr_lock = threading.Lock()
@@ -350,7 +351,8 @@ async def guard_private_api(request: Request, call_next):
         # Fail closed for cross-site browser requests, including login and guest print.
         if request.headers.get('sec-fetch-site', '').lower() == 'cross-site':
             return JSONResponse({'detail':'Cross-site request rejected'}, status_code=403)
-    if path.startswith('/api/') and path not in public and not path.startswith('/api/guest/preview/') and path != '/api/guest/submit-preview':
+    if (path.startswith('/api/') and path not in public and not path.startswith(('/api/guest/preview/', '/api/guest/tasks/'))
+            and path != '/api/guest/submit-preview'):
         session = security.session(DATA_DIR, request.cookies.get(security.COOKIE_NAME))
         if not session:
             return JSONResponse({'detail':'Please sign in'}, status_code=401)
@@ -363,7 +365,7 @@ async def guard_private_api(request: Request, call_next):
             return JSONResponse({'detail':'Administrator privileges required'}, status_code=403)
         # Print-only accounts have access only to account management for
         # themselves and the authenticated printing API, never scan files.
-        if session['role'] == 'printer' and not (path.startswith('/api/auth/') or (path in ('/api/print','/api/print/status','/api/print/inspect','/api/print/submit-preview','/api/printers') or path.startswith('/api/print/preview/'))):
+        if session['role'] == 'printer' and not (path.startswith('/api/auth/') or (path in ('/api/print','/api/print/status','/api/print/inspect','/api/print/submit-preview','/api/printers') or path.startswith(('/api/print/preview/', '/api/tasks/')))):
             return JSONResponse({'detail':'Printing-only account'}, status_code=403)
         # Every job endpoint (including thumbnails, exports and mutations)
         # is protected: members access only documents they created.
@@ -781,7 +783,45 @@ class PreviewPrintRequest(BaseModel):
     token: str
 
 
-async def submit_preview(request: Request, body: PreviewPrintRequest, guest: bool):
+def run_print(source: Path, kind: str, title: str, choices: dict,
+              task: tasks.Task | None = None, progress: tuple[float, float] = (0.0, 1.0)) -> dict:
+    """Select pages, apply scaling/colour, and submit to CUPS (shared by all flows).
+
+    ``progress`` is the slice of the task's progress bar this step may use.
+    """
+    choices = dict(choices)
+    pages = choices.pop('pages')
+    start, end = progress
+
+    def page_progress(done: int, total: int) -> None:
+        if task:
+            task.update(f'Converting page {done + 1} of {total}…', start + (end - start) * .9 * done / max(total, 1))
+    with tempfile.TemporaryDirectory(prefix='folio-print-') as tmp:
+        target = Path(tmp) / 'selected.pdf'
+        if task:
+            task.update('Preparing your pages…', start)
+        try:
+            selected = printing.prepare_pdf(source, kind, target, pages=pages, media=choices['media'],
+                                            scale=choices['scale'], color_mode=choices['color_mode'],
+                                            progress=page_progress)
+        except printing.PrintFileError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        if task:
+            # Last point at which cancelling stops the job; CUPS owns it after this.
+            task.update('Sending to the printer…', start + (end - start) * .95)
+        outcome = print_with_cups(target, title, **choices)
+    return {**cups_receipt(outcome), 'pages_selected': selected}
+
+
+def task_owner(request: Request, guest: bool = False) -> str:
+    return f'guest:{preview_owner(request, True)}' if guest else f'user:{request.state.username}'
+
+
+def task_response(task: tasks.Task) -> JSONResponse:
+    return JSONResponse({'task': task.public(tasks.runner.position(task))}, status_code=202)
+
+
+async def submit_preview(request: Request, body: PreviewPrintRequest, guest: bool, background: bool = False):
     if guest:
         guest_authorize(request)
     source,record=preview_record(request,body.token,guest)
@@ -792,27 +832,24 @@ async def submit_preview(request: Request, body: PreviewPrintRequest, guest: boo
         ip=request.client.host if request.client else 'unknown'
         if not security.guest_rate_allowed(ip,record=True):
             raise HTTPException(429,'Guest print limit reached. Try again later.')
-    pages=choices.pop('pages')
-    with tempfile.TemporaryDirectory(prefix='folio-print-') as tmp:
-        target=Path(tmp)/'selected.pdf'
-        try:
-            selected=await asyncio.to_thread(printing.prepare_pdf,source,record['kind'],target,
-                                              pages=pages,media=choices['media'],scale=choices['scale'],
-                                              color_mode=choices['color_mode'])
-        except printing.PrintFileError as exc:
-            raise HTTPException(400,str(exc)) from exc
-        outcome=await asyncio.to_thread(print_with_cups,target,record['name'],**choices)
-    return {**cups_receipt(outcome),'pages_selected':selected}
+    if not background:
+        return await asyncio.to_thread(run_print, source, record['kind'], record['name'], choices)
+    # The preview may expire or be replaced while the job waits, so the job
+    # gets its own copy of the file.
+    return task_response(tasks.runner.submit(
+        'print', 'print', task_owner(request, guest),
+        lambda task: run_print(task.directory / 'source', record['kind'], record['name'], choices, task),
+        prepare=lambda folder: shutil.copyfile(source, folder / 'source')))
 
 
 @app.post('/api/print/submit-preview')
-async def submit_user_preview(request: Request, body: PreviewPrintRequest):
-    return await submit_preview(request,body,False)
+async def submit_user_preview(request: Request, body: PreviewPrintRequest, background: bool = False):
+    return await submit_preview(request,body,False,background)
 
 
 @app.post('/api/guest/submit-preview')
-async def submit_guest_preview(request: Request, body: PreviewPrintRequest):
-    return await submit_preview(request,body,True)
+async def submit_guest_preview(request: Request, body: PreviewPrintRequest, background: bool = False):
+    return await submit_preview(request,body,True,background)
 
 
 @app.get('/api/printers')
@@ -1075,16 +1112,7 @@ async def receive_print_file(request: Request, *, authenticated: bool):
             ip=request.client.host if request.client else 'unknown'
             if not security.guest_rate_allowed(ip,record=True):
                 raise HTTPException(429,'Guest print limit reached. Try again later.')
-        pages=choices.pop('pages')
-        printable=Path(tmp)/'printable.pdf'
-        try:
-            selected=await asyncio.to_thread(printing.prepare_pdf,incoming,info['kind'],printable,
-                                              pages=pages,media=choices['media'],scale=choices['scale'],
-                                              color_mode=choices['color_mode'])
-        except printing.PrintFileError as exc:
-            raise HTTPException(400,str(exc)) from exc
-        outcome=await asyncio.to_thread(print_with_cups,printable,name,**choices)
-    return {**cups_receipt(outcome),'pages_selected':selected}
+        return await asyncio.to_thread(run_print, incoming, info['kind'], name, choices)
 
 
 @app.get('/', response_class=HTMLResponse)
@@ -1661,32 +1689,74 @@ def page_image(job_id: str, page_id: str, thumb: bool = False, uncropped: bool =
     return Response(content=data, media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
 
 
-def ocr_pdf(source: Path, target: Path, page_count: int) -> None:
+def stop_process_group(proc: subprocess.Popen, grace: float = 10.0) -> None:
+    """Stop a process started with start_new_session=True and everything it spawned."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    # Wait without reaping: until the leader is reaped, its group ID cannot be
+    # reused by an unrelated process, so the SIGKILL below is always safe.
+    deadline = time.monotonic() + grace
+    while time.monotonic() < deadline:
+        try:
+            if os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT):
+                break
+        except ChildProcessError:
+            break
+        time.sleep(0.1)
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)  # Workers that ignored SIGTERM or outlived the leader
+    except ProcessLookupError:
+        pass
+    proc.wait()
+
+
+def ocr_pdf(source: Path, target: Path, page_count: int, cancel: threading.Event | None = None) -> None:
     """Run OCRmyPDF only when requested; never modify original page scans.
 
     A limited OCR worker count protects small Proxmox VMs against resource spikes.
+    ``cancel`` stops OCRmyPDF early when a background export is cancelled.
     """
+    command = ['ocrmypdf', '--skip-text', '--output-type', 'pdf', '--optimize', '0',
+               '--jobs', '2', '--language', 'eng', '--quiet', str(source), str(target)]
+    deadline = time.monotonic() + min(1800, max(180, page_count * 90))
     try:
-        outcome = subprocess.run([
-            'ocrmypdf', '--skip-text', '--output-type', 'pdf', '--optimize', '0',
-            '--jobs', '2', '--language', 'eng', '--quiet', str(source), str(target),
-        ], text=True, capture_output=True,
-           timeout=min(1800, max(180, page_count * 90)))
+        # Output is discarded: never expose internal paths or OCR engine messages.
+        # Its own process group, so stopping it also stops the Ghostscript and
+        # Tesseract workers it starts instead of leaving them running.
+        proc = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                start_new_session=True)
     except FileNotFoundError as exc:
         raise HTTPException(503, 'OCR engine is not installed in this image') from exc
-    except subprocess.TimeoutExpired as exc:
-        raise HTTPException(504, 'OCR timed out. Try the standard PDF export') from exc
-    if outcome.returncode != 0 or not target.is_file():
-        # Don't expose internal filesystem paths or arbitrary OCR engine output.
+    try:
+        while proc.poll() is None:
+            if cancel is not None and cancel.is_set():
+                raise tasks.Cancelled()
+            if time.monotonic() > deadline:
+                raise HTTPException(504, 'OCR timed out. Try the standard PDF export')
+            time.sleep(0.25)
+    finally:
+        if proc.poll() is None:
+            stop_process_group(proc)
+    if proc.returncode != 0 or not target.is_file():
         raise HTTPException(502, 'OCR processing failed. Standard PDF export is still available')
 
 
-def make_job_pdf(job_id: str, j: dict, quality: str = 'balanced', ocr: bool = False) -> bytes:
+def build_job_pdf(job_id: str, j: dict, target: Path, quality: str = 'balanced', ocr: bool = False,
+                  task: tasks.Task | None = None, progress: tuple[float, float] = (0.0, 1.0)) -> None:
+    """Write the document's edited pages, at full resolution, to ``target``."""
     import img2pdf
     q = {'small': 62, 'balanced': 82, 'best': 93}[quality]
+    start, end = progress
+    # OCR usually takes far longer than assembling the pages.
+    assembled = start + (end - start) * (.3 if ocr else 1)
+    total = len(j['pages'])
     with tempfile.TemporaryDirectory(prefix='scan-studio-pdf-') as tmp:
         temp_images = []
         for index, page in enumerate(j['pages']):
+            if task:
+                task.update(f'Preparing page {index + 1} of {total}…', start + (assembled - start) * index / total)
             im = load_page_image(job_id, page)
             if im.mode not in ('RGB', 'L'):
                 im = im.convert('RGB')
@@ -1694,62 +1764,130 @@ def make_job_pdf(job_id: str, j: dict, quality: str = 'balanced', ocr: bool = Fa
             im.save(p, 'JPEG', quality=q, optimize=True,
                     dpi=(page['dpi'], page['dpi']))
             temp_images.append(str(p))
-        pdf_bytes = img2pdf.convert(temp_images)
+        plain = Path(tmp) / 'plain.pdf' if ocr else target
+        with plain.open('wb') as output:
+            img2pdf.convert(temp_images, outputstream=output)
         if ocr:
-            if not ocr_lock.acquire(blocking=False):
+            # A background export waits its turn; a direct download fails fast.
+            if not ocr_lock.acquire(blocking=task is not None):
                 raise HTTPException(429, 'Another searchable PDF export is in progress')
             try:
-                plain = Path(tmp) / 'plain.pdf'
-                searched = Path(tmp) / 'searchable.pdf'
-                plain.write_bytes(pdf_bytes)
-                ocr_pdf(plain, searched, len(temp_images))
-                pdf_bytes = searched.read_bytes()
+                if task:
+                    task.update('Recognizing text (OCR). This can take a few minutes…', assembled)
+                    ocr_pdf(plain, target, total, cancel=task.cancel_event)
+                else:
+                    ocr_pdf(plain, target, total)
             finally:
                 ocr_lock.release()
-    return pdf_bytes
+
+
+def make_job_pdf(job_id: str, j: dict, quality: str = 'balanced', ocr: bool = False) -> bytes:
+    with tempfile.TemporaryDirectory(prefix='scan-studio-pdf-') as tmp:
+        target = Path(tmp) / 'document.pdf'
+        build_job_pdf(job_id, j, target, quality, ocr)
+        return target.read_bytes()
+
+
+def export_filename(j: dict, ocr: bool) -> str:
+    safe_name = re.sub(r'[^a-zA-Z0-9._ -]', '', j['title']).strip() or 'Scanned-document'
+    return safe_name[:80] + ('-searchable' if ocr else '') + '.pdf'
 
 
 @app.get('/api/jobs/{job_id}/export')
 def export_pdf(job_id: str, quality: Literal['small', 'balanced', 'best'] = 'balanced',
                ocr: bool = False):
+    """Direct download, kept for scripts. The web app uses background exports."""
     with lock:
         j = load_job(job_id)
     if not j['pages']:
         raise HTTPException(400, 'There are no pages to export')
     pdf_bytes = make_job_pdf(job_id, j, quality, ocr)
-    safe_name = re.sub(r'[^a-zA-Z0-9._ -]', '', j['title']).strip() or 'Scanned-document'
-    safe_name = safe_name[:80] + ('-searchable' if ocr else '')
     return StreamingResponse(io.BytesIO(pdf_bytes), media_type='application/pdf',
-                             headers={'Content-Disposition': f'attachment; filename="{safe_name}.pdf"',
+                             headers={'Content-Disposition': f'attachment; filename="{export_filename(j, ocr)}"',
                                       'Cache-Control': 'no-store'})
 
 
+class ExportRequest(BaseModel):
+    quality: Literal['small', 'balanced', 'best'] = 'balanced'
+    ocr: bool = False
+
+
+@app.post('/api/jobs/{job_id}/exports', status_code=202)
+def start_export(job_id: str, body: ExportRequest, request: Request):
+    """Build a PDF in the background; poll /api/tasks/{id}, then download its file."""
+    with lock:
+        j = load_job(job_id)  # Snapshot: later edits don't change this export
+    if not j['pages']:
+        raise HTTPException(400, 'There are no pages to export')
+
+    def work(task: tasks.Task) -> dict:
+        target = task.directory / 'export.pdf'
+        build_job_pdf(job_id, j, target, body.quality, body.ocr, task)
+        task.file, task.filename = target, export_filename(j, body.ocr)
+        return {'pages': len(j['pages']), 'bytes': target.stat().st_size}
+    return task_response(tasks.runner.submit('export', 'export', task_owner(request), work))
+
+
 @app.post('/api/jobs/{job_id}/print')
-async def print_folio_document(job_id: str, request: Request):
+async def print_folio_document(job_id: str, request: Request, background: bool = False):
     """Print an existing owned document without uploading it back from the browser."""
     choices = print_choices(request, True)
     with lock:
         j = load_job(job_id)
     if not j['pages']:
         raise HTTPException(400, 'Scan at least one page before printing')
-    pdf_bytes = await asyncio.to_thread(make_job_pdf, job_id, j, 'balanced', False)
-    with tempfile.TemporaryDirectory(prefix='folio-print-document-') as tmp:
-        filepath = Path(tmp) / 'document.pdf'
-        filepath.write_bytes(pdf_bytes)
-        printable=Path(tmp)/'selected.pdf'
-        pages=choices.pop('pages')
-        try:
-            count=await asyncio.to_thread(printing.prepare_pdf,filepath,'pdf',printable,
-                                          pages=pages,media=choices['media'],scale=choices['scale'],
-                                              color_mode=choices['color_mode'])
-        except printing.PrintFileError as exc:
-            raise HTTPException(400,str(exc)) from exc
-        result = await asyncio.to_thread(print_with_cups, printable, j['title'], **choices)
-    return {**cups_receipt(result),'pages_selected':count}
+    if not background:
+        pdf_bytes = await asyncio.to_thread(make_job_pdf, job_id, j, 'balanced', False)
+        with tempfile.TemporaryDirectory(prefix='folio-print-document-') as tmp:
+            filepath = Path(tmp) / 'document.pdf'
+            filepath.write_bytes(pdf_bytes)
+            return await asyncio.to_thread(run_print, filepath, 'pdf', j['title'], choices)
+
+    def work(task: tasks.Task) -> dict:
+        document = task.directory / 'document.pdf'
+        build_job_pdf(job_id, j, document, 'balanced', False, task, progress=(0.0, .6))
+        return run_print(document, 'pdf', j['title'], choices, task, progress=(.6, 1.0))
+    return task_response(tasks.runner.submit('print', 'print', task_owner(request), work))
+
+
+def owned_task(task_id: str, owner: str) -> tasks.Task:
+    task = tasks.runner.get(task_id, owner) if TASK_ID_RE.fullmatch(task_id) else None
+    if not task:
+        raise HTTPException(404, 'This job is no longer available. Folio may have restarted; please try again.')
+    return task
+
+
+@app.get('/api/tasks/{task_id}')
+def task_status(task_id: str, request: Request):
+    task = owned_task(task_id, task_owner(request))
+    return task.public(tasks.runner.position(task))
+
+
+@app.get('/api/tasks/{task_id}/file')
+def task_file(task_id: str, request: Request):
+    task = owned_task(task_id, task_owner(request))
+    if task.status != 'done' or not task.file or not task.file.is_file():
+        raise HTTPException(409, 'This file is not ready yet')
+    return FileResponse(task.file, media_type='application/pdf', filename=task.filename,
+                        headers={'Cache-Control': 'no-store'})
+
+
+@app.delete('/api/tasks/{task_id}')
+def cancel_task(task_id: str, request: Request):
+    task = owned_task(task_id, task_owner(request))
+    tasks.runner.cancel(task)
+    return task.public()
+
+
+@app.get('/api/guest/tasks/{task_id}')
+def guest_task_status(task_id: str, request: Request):
+    task = owned_task(task_id, task_owner(request, guest=True))
+    return task.public(tasks.runner.position(task))
 
 
 def ensure_directories():
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    tasks.runner.start(DATA_DIR / 'tasks')
     clear_old_previews()
     security.init(DATA_DIR)
     cfg=registry()

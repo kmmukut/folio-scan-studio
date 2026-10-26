@@ -4,6 +4,54 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.10.0 — Background jobs: exports, OCR and printing that never time out
+
+Exporting a PDF, making a searchable PDF, and printing from the web app now
+run as background jobs. The page shows progress while the job runs, and a
+reverse proxy can no longer cut it off. Nginx Proxy Manager, for example,
+closes requests after 60 seconds by default, which a searchable export or a
+large grayscale print on a small computer could easily exceed.
+
+### What you will notice
+- **Export** shows its progress on the button ("Exporting 40%") and the PDF
+  downloads by itself when ready. Click the button again to cancel.
+- **Searchable PDF** exports wait their turn instead of failing with
+  "another searchable export is in progress". Cancelling stops text
+  recognition immediately, including its Ghostscript and Tesseract helpers.
+- **Print Desk** (uploads, saved documents and guest printing) shows each
+  step: waiting, preparing or converting pages, sending to the printer, and
+  then the CUPS receipt as before.
+- Exports and prints run in separate queues, so a long export never delays a
+  print. Each queue runs one job at a time to keep small hosts responsive.
+
+### Under the hood
+- Background exports write the PDF to disk as they go instead of holding the
+  whole file in memory.
+- The image now starts Folio under `tini`, a minimal init process that
+  forwards stop signals and cleans up exited helper processes. Without it,
+  a cancelled OCR job left zombie Ghostscript processes in the container.
+- New API: `POST /api/jobs/{id}/exports`, `GET|DELETE /api/tasks/{id}`,
+  `GET /api/tasks/{id}/file`, `GET /api/guest/tasks/{id}`, and
+  `?background=true` on the print endpoints. The existing synchronous
+  endpoints are unchanged, so scripts that call them keep working.
+- Jobs and their files belong to the account (or guest session) that
+  started them. Finished jobs are kept for 30 minutes.
+
+### Verified
+- 103 automated tests, including job ownership, queueing, cancellation,
+  guest isolation, and a check that cancelling OCR stops every helper process.
+- In headless Chrome: export (the PDF was saved by the browser), upload
+  print, saved-document print, guest print at phone width, and System check.
+  CUPS was simulated, so no printer was used.
+- In the built image: a real searchable export (text layer present) and
+  cancellation during text recognition, leaving no stray processes.
+
+### Upgrading 0.9.6 → 0.10.0
+No configuration changes. Back up `data/`, rebuild or retag the image as
+`folio-scan-studio:0.10.0`, and redeploy. A job that is running when the
+container restarts is lost: the page says so, and you can start it again.
+`data/tasks/` holds temporary job files and is emptied at every start.
+
 ## 0.9.6 — Foundations: speed on small hosts, proxy-aware limits, diagnostics
 
 Scanning, editing and printing work as before; this release makes them cheaper

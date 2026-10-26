@@ -566,8 +566,10 @@ def test_searchable_export_option_calls_ocr_only_when_requested(client,monkeypat
     scan_and_wait(client,jid,count=1)
     pdf=io.BytesIO();writer=PdfWriter();writer.add_blank_page(width=612,height=792);writer.write(pdf)
     data=pdf.getvalue()
-    # Mimic img2pdf in environments without the optional PDF encoder.
-    monkeypatch.setitem(sys.modules,'img2pdf',types.SimpleNamespace(convert=lambda images: data))
+    # Mimic img2pdf in environments without the optional PDF encoder
+    # (Folio streams its output to a file via outputstream=).
+    monkeypatch.setitem(sys.modules,'img2pdf',types.SimpleNamespace(
+        convert=lambda images, outputstream=None: outputstream.write(data) if outputstream else data))
     calls=[]
     def fake_ocr(source,target,page_count):
         calls.append(page_count)

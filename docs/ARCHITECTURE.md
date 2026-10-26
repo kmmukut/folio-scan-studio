@@ -16,7 +16,7 @@ Most of what makes an old printer feel modern comes from the sharing layer.
 Folio's job is to make the device and sharing layers easy to set up and keep
 healthy, and to make the workflow layer excellent.
 
-## Current structure (0.9.6)
+## Current structure (0.10)
 
 - `backend/app.py`: FastAPI routes, auth middleware, scan and print flows.
 - `backend/devices.py`: scanner registry (`data/devices.json`), generated
@@ -27,6 +27,8 @@ healthy, and to make the workflow layer excellent.
 - `backend/processing.py`: non-destructive page transforms and deskew.
 - `backend/security.py`: SQLite accounts/sessions, guest tokens, rate limits.
 - `backend/diagnostics.py`: read-only System check.
+- `backend/tasks.py`: background job runner (export and print lanes),
+  progress, cancellation, ownership and cleanup.
 - `frontend/`: framework-free HTML/CSS/JS, served as static files.
 
 Storage: page originals are immutable PNGs under `data/jobs/<id>/pages/`;
@@ -62,6 +64,21 @@ become optional at build time rather than separate editions.
 Previews render from a cached reduced copy; exports and printing always use
 the original pixels. Any cache can be deleted without data loss.
 
+### D7 — Slow work runs as background jobs (0.10)
+Anything that can outlast a reverse proxy's timeout (export, OCR, print
+preparation) runs in an in-process job runner with two lanes, export and
+print, each running one job at a time. Jobs are in memory by design: a
+restart loses in-flight work, the UI says so, and no job state has to be
+migrated. Synchronous endpoints stay available for scripts.
+
+### D8 — Split `app.py` gradually, not in one release (0.10)
+Splitting the 1,900-line `app.py` into route modules was planned for 0.10
+and postponed. Most tests patch attributes of `backend.app` directly, so a
+one-step split means rewriting the tests that would check the split, and
+users would see nothing from it. New features go into their own modules
+(`tasks.py`, `diagnostics.py`), and existing areas move out when they are
+next changed substantially.
+
 ### D6 — Capabilities come from the device, never from model names
 Sizes, trays, duplex, colour, scan modes and resolutions are what CUPS/SANE
 report. Folio does not fabricate options, and no device, address or network
@@ -72,9 +89,7 @@ is hardcoded (enforced by a test).
 Planned in this order; each step is a separate, tested release. Priorities
 may change with real use.
 
-1. **0.10 — Background jobs.** OCR, export and print preparation run as
-   tracked tasks with progress, instead of inside an HTTP request (OCR can
-   take longer than reverse-proxy timeouts). Split `app.py` into route modules.
+1. ~~**0.10 — Background jobs.**~~ Done; see D7 and D8.
 2. **0.11 — Appliance.** Optional CUPS + Avahi container in Compose (D2),
    USB printer onboarding, queue creation, AirPrint/IPP Everywhere sharing,
    first-run setup wizard.

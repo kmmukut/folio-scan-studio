@@ -12,7 +12,8 @@ it from any phone, tablet or computer on your network.
 - **Edit without losing the original:** crop, rotate, straighten,
   brightness/contrast/auto-levels, reorder, delete and undo. The original
   scan is never modified.
-- **Export:** PDF, optionally searchable (OCR).
+- **Export:** PDF, optionally searchable (OCR), as a background job with
+  progress, so long exports aren't cut off by a reverse proxy.
 - **Print:** upload a PDF or image, or print a saved document, with
   page ranges, paper size and tray, envelopes, duplex, scaling, pages per
   sheet and colour mode — limited to what each printer actually reports.
@@ -53,7 +54,7 @@ then:
 The Compose file builds the image from source (`build: .`). Either run
 `docker compose up -d --build` in the source directory and manage the
 container from Portainer, or build the image first
-(`docker build -t folio-scan-studio:0.9.6 .`), then paste `compose.yaml`
+(`docker build -t folio-scan-studio:0.10.0 .`), then paste `compose.yaml`
 into a Portainer stack without the `build:` line and set the variables there.
 
 ## Configuration

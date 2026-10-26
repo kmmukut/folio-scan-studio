@@ -324,3 +324,5 @@
 .diagnostic-row.ok .diagnostic-state{background:#e8eee4;color:#4d7357}
 .diagnostic-row.warn{border-color:#e2cfa8}.diagnostic-row.warn .diagnostic-state{background:#f6ecd6;color:#8a6420}
 .diagnostic-row.fail{border-color:#e3c3b5}.diagnostic-row.fail .diagnostic-state{background:#f3e7e0;color:#955641}
+/* v0.10 background export in progress */
+#export-button.busy{background:#2f4b3b;min-width:150px}

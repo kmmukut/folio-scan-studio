@@ -9,6 +9,7 @@ import io
 import os
 import re
 from pathlib import Path
+from typing import Callable
 from PIL import Image, ImageOps
 import pymupdf as fitz  # PyMuPDF (the 'fitz' name is deprecated)
 
@@ -171,11 +172,14 @@ def page_numbers(spec: str, count: int) -> list[int]:
 
 
 def prepare_pdf(path: Path, kind: str, output: Path, *, pages: str = 'all',
-                media: str = 'default', scale: str = 'fit', color_mode: str = 'auto') -> int:
+                media: str = 'default', scale: str = 'fit', color_mode: str = 'auto',
+                progress: Callable[[int, int], None] | None = None) -> int:
     """Generate safe PDF with the selected source pages and optional precise scaling.
 
     We apply page selection ourselves, *before* CUPS number-up, because CUPS
     page-ranges otherwise refers to output sheets on some filter chains.
+    ``progress(done, total)`` is called during the slow per-page colour
+    conversion; it may raise to abandon the job.
     """
     if kind == 'image':
         with Image.open(path) as image:
@@ -210,11 +214,11 @@ def prepare_pdf(path: Path, kind: str, output: Path, *, pages: str = 'all',
                 selected.save(output,garbage=3,deflate=True)
         count=len(ids)
     if color_mode in ('gray','bw'):
-        convert_color(output,color_mode)
+        convert_color(output,color_mode,progress)
     return count
 
 
-def convert_color(path: Path, mode: str) -> None:
+def convert_color(path: Path, mode: str, progress: Callable[[int, int], None] | None = None) -> None:
     """Convert chosen PDF pages to true grayscale or 1-bit before CUPS processing.
 
     This is a deliberate raster conversion for explicit print-color overrides.
@@ -226,7 +230,9 @@ def convert_color(path: Path, mode: str) -> None:
     converted=path.with_suffix('.converted.pdf')
     try:
         with fitz.open(path) as original, fitz.open() as pdf:
-            for item in original:
+            for number,item in enumerate(original):
+                if progress:
+                    progress(number,original.page_count)
                 box=item.rect
                 scale=min((220 if mode=='bw' else 200)/72,
                           (18_000_000/max(box.width*box.height,1))**.5)

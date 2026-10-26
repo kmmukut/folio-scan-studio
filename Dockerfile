@@ -1,11 +1,11 @@
 FROM python:3.12-slim-bookworm
-ARG FOLIO_VERSION=0.9.6
+ARG FOLIO_VERSION=0.10.0
 LABEL org.opencontainers.image.title="Folio Scan Studio" \
       org.opencontainers.image.version="${FOLIO_VERSION}" \
       org.opencontainers.image.description="Self-hosted scanning, printing and document workbench for CUPS/SANE devices"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    sane-utils sane-airscan cups-client ca-certificates ocrmypdf tesseract-ocr-eng \
+    sane-utils sane-airscan cups-client ca-certificates ocrmypdf tesseract-ocr-eng tini \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY requirements.txt ./
@@ -19,4 +19,7 @@ EXPOSE 8870
 # Liveness only: confirms the app answers and its data volume is usable.
 HEALTHCHECK --interval=30s --timeout=6s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8870/api/health', timeout=5)"
+# tini runs as PID 1: it forwards stop signals to Folio and reaps processes
+# orphaned by stopped OCR/scan helpers, which would otherwise linger as zombies.
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8870", "--workers", "1", "--proxy-headers"]

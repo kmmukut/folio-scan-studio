@@ -54,6 +54,7 @@ def _sqlite_copy(source: Path, target: Path, *, drop_sessions: bool = False) -> 
         src.backup(dst)
         if drop_sessions:
             dst.execute('DELETE FROM sessions')  # Sign-ins don't belong in a backup
+            dst.execute('DROP TABLE IF EXISTS password_links')  # Nor do unused invitation and reset links
             dst.commit()
     finally:
         src.close()

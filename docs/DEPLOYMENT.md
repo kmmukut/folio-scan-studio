@@ -168,6 +168,59 @@ encrypted connection when CUPS asks for one. Printers Folio creates are
 always shared, because CUPS only accepts jobs from other computers for
 shared printers.
 
+## Email: invitations, password resets and notifications
+
+With email set up, Folio can:
+- **Invite people.** They get a link and choose their own password.
+- **Offer "Forgot your password?"** on the sign-in page, for every account
+  that has an email address, administrators included.
+- **Send notifications.**
+
+Set it up in **Devices → Email**:
+
+1. **Folio's address**, as people open it (e.g. `https://folio.example.com`).
+   Links in emails point there. Folio never takes the address from the
+   incoming request, because anyone can fake that header and point a reset
+   link at their own site. Alternatively, set `FOLIO_PUBLIC_URL`.
+2. **The mail server**, its encryption and login, and the address emails
+   come from:
+   - With Gmail, Fastmail, Outlook and most other providers, use their SMTP
+     server with STARTTLS on port 587 and an *app password* (made in the
+     account's security settings), not your normal password.
+   - A relay on your own network may need no login.
+3. **Send a test email**, to check the settings.
+4. **Add your own address** under **Your account** (click your initial,
+   top right). Notifications for administrators go there.
+
+**Invitations:** in **People & access**, add someone with their email
+address and choose *They choose their own password*.
+- Folio emails them a link that works once, within 48 hours.
+- Without an address, or without email set up, Folio shows the link for you
+  to send any way you like.
+- **Copy a new invitation link** replaces an expired one.
+
+**Forgot your password?** It's on by default once email is set up and
+Folio's address is known; you can turn it off in Devices → Email.
+- It sends a link that works once, within one hour.
+- Using the link signs the account out everywhere else.
+- The page answers the same whether or not an account exists, and requests
+  are rate-limited.
+
+**Notifications** (each can be switched off):
+- **To administrators:**
+  - toner or ink running low
+  - a printer that needs attention (out of paper, a jam, a cover open)
+  - someone accepting an invitation
+- **To the person concerned:** their monthly page limit is used up.
+- **Always sent:** a password change, to the account's owner.
+
+Printers are checked every five minutes. Each problem is reported once, and
+again only after it has cleared and come back. "Offline" isn't reported,
+because printers that sleep at night would set it off every evening.
+
+The SMTP password stays on the Folio server: it's never sent to browsers,
+and it's included in backups like Folio's other logins.
+
 ## Sending documents to Paperless-ngx or a folder
 
 Finished documents can be sent from the workbench (**Send**, next to
@@ -261,8 +314,8 @@ docker compose pull
 docker compose up -d
 ```
 
-With `FOLIO_VERSION=0.19` this picks up 0.19.x fixes. To move to a new
-minor version, change `FOLIO_VERSION` (e.g. to `0.19`). To go back, restore
+With `FOLIO_VERSION=0.20` this picks up 0.20.x fixes. To move to a new
+minor version, change `FOLIO_VERSION` (e.g. to `0.21`). To go back, restore
 the backup and set the previous version; newer versions may change the
 data folder in ways older ones don't understand.
 

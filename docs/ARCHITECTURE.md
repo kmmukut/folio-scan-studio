@@ -16,7 +16,7 @@ Most of what makes an old printer feel modern comes from the sharing layer.
 Folio's job is to make the device and sharing layers easy to set up and keep
 healthy, and to make the workflow layer excellent.
 
-## Current structure (0.19)
+## Current structure (0.20)
 
 - `backend/app.py`: FastAPI routes, auth middleware, scan and print flows.
 - `backend/devices.py`: scanner registry (`data/devices.json`), generated
@@ -42,6 +42,8 @@ healthy, and to make the workflow layer excellent.
   requested in Folio (D17).
 - `backend/airprint.py`: announces the built-in printers through the host's
   Avahi services folder (D14).
+- `backend/mail.py`: email settings and sending through SMTP (D18);
+  `backend/notify.py` decides which notification emails go out.
 - `backend/backup.py`: backups of everything Folio keeps, and restoring one,
   including the built-in printers with their drivers (D15).
 - `backend/destinations.py`: sending finished documents to Paperless-ngx or
@@ -242,6 +244,48 @@ M2885FW), so before adding a driverless IPP printer Folio asks it for
 `document-format-supported`, and if neither is there, it offers the best
 local driver for its `printer-make-and-model`.
 
+### D18 — Email through SMTP, links instead of passwords (0.20)
+Email uses Python's own smtplib, so there are no new dependencies. The
+settings live in access.sqlite3, Folio's private database, which backups
+already treat as holding secrets; the SMTP password is never sent to
+browsers.
+
+**Links.** Invitations and password resets are one-time links rather than
+passwords handed over:
+- Each token has 256 bits, is stored only as a SHA-256 hash, and lasts 48
+  hours for an invitation or one hour for a reset.
+- A token is used once. Using it ends every other session of the account.
+- Backups leave unused links out.
+
+**The token travels in the URL fragment** (`/#password=…`). Browsers don't
+send fragments to servers, so tokens stay out of proxy logs and Referer
+headers. The page removes it from the address bar at once.
+
+**Links point to Folio's configured public address**, never to one built
+from the Host header, which a stranger could set to get a reset link that
+points to their own site.
+
+**An invited account is "pending"** until its person chooses a password:
+its stored hash is random bytes that no password can match.
+
+**"Forgot your password?"** is on by default, at the maintainer's request,
+and works for administrators too. To limit the risk:
+- The answer is the same whether or not the account exists, and sending
+  happens in the background, so timing doesn't tell either.
+- Requests are limited per address, per account and in total.
+- Every password change is emailed to the account's owner.
+
+**Notifications come from what Folio already reads:**
+- the supply levels, and the printer state reasons without CUPS's
+  -error/-warning/-report endings
+- the print log, for page limits
+
+They're checked every five minutes. A `notices` table remembers what was
+reported, so a condition is emailed once until it clears, and a restart
+doesn't repeat anything. "Offline" is deliberately ignored. Nothing is
+remembered while email can't be sent, so problems that exist when email is
+set up are still reported once.
+
 ### D6 — Capabilities come from the device, never from model names
 Sizes, trays, duplex, colour, scan modes and resolutions are what CUPS/SANE
 report. Folio does not fabricate options, and no device, address or network
@@ -269,7 +313,9 @@ may change with real use.
    have none; guests keep their own limits.
 10. ~~**0.19 — CUPS administration from Folio.**~~ HTTPS-only CUPS pages
    with a login chosen in Folio, a driverless check; see D17.
-11. **Next candidates:** a Raspberry Pi check and community hardware reports
+11. ~~**0.20 — Email.**~~ Invitations, "Forgot your password?", notifications;
+   see D18.
+12. **Next candidates:** a Raspberry Pi check and community hardware reports
    toward 1.0; translations; saved scan presets.
 USB-specific work waits for community testers (D11).
 

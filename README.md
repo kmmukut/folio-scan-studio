@@ -76,7 +76,11 @@ and privacy-conscious design.
   and let phones print to them (AirPrint). CUPS's own administration pages
   are there too, over HTTPS, with a login you choose in Folio.
 - **Printer care:** toner, ink and parts levels, with a warning when
-  something runs low.
+  something runs low, and an email when toner runs low or a printer needs
+  attention.
+- **Email, if you want it:** invite people to choose their own password,
+  "Forgot your password?" on the sign-in page, and notifications, through
+  any SMTP server.
 - **Print** uploads or saved documents with page ranges, paper size and tray,
   envelopes, duplex, scaling, pages per sheet and colour mode, limited to
   what each printer actually reports.

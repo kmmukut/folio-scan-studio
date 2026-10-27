@@ -4,6 +4,105 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.20.0 — Email: invitations, password resets, notifications
+
+Folio can now send email through any SMTP server: your provider (Gmail,
+Fastmail and the like, with an app password) or a relay of your own. Set
+it up in **Devices → Email**, then **Send a test email**.
+
+**Invitations.** Under People & access, add someone with their email
+address. Folio emails them a link to choose their own password, so nobody
+has to pass a password along.
+- The link works once, within 48 hours.
+- Without email, Folio shows the link for you to send any way you like.
+- People who haven't accepted yet are marked *Invited*.
+- **Copy a new invitation link** replaces an expired one.
+- **I set a password now** still works as before.
+
+**"Forgot your password?"** on the sign-in page, on by default once email
+is set up, for every account with an email address, administrators
+included.
+- The link works once, within one hour, and using it signs the account out
+  everywhere else.
+- The page answers the same whether or not the account exists.
+- Requests are rate-limited.
+- It can be turned off in Devices → Email.
+
+**Your account** (click your initial, top right): everyone can now set
+their own email address and change their own password. Until now, only an
+administrator could change a password.
+
+**Notifications** (each can be switched off):
+- **To administrators:**
+  - toner or ink running low
+  - a printer needing attention (out of paper, a jam, a cover open)
+  - someone accepting an invitation
+- **To the person concerned:**
+  - when their monthly page limit is used up
+  - always, when their password is changed
+
+Printers are checked every five minutes. Each problem is emailed once, and
+again only after it clears and comes back; a restart doesn't repeat
+anything.
+
+**Security:**
+- Links carry their token after `#`, which browsers never send to servers,
+  so tokens stay out of proxy logs.
+- Only a hash of each token is stored, and backups leave unused links out.
+- Links point to Folio's address as set in Devices → Email (or
+  `FOLIO_PUBLIC_URL`), never to one taken from the request, which anyone
+  can fake.
+- The SMTP password is never sent to browsers.
+
+### Fixed
+**Saving a person could set their monthly page limit to 0 (since 0.18).**
+In People & access, everyone on the *Default* limit was shown as having
+*Their own* limit with no number. Saving any change to them, even an email
+address, set their limit to 0 pages, so they could no longer print. They
+now show *Default*, and saving keeps it.
+
+### Verified
+- **Tests:** 240 on the host. Inside the images, on amd64: Full 242,
+  Lite 239 with 3 skipped. A fake mail server receives real SMTP (plain, STARTTLS and
+  SSL, with a login). The tests cover:
+  - the test email, and the reasons shown for a wrong password, a refused
+    address or an untrusted certificate
+  - invitations by email and by link; choosing a password; a link working
+    only once
+  - "Forgot your password?" giving the same answer for unknown accounts;
+    reset links expiring after an hour; rate limits; tokens stored only as
+    hashes; backups without links
+  - your own address and password, and the emails about password changes
+  - notifications sent once, re-armed after clearing, "offline" ignored,
+    and off when switched off
+  - the five-minute printer check against the fake CUPS (real IPP)
+  - page-limit emails, once a month
+  - System check and the setup checklist
+- **End to end, in headless Chrome, with Folio's image and a real mail
+  catcher (Mailpit, STARTTLS required, with a login):**
+  - setting up email and sending the test
+  - inviting someone by email, opening the emailed link (also at phone
+    width), choosing a password and being signed in
+  - the "joined" email reaching the administrator
+  - "Forgot your password?" by email address, then the reset and the
+    "password changed" email
+  - a used link being refused
+  - the page-limit fix
+- **Not verified:**
+  - real mail providers (Gmail, Outlook): only Mailpit and the test server
+  - a real printer running out of paper or toner: its state was simulated
+    over IPP
+  - the arm64 images (built and tested by the release workflow)
+
+### Upgrading
+Nothing is required. Existing accounts get an empty email address and work
+as before. To use email, open **Devices → Email**, and add your own
+address under **Your account**.
+
+If you saved a person's settings on 0.18 or 0.19 and they can't print
+("you have 0 of your 0 pages left"), set their page limit back to
+*Default* in People & access.
+
 ## 0.19.0 — CUPS administration from Folio
 
 **CUPS's own administration pages, with a login you choose in Folio.**

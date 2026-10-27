@@ -18,10 +18,11 @@ Folio is configured in two places:
 | `SCAN_STUDIO_ADMIN_USER` | `admin` | Username of that first administrator, when created from the setting. |
 | `PUID` / `PGID` | `1000` / `1000` | The user and group Folio runs as, and who owns its files on the host. `PUID=0` runs it as root (some USB scanners need that). |
 | `FOLIO_EDITION` | `full` | `full` or `lite`. Picks the image (`…-full` / `…-lite`), or what is built from source. See [Editions](../README.md#images-and-editions). |
-| `FOLIO_VERSION` | `0.19` | Image version. `0.19` receives 0.19.x fixes on `docker compose pull`; `0.19.0` stays exactly there. |
+| `FOLIO_VERSION` | `0.20` | Image version. `0.20` receives 0.20.x fixes on `docker compose pull`; `0.20.0` stays exactly there. |
 | `FOLIO_PORT` | `8870` | Port on the host that Folio is reachable on. |
 | `TZ` | `UTC` | Time zone, e.g. `Europe/Berlin`. Decides which day and month a print counts in for statistics. |
 | `COOKIE_SECURE` | `false` | Set `true` when Folio is served over HTTPS (behind a reverse proxy). Sign-in cookies are then only sent over HTTPS. |
+| `FOLIO_PUBLIC_URL` | empty | Folio's address as people open it, e.g. `https://folio.example.com`, for links in invitation and password emails. Can also be set in **Devices → Email**, which takes precedence. See [Email](DEPLOYMENT.md#email-invitations-password-resets-and-notifications). |
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Reverse proxies whose `X-Forwarded-For` header is trusted, as IPs or networks (`172.19.0.0/16`). See [Reverse proxy](DEPLOYMENT.md#behind-a-reverse-proxy). |
 | `FOLIO_BUILTIN_CUPS` | `on` | Folio's built-in print server. `off` if you only use CUPS on other computers. See [Printing](DEPLOYMENT.md#printing). |
 | `FOLIO_AIRPRINT_PORT` | `631` | The host port that reaches the built-in print server, used in AirPrint announcements. Change it only if you publish 631 as another port. |
@@ -69,7 +70,7 @@ built-in print server off, the folder belongs to `PUID` as before.
 
 | Path | Contents |
 |---|---|
-| `access.sqlite3` | Accounts (passwords as salted PBKDF2 hashes), sessions, guest setting. |
+| `access.sqlite3` | Accounts (passwords as salted PBKDF2 hashes, email addresses), sessions, invitation and password links (only as hashes), settings including email (with the SMTP password, never sent to browsers). |
 | `cups/` | The built-in print server (root's): its printers, drivers, settings, job history, the administrator login Folio created for itself, and, if CUPS administration is on, that login's password hash. |
 | `cups-admin.json` | CUPS administrator logins for other print servers (readable by root only, never sent to browsers). |
 | `devices.json` | Scanners, print servers, printer settings, defaults, and destinations (including Paperless API tokens, never sent to browsers). |

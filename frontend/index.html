@@ -54,6 +54,20 @@
       <label for="login-password">PASSWORD</label><input id="login-password" type="password" autocomplete="current-password" required>
       <button class="button main-button" type="submit">Open workspace <svg class="svg-icon"><use href="#ico-arrow"/></svg></button>
     </form>
+    <button type="button" id="forgot-open" class="text-link forgot-link hidden">Forgot your password?</button>
+    <form id="forgot-form" class="auth-form hidden">
+      <label for="forgot-login">USERNAME OR EMAIL ADDRESS</label><input id="forgot-login" autocomplete="username" required maxlength="254">
+      <button class="button main-button" type="submit">Email me a link <svg class="svg-icon"><use href="#ico-arrow"/></svg></button>
+    </form>
+    <p id="forgot-sent" class="setup-closed hidden" role="status"></p>
+    <form id="link-form" class="auth-form hidden">
+      <input id="link-username" autocomplete="username" hidden>
+      <label for="link-password">PASSWORD (12+ CHARACTERS)</label><input id="link-password" type="password" autocomplete="new-password" required minlength="12" maxlength="256">
+      <label for="link-repeat">THE SAME PASSWORD AGAIN</label><input id="link-repeat" type="password" autocomplete="new-password" required minlength="12" maxlength="256">
+      <button class="button main-button" type="submit">Save and open Folio <svg class="svg-icon"><use href="#ico-arrow"/></svg></button>
+    </form>
+    <p id="link-problem" class="setup-closed hidden" role="alert"></p>
+    <button type="button" id="auth-back" class="text-link forgot-link hidden">← Back to sign in</button>
     <button type="button" id="login-guest-button" class="text-link">Just need to print? Check guest printing →</button><p id="login-guest-status" class="guest-login-note">Guest printing is disabled until an administrator enables it.</p>
     <div class="auth-foot">LOCAL / PRIVATE / YOURS <a href="https://github.com/kmmukut/folio-scan-studio" target="_blank" rel="noopener">SOURCE · AGPL-3.0</a></div>
   </main>
@@ -75,14 +89,14 @@
     <div class="rail-bottom">
       <div class="machine-status"><span class="led" id="device-led"></span><div><span id="rail-scanner-name">Selected scanner</span><small id="device-status">Checking connection…</small></div></div>
       <button class="rail-logout" id="logout-button">SIGN OUT <span>↗</span></button>
-      <div class="rail-license">EDITION <span>0.19.0</span></div>
+      <div class="rail-license">EDITION <span>0.20.0</span></div>
       <a class="rail-source" href="https://github.com/kmmukut/folio-scan-studio" target="_blank" rel="noopener">Source code · AGPL-3.0</a>
     </div>
   </aside>
   <div class="app-main">
     <header class="app-topbar">
       <div class="topbar-path">FOLIO <span>/</span> <span id="top-location">WORKBENCH</span></div>
-      <div class="topbar-right"><span class="topbar-local">● LOCALLY HOSTED</span><span class="topbar-user" id="current-user">ADMIN</span><button id="top-logout" class="topbar-logout" type="button">Sign out</button></div>
+      <div class="topbar-right"><span class="topbar-local">● LOCALLY HOSTED</span><button type="button" class="topbar-user" id="current-user" title="Your account" aria-label="Your account">ADMIN</button><button id="top-logout" class="topbar-logout" type="button">Sign out</button></div>
     </header>
     <div id="workspace-view">
       <section class="masthead">
@@ -198,10 +212,16 @@
         <section class="people-panel"><span class="overline">ADD AN ACCOUNT</span><h2>Invite someone in.</h2>
           <form id="add-user-form" class="people-form">
             <label>Username <input id="new-username" required minlength="3" maxlength="32" autocomplete="off" placeholder="e.g. alex"></label>
-            <label>Temporary password (12+ characters) <input id="new-password" type="password" required minlength="12" autocomplete="new-password"></label>
+            <label>Email address <small>(optional)</small> <input id="new-email" type="email" maxlength="254" autocomplete="off" placeholder="alex@example.com"></label>
             <label>Account type <select id="new-role"><option value="member">Member · own scans and printing</option><option value="printer">Printer only · no scanner or documents</option><option value="admin">Administrator · full control</option></select></label>
-            <button class="button dark-button" type="submit">Create account →</button>
+            <div class="new-user-way" role="radiogroup" aria-label="How they get a password">
+              <label class="checkline"><input type="radio" name="new-way" value="invite" checked> They choose their own password, through an invitation link</label>
+              <label class="checkline"><input type="radio" name="new-way" value="password"> I set a password now</label>
+            </div>
+            <label id="new-password-box" class="hidden">Temporary password (12+ characters) <input id="new-password" type="password" minlength="12" maxlength="256" autocomplete="new-password"></label>
+            <button class="button dark-button" type="submit" id="add-user-submit">Invite →</button>
           </form>
+          <div id="invite-result" class="invite-result hidden" role="status"></div>
         </section>
         <section class="people-panel"><span class="overline">EXISTING ACCOUNTS</span><h2>Manage access.</h2>
           <div id="user-list" class="user-list"><p>Loading accounts…</p></div>
@@ -212,7 +232,7 @@
         <form id="quota-default-form" class="people-form quota-default-form"><label>Limit for everyone <input id="quota-default" type="number" min="0" max="100000" placeholder="No limit"></label><button class="button outline-button" type="submit">Save</button></form>
         <p id="quota-warning" class="quota-warning hidden">Print statistics are switched off, so pages aren’t counted and nobody is limited. Turn them on under Statistics.</p>
       </section>
-      <div class="security-note">Changing a user's role, password or enabled status ends their active sessions. Deleting an account preserves its scans for administrators to recover.</div>
+      <div class="security-note">Changing a user's role, password or enabled status ends their active sessions. Deleting an account preserves its scans for administrators to recover. Invitation links work once, within 48 hours; password links within one hour.</div>
     </section>
     <section id="admin-devices-view" class="devices-desk hidden">
       <div class="overline">EQUIPMENT / 06</div><h1>Tools of<br><em>the trade.</em></h1>
@@ -286,13 +306,31 @@
           <div class="print-admin-actions"><button class="button outline-button" type="button" id="destination-check">Check</button><button class="button dark-button" type="submit">Add destination</button></div>
         </form>
       </div>
+      <div class="diagnostics-panel email-panel" id="email-panel">
+        <div class="device-heading"><span class="overline">04 / EMAIL</span><h2>Send email.</h2><p>For invitations, “Forgot your password?” and notifications. Folio sends through your mail provider or server; with Gmail, Fastmail and the like, create an app password for it.</p></div>
+        <p id="email-status" class="inline-note" aria-live="polite"></p>
+        <form id="email-form" class="device-form email-form">
+          <div class="device-form-row"><label>Folio’s address, as people open it <input id="email-public-url" placeholder="https://folio.example.com" autocomplete="off" maxlength="300"></label></div>
+          <p class="inline-note">Links in emails point here. Folio can’t take it from the browser’s request, which anyone can fake.</p>
+          <div class="device-form-row"><label>Mail server <input id="email-host" placeholder="smtp.example.com" autocomplete="off" maxlength="253"></label><label>Encryption <select id="email-security"><option value="starttls">STARTTLS (usually port 587)</option><option value="ssl">SSL/TLS (usually port 465)</option><option value="none">None (local relays only)</option></select></label><label>Port <input id="email-port" type="number" min="1" max="65535" placeholder="587"></label></div>
+          <div class="device-form-row"><label>Username <input id="email-username" autocomplete="off" maxlength="254"></label><label>Password <input id="email-password" type="password" autocomplete="new-password" maxlength="512"></label></div>
+          <div class="device-form-row"><label>Send from <input id="email-sender" type="email" placeholder="folio@example.com" maxlength="254"></label></div>
+          <label class="checkline"><input type="checkbox" id="email-verify" checked> Check the mail server’s certificate (untick for a self-signed one)</label>
+          <h3>Signing in</h3>
+          <label class="checkline"><input type="checkbox" id="email-reset" checked> “Forgot your password?” on the sign-in page, for every account with an email address (administrators too)</label>
+          <h3>Notifications</h3>
+          <p class="inline-note" id="email-notify-note">Administrators receive these at the address on their own account (Your account, top right).</p>
+          <div id="email-notify" class="email-notify"></div>
+          <div class="print-admin-actions"><button class="button dark-button" type="submit">Save</button><button class="button outline-button" type="button" id="email-test">Send a test email</button><button type="button" class="small-action danger hidden" id="email-remove">Remove</button></div>
+        </form>
+      </div>
       <div class="diagnostics-panel">
-        <div class="device-heading"><span class="overline">04 / DIAGNOSTICS</span><h2>System check.</h2><p id="diagnostics-summary">Checks storage, memory, proxy settings, every CUPS server and every scanner. Nothing is changed.</p></div>
+        <div class="device-heading"><span class="overline">05 / DIAGNOSTICS</span><h2>System check.</h2><p id="diagnostics-summary">Checks storage, memory, proxy settings, every CUPS server and every scanner. Nothing is changed.</p></div>
         <button class="button outline-button" type="button" id="diagnostics-run">Run checks</button>
         <div id="diagnostics-results" class="diagnostics-results" aria-live="polite"></div>
       </div>
       <div class="diagnostics-panel backup-panel" id="backup-panel">
-        <div class="device-heading"><span class="overline">05 / BACKUP</span><h2>Keep a copy.</h2><p>One file with your documents, accounts, settings, print statistics, and the built-in printers with their drivers. It holds your accounts and print-server logins, so keep it somewhere safe.</p></div>
+        <div class="device-heading"><span class="overline">06 / BACKUP</span><h2>Keep a copy.</h2><p>One file with your documents, accounts, settings, print statistics, and the built-in printers with their drivers. It holds your accounts and print-server logins, so keep it somewhere safe.</p></div>
         <div class="backup-row"><button class="button outline-button" type="button" id="backup-run">Download a backup</button><span id="backup-status" class="inline-note" aria-live="polite"></span></div>
         <div class="backup-restore">
           <h3>Restore from a backup</h3>
@@ -374,6 +412,23 @@
     <div class="guest-privacy"><svg class="svg-icon"><use href="#ico-lock"/></svg> Guest jobs are limited to one copy and rate-limited. Temporary previews expire after 15 minutes and never enter the Folio document library. Folio is free software: <a href="https://github.com/kmmukut/folio-scan-studio" target="_blank" rel="noopener">source code</a>.</div></div>
 </section>
 
+<dialog id="account-dialog" class="account-dialog" aria-label="Your account">
+  <div class="saved-print-head"><div><span class="overline">YOUR ACCOUNT</span><h2 id="account-name">Your account</h2><p id="account-role"></p></div><button type="button" id="account-close" class="round-close" aria-label="Close">✕</button></div>
+  <form id="account-email-form" class="people-form">
+    <label>Email address <input id="account-email" type="email" maxlength="254" autocomplete="email" placeholder="you@example.com"></label>
+    <p class="inline-note" id="account-email-note"></p>
+    <button class="button outline-button" type="submit">Save email address</button>
+  </form>
+  <form id="account-password-form" class="people-form">
+    <h3>Change your password</h3>
+    <input id="account-username" autocomplete="username" hidden>
+    <label>Current password <input id="account-current" type="password" autocomplete="current-password" required maxlength="256"></label>
+    <label>New password (12+ characters) <input id="account-new" type="password" autocomplete="new-password" required minlength="12" maxlength="256"></label>
+    <label>The same new password again <input id="account-repeat" type="password" autocomplete="new-password" required minlength="12" maxlength="256"></label>
+    <button class="button outline-button" type="submit">Change password</button>
+    <p class="inline-note">You’ll be signed out everywhere, and sign in again with the new password.</p>
+  </form>
+</dialog>
 <dialog id="saved-print-dialog" class="saved-print-dialog" aria-label="Print a saved document">
   <div class="saved-print-head"><div><span class="overline">PRINT FROM LIBRARY</span><h2 id="saved-print-title">Print a document</h2><p>Review the document and choose the pages before printing.</p></div><button type="button" id="saved-print-close" class="round-close" aria-label="Close">✕</button></div>
   <div class="saved-print-layout"><div class="saved-preview"><div class="preview-navigation"><button type="button" id="saved-prev">←</button><span id="saved-page-label">Page 1 of 1</span><button type="button" id="saved-next">→</button></div><img id="saved-preview-image" alt="Selected saved document page"><p>Preview uses your current non-destructive edits.</p></div>

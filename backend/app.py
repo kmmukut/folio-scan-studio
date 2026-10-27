@@ -33,7 +33,7 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 from backend import security
 from backend.processing import transform_page, find_deskew_angle, is_blank
-from backend import printing, devices, diagnostics, tasks, ipp, cupsadmin, cupsimport, features, stats, printserver, airprint, backup, destinations
+from backend import printing, devices, diagnostics, tasks, ipp, cupsadmin, cupsimport, features, stats, printserver, airprint, backup, destinations, mail, notify
 from backend.version import __version__
 
 log = logging.getLogger('folio')
@@ -108,9 +108,10 @@ async def lifespan(_app: FastAPI):
         await asyncio.to_thread(gracefully_stop_on_server_shutdown)
 
 
-def background_upkeep(stop: threading.Event, first: float = 20, interval: float = 600) -> None:
+def background_upkeep(stop: threading.Event, first: float = 20, interval: float = 300) -> None:
     """Every few minutes, count prints sent straight to CUPS (when that setting
-    is on) before CUPS forgets them. The first run waits for the print server."""
+    is on) before CUPS forgets them, and look at the printers for notification
+    emails. The first run waits for the print server."""
     wait = first
     while not stop.wait(wait):
         wait = interval
@@ -118,6 +119,33 @@ def background_upkeep(stop: threading.Event, first: float = 20, interval: float 
             cupsimport.import_jobs(DATA_DIR, cups_servers())
         except Exception:  # noqa: BLE001 - background upkeep must never take Folio down
             log.warning('Counting prints sent straight to CUPS failed', exc_info=True)
+        try:
+            watch_printers()
+        except Exception:  # noqa: BLE001
+            log.warning('Checking printers for notifications failed', exc_info=True)
+
+
+def watch_printers() -> int:
+    """Read each printer's supplies and state, for the notification emails
+    (only when one of those is on and an administrator has an address)."""
+    cfg = mail.settings(DATA_DIR)
+    if (not mail.configured(cfg) or not (cfg['notify']['supplies'] or cfg['notify']['attention'])
+            or not security.admin_emails(DATA_DIR)):
+        return 0
+    _, records = printer_inventory()
+    printers = []
+    for record in records:
+        if devices.cups_backoff(record['server']):
+            continue
+        try:
+            supplies = printer_supplies(record['server'], record['queue'])
+            state = cupsadmin.printer_state(cupsadmin.connection(DATA_DIR, record['server'], timeout=8),
+                                            record['queue'])
+        except (ipp.IPPError, OSError):
+            continue  # Unreachable: nothing is reported, and nothing re-armed
+        printers.append({'id': record['id'], 'label': record['label'], 'supplies': supplies,
+                         'reasons': state['reasons']})
+    return notify.check_printers(DATA_DIR, printers)
 
 
 
@@ -238,12 +266,57 @@ class UserCreate(BaseModel):
     username: str
     password: str
     role: Literal['admin','member','printer'] = 'member'
+    email: str | None = Field(default=None, max_length=254)
 
 
 class UserUpdate(BaseModel):
     role: Literal['admin','member','printer'] | None = None
     enabled: bool | None = None
     password: str | None = None
+    email: str | None = Field(default=None, max_length=254)  # Sent as null or '' to remove it
+
+
+class InviteBody(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    email: str | None = Field(default=None, max_length=254)
+    role: Literal['admin','member','printer'] = 'member'
+
+
+class LinkRequest(BaseModel):
+    send: bool = True
+
+
+class ForgotBody(BaseModel):
+    login: str = Field(min_length=1, max_length=254)
+
+
+class LinkBody(BaseModel):
+    token: str = Field(min_length=10, max_length=100)
+
+
+class LinkPasswordBody(LinkBody):
+    password: str = Field(min_length=12, max_length=256)
+
+
+class AccountBody(BaseModel):
+    email: str | None = Field(default=None, max_length=254)
+
+
+class MailBody(BaseModel):
+    host: str = Field(default='', max_length=253)
+    port: int | None = Field(default=None, ge=1, le=65535)
+    security: Literal['starttls', 'ssl', 'none'] = 'starttls'
+    username: str = Field(default='', max_length=254)
+    password: str = Field(default='', max_length=512)  # Empty keeps the stored one
+    sender: str = Field(default='', max_length=254)
+    verify_tls: bool = True
+    public_url: str = Field(default='', max_length=300)
+    password_reset: bool = True
+    notify: dict[str, bool] = Field(default_factory=dict)
+
+
+class MailTestBody(BaseModel):
+    to: str | None = Field(default=None, max_length=254)
 
 
 class ScannerConfigBody(BaseModel):
@@ -396,7 +469,8 @@ def choose_print_queue(request: Request, authenticated: bool) -> str:
 async def guard_private_api(request: Request, call_next):
     path = request.url.path
     # No account or documents are revealed on public endpoints.
-    public = ('/api/health', '/api/features', '/api/auth/login', '/api/auth/status', '/api/setup/admin', '/api/guest/status', '/api/guest/print', '/api/guest/inspect', '/api/guest/printers')
+    public = ('/api/health', '/api/features', '/api/auth/login', '/api/auth/status', '/api/setup/admin', '/api/guest/status', '/api/guest/print', '/api/guest/inspect', '/api/guest/printers',
+              '/api/auth/forgot', '/api/auth/link', '/api/auth/link/password')
     if request.method in ('POST','PUT','PATCH','DELETE'):
         # Fail closed for cross-site browser requests, including login and guest print.
         if request.headers.get('sec-fetch-site', '').lower() == 'cross-site':
@@ -454,6 +528,7 @@ def auth_status(request: Request):
             'role':session['role'] if session else None,
             'csrf':session['csrf'] if session else None,
             'guest_print':security.guest_enabled(DATA_DIR),
+            'password_reset':mail.reset_available(DATA_DIR),
             **setup_state()}
 
 
@@ -507,8 +582,75 @@ def logout(request: Request, response: Response):
 def change_password(body: PasswordBody, request: Request, response: Response):
     if not security.update_password(DATA_DIR, request.state.username, body.current_password, body.new_password):
         raise HTTPException(400, 'Current password incorrect, or new password is shorter than 12 characters')
+    notify.password_changed(DATA_DIR, request.state.username, 'self')
     response.delete_cookie(security.COOKIE_NAME, path='/')
     return {'ok':True, 'reauthenticate':True}
+
+
+@app.get('/api/auth/account')
+def my_account(request: Request):
+    account = security.account(DATA_DIR, request.state.username)
+    return {'username': account['username'], 'role': account['role'], 'email': account['email'],
+            'email_ready': mail.configured(mail.settings(DATA_DIR))}
+
+
+@app.put('/api/auth/account')
+def update_my_account(body: AccountBody, request: Request):
+    try:
+        security.set_email(DATA_DIR, request.state.username, body.email)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return my_account(request)
+
+
+FORGOT_ANSWER = ('If an account has that username or email address, a link to choose a new password is on its '
+                 'way to its email. The link works for one hour.')
+
+
+@app.post('/api/auth/forgot')
+def forgot_password(body: ForgotBody, request: Request):
+    """Email a reset link. The answer is the same whether or not the account
+    exists, and sending happens in the background, so it takes as long either way."""
+    if not mail.reset_available(DATA_DIR):
+        raise HTTPException(409, 'Password reset by email isn’t set up here. Ask an administrator.')
+    if not security.reset_rate_allowed(request.client.host if request.client else 'unknown', body.login):
+        raise HTTPException(429, 'Too many requests. Try again in a few minutes.')
+    target = security.reset_target(DATA_DIR, body.login)
+    if target:
+        token = security.create_link(DATA_DIR, target['username'], 'reset')
+        notify.reset(DATA_DIR, target['username'], target['email'], mail.password_link(DATA_DIR, token))
+    else:
+        security.link_decoy(DATA_DIR)
+    return {'detail': FORGOT_ANSWER}
+
+
+@app.post('/api/auth/link')
+def password_link_account(body: LinkBody):
+    """Who an invitation or reset link is for, to greet them on the page."""
+    found = security.link_account(DATA_DIR, body.token)
+    if not found:
+        raise HTTPException(404, 'This link has expired or was already used. Ask for a new one.')
+    return {'username': found['username'], 'purpose': found['purpose']}
+
+
+@app.post('/api/auth/link/password')
+def set_password_by_link(body: LinkPasswordBody, response: Response):
+    try:
+        record = security.use_link(DATA_DIR, body.token, body.password)
+    except PermissionError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    try:
+        if record['purpose'] == 'invite':
+            notify.joined(DATA_DIR, record['username'], record['role'])
+        else:
+            notify.password_changed(DATA_DIR, record['username'], 'reset')
+    except Exception:  # noqa: BLE001 - an email must never undo a password change
+        log.warning('Could not queue an email about %s', record['username'], exc_info=True)
+    response.set_cookie(security.COOKIE_NAME, record['token'], httponly=True,
+                        secure=COOKIE_SECURE, samesite='strict', max_age=security.SESSION_SECONDS, path='/')
+    return {'authenticated':True, 'username':record['username'], 'role':record['role'], 'csrf':record['csrf']}
 
 
 @app.post('/api/admin/guest')
@@ -560,7 +702,7 @@ def my_print_quota(request: Request):
 @app.post('/api/admin/users', status_code=201)
 def add_user(body: UserCreate):
     try:
-        return security.add_user(DATA_DIR, body.username, body.password, body.role)
+        return security.add_user(DATA_DIR, body.username, body.password, body.role, body.email)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -568,10 +710,96 @@ def add_user(body: UserCreate):
 @app.patch('/api/admin/users/{username}')
 def update_user(username: str, body: UserUpdate, request: Request):
     try:
-        return security.edit_user(DATA_DIR, username, request.state.username,
-                                  role=body.role, enabled=body.enabled, password=body.password)
+        result = security.edit_user(DATA_DIR, username, request.state.username,
+                                    role=body.role, enabled=body.enabled, password=body.password,
+                                    email=body.email if 'email' in body.model_fields_set else False)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    if body.password is not None:
+        notify.password_changed(DATA_DIR, username, 'admin')
+    return result
+
+
+def deliver_link(username: str, token: str, purpose: str, inviter: str, send: bool) -> dict:
+    """Email a new invitation or reset link if possible; the link is returned
+    either way, for the administrator to pass on themselves."""
+    account = security.account(DATA_DIR, username)
+    link = mail.password_link(DATA_DIR, token)
+    result = {'token': token, 'link': link, 'purpose': purpose, 'email': account['email'], 'emailed': False,
+              'email_error': None}
+    if send and account['email'] and mail.configured(mail.settings(DATA_DIR)):
+        if not link:
+            result['email_error'] = 'Folio’s address isn’t set in Devices → Email, so the email would have no link.'
+            return result
+        try:
+            if purpose == 'invite':
+                notify.invitation(DATA_DIR, username, account['email'], link, inviter)
+            else:
+                notify.reset(DATA_DIR, username, account['email'], link, wait=True)
+            result['emailed'] = True
+        except mail.MailError as exc:
+            result['email_error'] = str(exc)
+    return result
+
+
+@app.post('/api/admin/invitations', status_code=201)
+def invite_user(body: InviteBody, request: Request):
+    """An account whose person chooses their own password, through a link
+    emailed to them or passed on by the administrator."""
+    try:
+        token = security.invite_user(DATA_DIR, body.username.strip(), body.email, body.role)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {**deliver_link(body.username.strip(), token, 'invite', request.state.username, True), 'users': users()}
+
+
+@app.post('/api/admin/users/{username}/link')
+def new_password_link(username: str, body: LinkRequest, request: Request):
+    """A fresh invitation (for someone who hasn't chosen a password yet) or password reset link."""
+    account = security.account(DATA_DIR, username)
+    if not account:
+        raise HTTPException(404, 'User does not exist')
+    purpose = 'invite' if account['pending'] else 'reset'
+    token = security.create_link(DATA_DIR, username, purpose)
+    return deliver_link(username, token, purpose, request.state.username, body.send)
+
+
+@app.get('/api/admin/mail')
+def mail_settings(request: Request):
+    return {**mail.public(DATA_DIR), 'my_email': security.account(DATA_DIR, request.state.username)['email'],
+            'admins_with_email': len(security.admin_emails(DATA_DIR))}
+
+
+@app.put('/api/admin/mail')
+def save_mail_settings(body: MailBody, request: Request):
+    try:
+        mail.save(DATA_DIR, body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return mail_settings(request)
+
+
+@app.delete('/api/admin/mail')
+def remove_mail_settings(request: Request):
+    mail.remove(DATA_DIR)
+    return mail_settings(request)
+
+
+@app.post('/api/admin/mail/test')
+def send_test_mail(body: MailTestBody, request: Request):
+    try:
+        to = security.clean_email(body.to) or security.account(DATA_DIR, request.state.username)['email']
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if not to:
+        raise HTTPException(400, 'Enter an address to send the test to')
+    try:
+        mail.send(DATA_DIR, to, 'Folio test email',
+                  f'This is a test from Folio, sent by {request.state.username}. Email works: invitations, '
+                  'password resets and notifications can be sent.', automatic=False)
+    except mail.MailError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return {'sent_to': to}
 
 
 @app.delete('/api/admin/users/{username}')
@@ -963,7 +1191,20 @@ def run_print(source: Path, kind: str, title: str, choices: dict,
             task.update('Sending to the printer…', start + (end - start) * .95)
         outcome = print_with_cups(target, title, **choices)
     log_print(choices, selected, origin, outcome)
+    note_quota_reached(choices.get('user'))
     return {**cups_receipt(outcome), 'pages_selected': selected}
+
+
+def note_quota_reached(username: str | None) -> None:
+    """Email a person who has just used their last page of the month. Never stops a print."""
+    if not username or username == cupsadmin.GUEST_USER:
+        return
+    try:
+        state = quota_state(username)
+        if state['limit'] is not None and state['left'] == 0:
+            notify.quota_reached(DATA_DIR, username, state['limit'])
+    except Exception:  # noqa: BLE001
+        log.warning('Could not check whether %s reached their page limit', username, exc_info=True)
 
 
 def quota_state(username: str) -> dict:
@@ -1715,6 +1956,8 @@ def setup_checklist():
         {'id': 'airprint', 'title': 'Let phones print to your printers', 'optional': True,
          'done': bool(airprint.status().get('announced'))},
         {'id': 'backup', 'title': 'Download a backup', 'optional': True, 'done': bool(cfg.get('last_backup_at'))},
+        {'id': 'email', 'title': 'Set up email for invitations, password resets and notifications',
+         'optional': True, 'done': mail.configured(mail.settings(DATA_DIR))},
     ]
     return {'steps': steps, 'dismissed': bool(cfg.get('checklist_dismissed')), 'last_backup_at': cfg.get('last_backup_at'),
             'complete': all(step['done'] for step in steps if not step.get('optional'))}
@@ -1904,7 +2147,29 @@ def admin_diagnostics(request: Request):
         data_dir=DATA_DIR, jobs_dir=JOBS_DIR, cups_servers=servers, registry=cfg,
         request=request, cookie_secure=COOKIE_SECURE, version=__version__,
         default_printer=cfg.get('default_printer'), printers=present[:20], supplies_for=quiet_supplies,
-        extra=quota_checks())
+        extra=quota_checks(), system_extra=mail_checks())
+
+
+def mail_checks() -> list[dict]:
+    cfg = mail.settings(DATA_DIR)
+    if not mail.configured(cfg):
+        return [diagnostics.check('email', 'Email', 'info', 'Not set up. With email, people can be invited, reset '
+                                  'a forgotten password and receive notifications: Devices → Email.')]
+    checks = []
+    last = mail.last_result()
+    encryption = {'starttls': 'STARTTLS', 'ssl': 'SSL/TLS', 'none': 'no encryption'}[cfg['security']]
+    if last['ok'] is False:
+        checks.append(diagnostics.check('email', 'Email', 'warn', f"The last email failed: {last['error']}"))
+    else:
+        checks.append(diagnostics.check('email', 'Email', 'ok', f"Sends through {cfg['host']}:{cfg['port']} "
+                                        f"({encryption}){', last email sent fine' if last['ok'] else ''}."))
+    if not mail.public_url(DATA_DIR, cfg):
+        checks.append(diagnostics.check('public-url', 'Links in emails', 'warn', 'Folio’s address isn’t set, so '
+                                        'invitations and password resets can’t be emailed. Set it in Devices → Email.'))
+    if any(cfg['notify'].values()) and not security.admin_emails(DATA_DIR):
+        checks.append(diagnostics.check('admin-email', 'Notifications', 'warn', 'No administrator has an email '
+                                        'address, so notifications have nowhere to go. Add yours under Your account.'))
+    return checks
 
 
 def quota_checks() -> list[dict]:

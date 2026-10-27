@@ -7,8 +7,8 @@
 services:
   scan-studio:
     # FOLIO_EDITION: "full" (default) or "lite" for Raspberry Pi-class hosts.
-    # FOLIO_VERSION: "0.19" follows 0.19.x fixes; pin e.g. "0.19.0" to stay put.
-    image: "ghcr.io/kmmukut/folio-scan-studio:${FOLIO_VERSION:-0.19}-${FOLIO_EDITION:-full}"
+    # FOLIO_VERSION: "0.20" follows 0.20.x fixes; pin e.g. "0.20.0" to stay put.
+    image: "ghcr.io/kmmukut/folio-scan-studio:${FOLIO_VERSION:-0.20}-${FOLIO_EDITION:-full}"
     container_name: scan-studio
     restart: unless-stopped
     stop_grace_period: 45s
@@ -26,6 +26,7 @@ services:
       TZ: "${TZ:-UTC}"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       FORWARDED_ALLOW_IPS: "${FORWARDED_ALLOW_IPS:-127.0.0.1}"
+      FOLIO_PUBLIC_URL: "${FOLIO_PUBLIC_URL:-}"
       FOLIO_BUILTIN_CUPS: "${FOLIO_BUILTIN_CUPS:-on}"
       FOLIO_AIRPRINT_PORT: "${FOLIO_AIRPRINT_PORT:-631}"
       CUPS_SERVERS: "${CUPS_SERVERS:-}"

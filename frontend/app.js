@@ -36,6 +36,8 @@ function showLogin(){
   clearTimeout(pollTimer);state.csrf=null;state.user=null;state.role=null;
   $('#login-name').value='';$('#login-password').value='';
   setViews('auth-view');
+  ['forgot-form','forgot-sent','link-form','link-problem','auth-back'].forEach(id=>$('#'+id).classList.add('hidden'));
+  $('#forgot-open').classList.toggle('hidden',!state.passwordReset||!!state.setup?.setup_required);
   // A new installation: the first visitor creates the administrator.
   const setup=state.setup?.setup_required;
   $('#setup-form').classList.toggle('hidden',!setup||!state.setup.setup_open);
@@ -114,8 +116,9 @@ async function boot(){
   try {const saved=JSON.parse(localStorage.getItem('folio.scanSettings')||'null');if(saved)state.settings={...state.settings,...saved};}catch{}
   await loadFeatures();
   const status=await api('/api/auth/status').catch(()=>null);
-  state.guestEnabled=!!status?.guest_print;
+  state.guestEnabled=!!status?.guest_print;state.passwordReset=!!status?.password_reset;
   state.setup={setup_required:!!status?.setup_required,setup_open:!!status?.setup_open};
+  if(location.hash.startsWith('#password=') && !await followPasswordLink(!!status?.authenticated))return;
   if(status?.authenticated){state.csrf=status.csrf;state.user=status.username;state.role=status.role;if(state.role==='printer')await setupPrintOnly();else await setupAdmin();}
   else showLogin();
   if(location.hash==='#guest' && state.guestEnabled && state.role!=='printer')await openGuest();
@@ -693,6 +696,36 @@ async function signOut(){
   showLogin();
 }
 
+// Your account: an email address (for "Forgot your password?" and, for
+// administrators, notifications) and a new password.
+const ROLE_NAMES={admin:'Administrator',member:'Member',printer:'Print-only account'};
+async function openAccount(){
+  const me=await api('/api/auth/account');
+  $('#account-name').textContent=me.username;$('#account-role').textContent=ROLE_NAMES[me.role]||me.role;
+  $('#account-email').value=me.email||'';$('#account-username').value=me.username;
+  $('#account-email-note').textContent=(me.email_ready?'Used to send you a link if you forget your password':'Kept for when email is set up on this Folio: then it’s used for a link if you forget your password')
+    +(me.role==='admin'?', and for notifications about printers and people.':'.');
+  $('#account-password-form').reset();
+  $('#account-dialog').showModal();
+}
+$('#current-user').onclick=()=>openAccount().catch(problem);
+$('#account-close').onclick=()=>$('#account-dialog').close();
+$('#account-email-form').onsubmit=async e=>{
+  e.preventDefault();
+  try{const me=await api('/api/auth/account',{method:'PUT',body:{email:$('#account-email').value.trim()}});
+    toast(me.email?`Saved: ${me.email}`:'Email address removed.');}
+  catch(err){problem(err);}
+};
+$('#account-password-form').onsubmit=async e=>{
+  e.preventDefault();
+  if($('#account-new').value!==$('#account-repeat').value){toast('The two new passwords are different.',true);return;}
+  try{
+    await api('/api/auth/password',{method:'POST',body:{current_password:$('#account-current').value,new_password:$('#account-new').value}});
+    $('#account-dialog').close();state.user=null;state.role=null;state.csrf=null;showLogin();
+    toast('Password changed. Sign in with the new one.');
+  }catch(err){problem(err);}
+};
+
 // Small local previews and file drop. No uploaded file enters the Folio library.
 const printPreviews={guest:null,member:null};
 const printPreviewSerial={guest:0,member:0};
@@ -869,20 +902,34 @@ async function submitPrintFile(event,guest){
   }
 }
 
+// null (the default) >= 0 is true in JavaScript, so test for a number.
+const ownLimit=u=>typeof u.monthly_pages==='number'&&u.monthly_pages>=0;
 async function loadUsers(){
   try{
-    const users=await api('/api/admin/users');
+    const [users,mailState]=await Promise.all([api('/api/admin/users'),api('/api/admin/mail').catch(()=>null)]);
+    state.mailReady=!!mailState?.configured;
     $('#user-list').innerHTML=users.map(u=>`<div class="person" data-person="${html(u.username)}">
-      <div class="person-title"><strong>${html(u.username)}</strong>${u.username===state.user?'<span class="self-mark">You</span>':''}<span class="person-state">${u.enabled?'Active':'Disabled'}</span></div>
+      <div class="person-title"><strong>${html(u.username)}</strong>${u.username===state.user?'<span class="self-mark">You</span>':''}<span class="person-state">${!u.enabled?'Disabled':u.pending?(u.invite_expires?'Invited':'Invitation expired'):'Active'}</span></div>
+      ${u.pending?`<p class="inline-note">${u.invite_expires?`Hasn’t chosen a password yet; the invitation works until ${html(new Date(u.invite_expires*1000).toLocaleString(undefined,{weekday:'short',hour:'numeric',minute:'2-digit'}))}.`:'Hasn’t chosen a password, and the invitation has expired. Send a new one.'}</p>`:''}
       <label>Role <select class="person-role"><option value="member" ${u.role==='member'?'selected':''}>Member</option><option value="printer" ${u.role==='printer'?'selected':''}>Printer only</option><option value="admin" ${u.role==='admin'?'selected':''}>Administrator</option></select></label>
       <label class="checkline"><input class="person-enabled" type="checkbox" ${u.enabled?'checked':''}> Account enabled</label>
+      <label>Email address <input class="person-email" type="email" maxlength="254" value="${html(u.email||'')}" placeholder="None"></label>
       <label>Reset password (optional) <input class="person-password" type="password" minlength="12" autocomplete="new-password" placeholder="New password, 12+ chars"></label>
-      ${u.role==='admin'?'':`<div class="person-quota"><label>Pages a month <select class="person-quota-mode"><option value="default" ${u.monthly_pages===null?'selected':''}>Default</option><option value="none" ${u.monthly_pages===-1?'selected':''}>No limit</option><option value="custom" ${u.monthly_pages>=0?'selected':''}>Their own</option></select></label><input class="person-quota-pages ${u.monthly_pages>=0?'':'hidden'}" type="number" min="0" max="100000" value="${u.monthly_pages>=0?u.monthly_pages:''}" aria-label="Pages a month"><small>${count(u.quota.used)} printed this month${u.quota.limit===null?'':` of ${count(u.quota.limit)}`}</small></div>`}
+      ${u.role==='admin'?'':`<div class="person-quota"><label>Pages a month <select class="person-quota-mode"><option value="default" ${u.monthly_pages===null?'selected':''}>Default</option><option value="none" ${u.monthly_pages===-1?'selected':''}>No limit</option><option value="custom" ${ownLimit(u)?'selected':''}>Their own</option></select></label><input class="person-quota-pages ${ownLimit(u)?'':'hidden'}" type="number" min="0" max="100000" value="${ownLimit(u)?u.monthly_pages:''}" aria-label="Pages a month"><small>${count(u.quota.used)} printed this month${u.quota.limit===null?'':` of ${count(u.quota.limit)}`}</small></div>`}
       <div class="person-actions"><button class="button outline-button person-save">Save changes</button><button class="small-action danger person-delete">Delete user</button></div>
+      <div class="person-actions person-links">${u.email&&state.mailReady?`<button type="button" class="small-action" data-person-link="send">${u.pending?'Email a new invitation':'Email a password link'}</button>`:''}<button type="button" class="small-action" data-person-link="copy">${u.pending?'Copy a new invitation link':'Copy a password link'}</button></div>
+      <div class="invite-result hidden"></div>
     </div>`).join('')||'<p>No accounts found.</p>';
+    $$('[data-person-link]').forEach(button=>button.onclick=async()=>{
+      const row=button.closest('.person'),username=row.dataset.person,send=button.dataset.personLink==='send';
+      button.disabled=true;
+      try{showLinkResult(row.querySelector('.invite-result'),username,await api(`/api/admin/users/${encodeURIComponent(username)}/link`,{method:'POST',body:{send}}));}
+      catch(e){problem(e);}
+      finally{button.disabled=false;}
+    });
     $$('.person-save').forEach(button=>button.onclick=async()=>{
       let row=button.closest('.person'),username=row.dataset.person;
-      let body={role:row.querySelector('.person-role').value,enabled:row.querySelector('.person-enabled').checked};
+      let body={role:row.querySelector('.person-role').value,enabled:row.querySelector('.person-enabled').checked,email:row.querySelector('.person-email').value.trim()};
       let newPassword=row.querySelector('.person-password').value;
       if(newPassword)body.password=newPassword;
       try{
@@ -903,10 +950,41 @@ async function loadUsers(){
     });
   }catch(e){problem(e);}
 }
+// An invitation or password link, emailed or ready to copy and pass on.
+function showLinkResult(box,username,result){
+  const link=result.link||`${location.origin}/#password=${result.token}`,invite=result.purpose==='invite';
+  const valid=invite?'It works once, within 48 hours.':'It works once, within one hour.';
+  const said=result.emailed?`Emailed ${invite?'an invitation':'a password link'} to ${html(result.email)}. ${valid} You can also pass on this link yourself:`
+    :`${result.email_error?`Couldn’t email it: ${html(result.email_error)} `:''}Send ${html(username)} this link (by message, or however you like). ${valid}`;
+  box.innerHTML=`<p>${said}</p><div class="invite-link"><input readonly value="${html(link)}" aria-label="Link for ${html(username)}"><button type="button" class="button outline-button">Copy</button></div>`;
+  box.classList.toggle('error',!!result.email_error);box.classList.remove('hidden');
+  const input=box.querySelector('input');
+  box.querySelector('button').onclick=async()=>{
+    input.select();
+    try{await navigator.clipboard.writeText(link);}catch{document.execCommand('copy');}  // Plain http has no clipboard API
+    toast('Link copied.');
+  };
+}
+function updateNewUserWay(){
+  const invite=document.querySelector('input[name=new-way]:checked').value==='invite';
+  $('#new-password-box').classList.toggle('hidden',invite);$('#new-password').required=!invite;
+  $('#add-user-submit').textContent=invite?'Invite →':'Create account →';
+}
+$$('input[name=new-way]').forEach(radio=>radio.onchange=updateNewUserWay);
 $('#add-user-form').onsubmit=async e=>{
   e.preventDefault();
-  const body={username:$('#new-username').value.trim(),password:$('#new-password').value,role:$('#new-role').value};
-  try{await api('/api/admin/users',{method:'POST',body});$('#add-user-form').reset();toast('Created account '+body.username);await loadUsers();}catch(err){problem(err);}
+  const invite=document.querySelector('input[name=new-way]:checked').value==='invite';
+  const body={username:$('#new-username').value.trim(),role:$('#new-role').value,email:$('#new-email').value.trim()||null};
+  try{
+    if(invite){
+      const result=await api('/api/admin/invitations',{method:'POST',body});
+      showLinkResult($('#invite-result'),body.username,result);
+    }else{
+      await api('/api/admin/users',{method:'POST',body:{...body,password:$('#new-password').value}});
+      $('#invite-result').classList.add('hidden');toast('Created account '+body.username);
+    }
+    $('#add-user-form').reset();updateNewUserWay();await loadUsers();
+  }catch(err){problem(err);}
 };
 // --- Print statistics (administrators) -----------------------------------------
 const STATS_KEPT={90:'for 3 months',365:'for 1 year',730:'for 2 years',1825:'for 5 years',0:'until you delete them'};
@@ -1010,6 +1088,7 @@ const CHECKLIST_ACTIONS={
   people:['Add people',async()=>{workspace(false,true);await loadUsers();}],
   airprint:['How',()=>window.open('https://github.com/kmmukut/folio-scan-studio/blob/main/docs/DEPLOYMENT.md#airprint-phones-and-computers','_blank','noopener')],
   backup:['Back up',async()=>{await openDeviceManager();$('#backup-panel').scrollIntoView({behavior:'smooth'});}],
+  email:['Set up',async()=>{await openDeviceManager();$('#email-panel').scrollIntoView({behavior:'smooth'});}],
 };
 async function loadChecklist(){
   const list=await api('/api/admin/checklist');
@@ -1030,6 +1109,68 @@ $('#setup-form').onsubmit=async e=>{
     state.setup={setup_required:false,setup_open:false};
     state.user=status.username;state.role=status.role;state.csrf=status.csrf;$('#setup-password').value='';$('#setup-repeat').value='';
     await setupAdmin();
+  }catch(err){problem(err);}
+};
+// "Forgot your password?" and the links in invitation and reset emails (0.20).
+function authOnly(...ids){
+  ['setup-form','setup-closed','login-form','forgot-open','login-guest-button','login-guest-status','forgot-form','forgot-sent',
+   'link-form','link-problem','auth-back'].forEach(id=>$('#'+id).classList.toggle('hidden',!ids.includes(id)));
+}
+function authHeading(title,intro){$('#auth-title').innerHTML=title;$('#auth-intro').textContent=intro;}
+$('#forgot-open').onclick=()=>{
+  authOnly('forgot-form','auth-back');
+  authHeading('A new<br><em>password.</em>','Enter your username or email address. If your account has an email address, Folio sends it a link to choose a new password.');
+  $('#forgot-login').value=$('#login-name').value;$('#forgot-login').focus();
+};
+$('#forgot-form').onsubmit=async e=>{
+  e.preventDefault();const button=e.currentTarget.querySelector('button');button.disabled=true;
+  try{
+    const {detail}=await api('/api/auth/forgot',{method:'POST',body:{login:$('#forgot-login').value.trim()}});
+    $('#forgot-sent').textContent=detail;authOnly('forgot-sent','auth-back');
+  }catch(err){problem(err);}
+  finally{button.disabled=false;}
+};
+$('#auth-back').onclick=()=>{history.replaceState(null,'',location.pathname+location.search);showLogin();};
+let passwordToken=null;
+// A link from an email: show its form (false), or say why it can't be used and
+// let the caller carry on (true) if someone is signed in.
+async function followPasswordLink(signedIn){
+  const linkProblem=await openPasswordLink(location.hash.slice(10));
+  if(!linkProblem)return false;
+  if(!signedIn){showLogin();$('#link-problem').textContent=linkProblem;$('#link-problem').classList.remove('hidden');return false;}
+  toast(linkProblem,true);
+  return true;
+}
+// Pasted into a tab where Folio is already open: only the fragment changes.
+window.addEventListener('hashchange',()=>{
+  if(!location.hash.startsWith('#password='))return;
+  const signedIn=!!state.user;
+  followPasswordLink(signedIn).then(carryOn=>{if(carryOn)setViews('app-view');}).catch(problem);
+});
+// Shows the form for a link from an email; returns why it can't, or null.
+async function openPasswordLink(token){
+  passwordToken=token;
+  history.replaceState(null,'',location.pathname+location.search);  // Keep the token out of the address bar and history
+  setViews('auth-view');
+  try{
+    const link=await api('/api/auth/link',{method:'POST',body:{token}});
+    $('#link-username').value=link.username;
+    authOnly('link-form');
+    if(link.purpose==='invite')authHeading(`Welcome,<br><em>${html(link.username)}.</em>`,`Choose a password for your Folio account. Your username is ${link.username}.`);
+    else authHeading(`A new password,<br><em>${html(link.username)}.</em>`,'Choose a new password. Everywhere else you were signed in, you will be signed out.');
+    $('#link-password').focus();
+    return null;
+  }catch(err){return err.message;}
+}
+$('#link-form').onsubmit=async e=>{
+  e.preventDefault();
+  if($('#link-password').value!==$('#link-repeat').value){toast('The two passwords are different.',true);return;}
+  try{
+    const status=await api('/api/auth/link/password',{method:'POST',body:{token:passwordToken,password:$('#link-password').value}});
+    passwordToken=null;$('#link-password').value='';$('#link-repeat').value='';
+    state.user=status.username;state.role=status.role;state.csrf=status.csrf;
+    if(state.role==='printer')await setupPrintOnly();else await setupAdmin();
+    toast(`Your password is saved. Welcome, ${status.username}.`);
   }catch(err){problem(err);}
 };
 $('#login-guest-button').onclick=openGuest;
@@ -1096,6 +1237,57 @@ $('#destination-form').onsubmit=async event=>{
     await loadDestinations();await loadSendTargets();
   }catch(e){problem(e);}
 };
+// --- Email (0.20) -------------------------------------------------------------------
+const EMAIL_PORTS={starttls:587,ssl:465,none:25};
+function emailStatus(m){
+  if(!m.configured)return 'Not set up yet.';
+  const last=m.last?.ok===false?` The last email failed: ${m.last.error}`:m.last?.ok?' The last email was sent fine.':'';
+  const missing=[!m.public_url&&'Folio’s address is missing, so emails can’t contain links.',
+    !m.admins_with_email&&Object.values(m.notify).some(Boolean)&&'No administrator has an email address yet, so notifications have nowhere to go: add yours under Your account (top right).'].filter(Boolean).join(' ');
+  return `Sending through ${m.host}:${m.port}.${last}${missing?' '+missing:''}`;
+}
+async function loadEmail(){
+  const m=await api('/api/admin/mail');
+  $('#email-status').textContent=emailStatus(m);
+  $('#email-public-url').value=m.public_url||'';$('#email-public-url').placeholder=location.origin;
+  $('#email-host').value=m.host;$('#email-security').value=m.security;$('#email-port').value=m.configured?m.port:'';
+  $('#email-port').placeholder=EMAIL_PORTS[m.security];
+  $('#email-username').value=m.username;$('#email-password').value='';
+  $('#email-password').placeholder=m.has_password?'Saved; type to replace':'';
+  $('#email-sender').value=m.sender;$('#email-verify').checked=m.verify_tls;$('#email-reset').checked=m.password_reset;
+  $('#email-notify').innerHTML=Object.entries(m.notifications).map(([kind,label])=>`<label class="checkline"><input type="checkbox" data-notify="${html(kind)}" ${m.notify[kind]?'checked':''}> ${html(label)}</label>`).join('');
+  $('#email-remove').classList.toggle('hidden',!m.configured);
+  $('#email-test').disabled=!m.configured;
+  state.mailReady=m.configured;
+}
+$('#email-security').onchange=()=>{
+  const port=$('#email-port');port.placeholder=EMAIL_PORTS[$('#email-security').value];
+  if(Object.values(EMAIL_PORTS).includes(Number(port.value)))port.value=EMAIL_PORTS[$('#email-security').value];
+};
+$('#email-form').onsubmit=async event=>{
+  event.preventDefault();
+  const notify={};$$('[data-notify]').forEach(box=>notify[box.dataset.notify]=box.checked);
+  const body={public_url:$('#email-public-url').value.trim(),host:$('#email-host').value.trim(),security:$('#email-security').value,
+    port:Number($('#email-port').value)||null,username:$('#email-username').value.trim(),password:$('#email-password').value,
+    sender:$('#email-sender').value.trim(),verify_tls:$('#email-verify').checked,password_reset:$('#email-reset').checked,notify};
+  try{await api('/api/admin/mail',{method:'PUT',body});await loadEmail();toast('Email settings saved. Send a test email to check them.');}
+  catch(err){problem(err);}
+};
+$('#email-test').onclick=async()=>{
+  const me=(await api('/api/admin/mail').catch(()=>({}))).my_email;
+  const to=prompt('Send a test email to:',me||'');
+  if(!to)return;
+  const button=$('#email-test');button.disabled=true;button.textContent='Sending…';
+  try{const result=await api('/api/admin/mail/test',{method:'POST',body:{to:to.trim()}});toast(`Test email sent to ${result.sent_to}. Check that it arrived.`);}
+  catch(err){problem(err);}
+  finally{button.disabled=false;button.textContent='Send a test email';loadEmail().catch(()=>{});}
+};
+$('#email-remove').onclick=async()=>{
+  if(!confirm('Remove the email settings? Invitations can still be passed on as links; “Forgot your password?” and notifications stop.'))return;
+  try{await api('/api/admin/mail',{method:'DELETE'});await loadEmail();toast('Email settings removed.');}
+  catch(err){problem(err);}
+};
+
 async function loadDestinations(){
   const list=await api('/api/admin/destinations');
   $('#destination-list').innerHTML=list.map(d=>`<article class="device-card" data-destination="${html(d.id)}"><header><div><strong>${html(d.name)}</strong><small>${html(d.kind_label)} · ${html(d.kind==='paperless'?d.url:'/destinations/'+d.folder)}${d.tags.length?` · ${d.tags.length} default ${d.tags.length===1?'tag':'tags'}`:''}</small></div></header><div class="device-actions"><button class="danger-action" data-remove-destination>Remove</button></div></article>`).join('')||'<p class="muted">No destinations yet.</p>';
@@ -1397,7 +1589,7 @@ function refreshPrintOptions(prefix){
 async function openDeviceManager(){
   if(state.role!=='admin')return;
   workspace(false,false,true);
-  showLastBackup();loadDestinations().catch(problem);
+  showLastBackup();loadDestinations().catch(problem);loadEmail().catch(problem);
   await refreshDeviceManager();
 }
 async function refreshDeviceManager(refresh=false){

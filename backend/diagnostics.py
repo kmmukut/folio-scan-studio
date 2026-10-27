@@ -322,13 +322,14 @@ def check_ocr() -> dict:
 
 def run_checks(*, data_dir: Path, jobs_dir: Path, cups_servers: list[str], registry: dict,
                request, cookie_secure: bool, version: str, default_printer: str | None,
-               printers: list[tuple[str, str]] = (), supplies_for=None, extra: list[dict] = ()) -> dict:
+               printers: list[tuple[str, str]] = (), supplies_for=None, extra: list[dict] = (),
+               system_extra: list[dict] = ()) -> dict:
     sections = {
         'system': [check('version', 'Folio', 'info',
                          f'Version {version}, {features.edition().capitalize()} edition, on Python '
                          f'{platform.python_version()}, up {int((time.time() - STARTED) // 60)} min'),
                    *check_storage(data_dir, jobs_dir), check_memory(),
-                   *check_proxy(request, cookie_secure)],
+                   *check_proxy(request, cookie_secure), *system_extra],
         'printing': [*check_printing(cups_servers, default_printer, data_dir),
                      *(check_supplies(list(printers), supplies_for) if supplies_for else []), *extra],
         'scanning': [*check_scanning(registry), check_ocr()],

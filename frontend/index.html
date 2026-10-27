@@ -23,6 +23,7 @@
   <symbol id="ico-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M16 8V5H4v11h4"/></symbol>
   <symbol id="ico-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4"/></symbol>
   <symbol id="ico-printer" viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H4V9h16v9h-2M6 15h12v6H6zM17 12h.01"/></symbol>
+  <symbol id="ico-chart" viewBox="0 0 24 24"><path d="M4 20h16M7 16v-4M12 16V7M17 16v-7"/></symbol>
   <symbol id="ico-settings" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6"/></symbol>
   <symbol id="ico-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></symbol>
   <symbol id="ico-close" viewBox="0 0 24 24"><path d="m5 5 14 14M19 5 5 19"/></symbol>
@@ -60,13 +61,14 @@
       <button class="rail-link" id="print-tab"><svg class="svg-icon"><use href="#ico-printer"/></svg><span>Print desk</span><b>↗</b></button>
       <button class="rail-link hidden" id="users-tab"><svg class="svg-icon"><use href="#ico-lock"/></svg><span>People & access</span><b>↗</b></button>
       <button class="rail-link hidden" id="devices-tab"><svg class="svg-icon"><use href="#ico-printer"/></svg><span>Devices</span><b>↗</b></button>
+      <button class="rail-link hidden" id="stats-tab"><svg class="svg-icon"><use href="#ico-chart"/></svg><span>Statistics</span><b>↗</b></button>
       <div class="rail-heading with-action"><span>02 / DOCUMENTS</span><button id="new-job-sidebar" aria-label="New document" title="New document"><svg class="svg-icon"><use href="#ico-plus"/></svg></button></div>
       <div id="recent-jobs" class="recent-jobs"><p class="muted">Loading documents…</p></div>
     </div>
     <div class="rail-bottom">
       <div class="machine-status"><span class="led" id="device-led"></span><div><span id="rail-scanner-name">Selected scanner</span><small id="device-status">Checking connection…</small></div></div>
       <button class="rail-logout" id="logout-button">SIGN OUT <span>↗</span></button>
-      <div class="rail-license">PRIVATE EDITION <span>0.12.0</span></div>
+      <div class="rail-license">PRIVATE EDITION <span>0.13.0</span></div>
     </div>
   </aside>
   <div class="app-main">
@@ -257,6 +259,39 @@
         <button class="button outline-button" type="button" id="diagnostics-run">Run checks</button>
         <div id="diagnostics-results" class="diagnostics-results" aria-live="polite"></div>
       </div>
+    </section>
+    <section id="admin-stats-view" class="stats-desk hidden">
+      <div class="overline">RECORDS / 07</div><h1>What went<br><em>to paper.</em></h1>
+      <p>Every job Folio sends to a printer is counted here: who printed, on which printer, and how much paper it took. Jobs sent to CUPS from other computers are not included, and document names are never recorded.</p>
+      <div id="stats-off-note" class="stats-off-note hidden" role="status">Statistics are switched off, so new print jobs are not being recorded. Turn them on under “What Folio keeps” below.</div>
+      <div class="stats-toolbar">
+        <label>Period <select id="stats-period">
+          <option value="30d">Last 30 days</option><option value="month">This month</option><option value="last-month">Last month</option>
+          <option value="year">This year</option><option value="12m" selected>Last 12 months</option><option value="all">All time</option>
+        </select></label>
+        <a class="button outline-button" id="stats-export" href="/api/admin/stats/export?period=12m" download>Download CSV <svg class="svg-icon"><use href="#ico-download"/></svg></a>
+      </div>
+      <div id="stats-tiles" class="stats-tiles" aria-live="polite"></div>
+      <p id="stats-breakdown" class="stats-breakdown"></p>
+      <section class="stats-panel">
+        <span class="overline">PAPER OVER TIME</span><h2 id="stats-chart-title">Sheets of paper per month</h2>
+        <div id="stats-chart" class="stats-chart"></div>
+        <details class="stats-table-toggle"><summary>Show as a table</summary><div id="stats-chart-table"></div></details>
+      </section>
+      <div class="stats-grid">
+        <section class="stats-panel"><span class="overline">BY PERSON</span><h2>Who printed.</h2><div id="stats-people"></div></section>
+        <section class="stats-panel"><span class="overline">BY PRINTER</span><h2>Where it printed.</h2><div id="stats-printers"></div></section>
+      </div>
+      <section class="stats-panel stats-settings"><span class="overline">RECORD KEEPING</span><h2>What Folio keeps.</h2>
+        <p>For each job: when, who, which printer, pages, copies, sheets, colour and paper size. Never the document's name or contents. Deleting an account removes its name from these records.</p>
+        <label class="switch-line"><input id="stats-enabled" type="checkbox"> <span>Keep print statistics</span></label>
+        <label class="stats-retention">Keep records for <select id="stats-retention">
+          <option value="90">3 months</option><option value="365">1 year</option><option value="730">2 years</option><option value="1825">5 years</option><option value="0">Until I delete them</option>
+        </select></label>
+        <div class="print-admin-actions"><button class="button outline-button" id="stats-save" type="button">Save</button><button class="small-link danger-action" id="stats-clear" type="button">Delete all statistics</button></div>
+        <p class="inline-note" id="stats-oldest"></p>
+      </section>
+      <div class="security-note"><svg class="svg-icon"><use href="#ico-lock"/></svg> Only administrators can see this page. The numbers are what Folio sent to the printer: jobs cancelled in Folio are left out, but pages lost to a paper jam are not.</div>
     </section>
   </div>
 </div>

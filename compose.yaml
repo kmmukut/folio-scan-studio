@@ -6,7 +6,7 @@ services:
         # "full" (default) or "lite" for Raspberry Pi-class hosts: Lite leaves out
         # searchable PDFs (OCR) and automatic straightening to save ~400 MB.
         FOLIO_EDITION: "${FOLIO_EDITION:-full}"
-    image: "folio-scan-studio:0.12.0-${FOLIO_EDITION:-full}"
+    image: "folio-scan-studio:0.13.0-${FOLIO_EDITION:-full}"
     container_name: scan-studio
     restart: unless-stopped
     stop_grace_period: 45s
@@ -14,6 +14,8 @@ services:
       - "8870:8870"
     environment:
       DATA_DIR: /data
+      # Time zone for print statistics (which day or month a job counts in), e.g. Europe/Berlin
+      TZ: "${TZ:-UTC}"
       # Scanners are added in Folio > Devices; nothing scanner-specific belongs here.
       FOLIO_AIRSCAN_DISCOVERY: "${FOLIO_AIRSCAN_DISCOVERY:-off}"  # "on" to also find eSCL/WSD scanners by multicast
       SCAN_TIMEOUT_SECONDS: "900"

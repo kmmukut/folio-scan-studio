@@ -4,7 +4,7 @@ FROM python:3.12-slim-bookworm
 #   lite:           for Raspberry Pi-class hosts; leaves out the OCR stack
 #                   (OCRmyPDF, Tesseract, Ghostscript) and OpenCV/NumPy
 ARG FOLIO_EDITION=full
-ARG FOLIO_VERSION=0.12.0
+ARG FOLIO_VERSION=0.13.0
 LABEL org.opencontainers.image.title="Folio Scan Studio" \
       org.opencontainers.image.version="${FOLIO_VERSION}-${FOLIO_EDITION}" \
       org.opencontainers.image.description="Self-hosted scanning, printing and document workbench for CUPS/SANE devices"

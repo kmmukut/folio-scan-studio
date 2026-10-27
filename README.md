@@ -21,6 +21,8 @@ it from any phone, tablet or computer on your network.
   sheet and colour mode — limited to what each printer actually reports.
 - **Follow your jobs:** see whether each print is waiting, printing, stopped
   (and why) or done, and cancel it.
+- **Print statistics:** pages, sheets and paper saved, by person, printer and
+  month, from Folio's own log (no document names), with a CSV export.
 - **Share safely:** administrator, member and print-only accounts, private
   documents, and optional rate-limited guest printing.
 
@@ -71,7 +73,7 @@ then:
 The Compose file builds the image from source (`build: .`). Either run
 `docker compose up -d --build` in the source directory and manage the
 container from Portainer, or build the image first
-(`docker build --build-arg FOLIO_EDITION=full -t folio-scan-studio:0.12.0-full .`), then paste `compose.yaml`
+(`docker build --build-arg FOLIO_EDITION=full -t folio-scan-studio:0.13.0-full .`), then paste `compose.yaml`
 into a Portainer stack without the `build:` line and set the variables there.
 
 ## Configuration
@@ -84,12 +86,13 @@ into a Portainer stack without the `build:` line and set the variables there.
 | `CUPS_SERVERS` | empty | Optional: print servers to always use, e.g. `cups:631,192.168.1.10:631`. More can be added in Devices |
 | `COOKIE_SECURE` | `false` | Set `true` when Folio is served over HTTPS |
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Reverse proxies to trust for the visitor's address (IPs or networks) |
+| `TZ` | `UTC` | Time zone, e.g. `Europe/Berlin`; decides which day and month a print counts in |
 | `FOLIO_AIRSCAN_DISCOVERY` | `off` | `on` to also discover eSCL/WSD scanners by multicast |
 | `FOLIO_RENDER_CONCURRENCY` | 2 (1 on one core) | Full-resolution page decodes allowed at once |
 | `USER_PRINT_MAX_MB` | `256` | Upload size ceiling for signed-in users (64–2048) |
 | `SCAN_TIMEOUT_SECONDS` / `SCAN_GRACE_SECONDS` | `900` / `30` | Maximum scan time; time allowed for a scanner to cancel cleanly |
 
-All state lives in `./data` (accounts, documents, device registry). Back it
+All state lives in `./data` (accounts, documents, device registry, print log). Back it
 up before upgrading; see [CHANGELOG.md](CHANGELOG.md) for upgrade notes.
 
 ### Behind a reverse proxy

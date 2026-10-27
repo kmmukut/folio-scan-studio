@@ -16,7 +16,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from backend import cupsadmin, devices, features
+from backend import cupsadmin, devices, features, stats
 
 LOW_DISK_WARN = 1024 ** 3        # 1 GiB
 LOW_DISK_FAIL = 200 * 1024 ** 2  # 200 MiB
@@ -121,7 +121,27 @@ def check_storage(data_dir: Path, jobs_dir: Path) -> list[dict]:
     results.append(check('library', 'Document library', 'info',
                          f'{len(documents)} documents, {human_bytes(library)} on disk '
                          f'(of which {human_bytes(previews)} is regenerable preview cache)'))
+    results.append(check_print_log(data_dir))
     return results
+
+
+def check_print_log(data_dir: Path) -> dict:
+    zone = time.strftime('%Z') or 'UTC'
+    try:
+        kept = stats.settings(data_dir)
+        db = sqlite3.connect(stats.db_path(data_dir), timeout=2)
+        try:
+            jobs = db.execute('SELECT COUNT(*) FROM print_log').fetchone()[0]
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return check('print-log', 'Print statistics', 'warn', 'The print log cannot be read; printing is not affected')
+    if not kept['enabled']:
+        return check('print-log', 'Print statistics', 'info', f'Switched off; {jobs} jobs on record')
+    days = kept['retention_days']
+    period = 'until deleted' if not days else f'for {days} days'
+    return check('print-log', 'Print statistics', 'info',
+                 f'{jobs} jobs on record, kept {period}; days and months follow time zone {zone}')
 
 
 def check_memory() -> dict:

@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import io
+import csv
 import hashlib
 import math
 import asyncio
 import hmac
 import json
+import logging
 import os
 import re
 import signal
@@ -31,8 +33,10 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 from backend import security
 from backend.processing import transform_page, find_deskew_angle
-from backend import printing, devices, diagnostics, tasks, ipp, cupsadmin, features
+from backend import printing, devices, diagnostics, tasks, ipp, cupsadmin, features, stats
 from backend.version import __version__
+
+log = logging.getLogger('folio')
 
 DATA_DIR = Path(os.environ.get('DATA_DIR', '/data'))
 JOBS_DIR = DATA_DIR / 'jobs'
@@ -484,6 +488,7 @@ def delete_user(username: str, request: Request):
                     save_job(j)
             except (OSError, ValueError, KeyError, json.JSONDecodeError):
                 continue
+    stats.forget_user(DATA_DIR, username)
     return result
 
 
@@ -622,6 +627,29 @@ def print_with_cups(file_path: Path, title: str = 'Folio print', *,
         detail = (outcome.stderr or outcome.stdout or 'Unknown CUPS error').strip()[-240:]
         raise HTTPException(502, f'CUPS on {server} rejected this print job: {detail}. Check the queue and its permissions.')
     return outcome.stdout.strip()[:240]
+
+
+def cups_job_number(outcome: str) -> int | None:
+    """The job number from lp's "request id is Queue-123 (1 file(s))"."""
+    found = re.search(r'request id is\s+\S*-(\d+)(?:\s|$)', outcome, flags=re.I)
+    return int(found.group(1)) if found else None
+
+
+def log_print(choices: dict, pages: int, origin: str, outcome: str) -> None:
+    """Add a job CUPS accepted to Folio's print statistics. Never stops a print."""
+    try:
+        cfg, records = printer_inventory()
+        target = devices.resolve_printer(choices.get('queue') or cfg.get('default_printer'), records)
+        if not target:
+            return
+        caps = devices.cups_capabilities(target['server'], target['queue'])
+        stats.record(DATA_DIR, user=choices.get('user') or '', server=target['server'], queue=target['queue'],
+                     origin=origin, pages=pages, copies=choices.get('copies', 1), nup=choices.get('nup', 1),
+                     sides=choices.get('sides', 'one-sided'),
+                     color=stats.color_of(choices.get('color_mode', 'auto'), caps.get('color')),
+                     media=choices.get('media', 'default'), cups_job=cups_job_number(outcome))
+    except Exception:  # noqa: BLE001 - statistics must never fail a print
+        log.warning('Could not add a print job to the statistics', exc_info=True)
 
 
 def cups_receipt(outcome: str) -> dict:
@@ -799,10 +827,12 @@ class PreviewPrintRequest(BaseModel):
 
 
 def run_print(source: Path, kind: str, title: str, choices: dict,
-              task: tasks.Task | None = None, progress: tuple[float, float] = (0.0, 1.0)) -> dict:
+              task: tasks.Task | None = None, progress: tuple[float, float] = (0.0, 1.0),
+              origin: str = 'upload') -> dict:
     """Select pages, apply scaling/colour, and submit to CUPS (shared by all flows).
 
-    ``progress`` is the slice of the task's progress bar this step may use.
+    ``progress`` is the slice of the task's progress bar this step may use;
+    ``origin`` ('document' or 'upload') is recorded in the print statistics.
     """
     choices = dict(choices)
     pages = choices.pop('pages')
@@ -825,6 +855,7 @@ def run_print(source: Path, kind: str, title: str, choices: dict,
             # Last point at which cancelling stops the job; CUPS owns it after this.
             task.update('Sending to the printer…', start + (end - start) * .95)
         outcome = print_with_cups(target, title, **choices)
+    log_print(choices, selected, origin, outcome)
     return {**cups_receipt(outcome), 'pages_selected': selected}
 
 
@@ -1318,8 +1349,9 @@ def cups_test_page(printer: str, request: Request):
         page = Path(tmp) / 'test-page.pdf'
         printing.test_page(page, printer=target['queue'], server=target['server'],
                            user=request.state.username, version=__version__)
-        return cups_receipt(print_with_cups(page, 'Folio test page', queue=target['id'],
-                                            user=request.state.username))
+        outcome = print_with_cups(page, 'Folio test page', queue=target['id'], user=request.state.username)
+    log_print({'queue': target['id'], 'user': request.state.username}, 1, 'test-page', outcome)
+    return cups_receipt(outcome)
 
 
 @app.get('/api/admin/printers/{printer}/jobs')
@@ -1336,7 +1368,62 @@ def cups_printer_jobs(printer: str, which: Literal['not-completed', 'completed']
 def cups_admin_cancel_job(body: CancelJobBody, request: Request):
     conn = cups_call(cupsadmin.connection, DATA_DIR, configured_server(body.server), admin=True)
     cups_call(cupsadmin.cancel_job, conn, body.job_id, request.state.username)
+    stats.mark_cancelled(DATA_DIR, body.server, body.job_id)
     return {'cancelled': body.job_id}
+
+
+class StatsSettingsBody(BaseModel):
+    enabled: bool
+    retention_days: int
+
+
+def stats_period(period: str) -> str:
+    if period not in stats.PERIODS:
+        raise HTTPException(400, 'Unknown period')
+    return period
+
+
+@app.get('/api/admin/stats')
+def print_statistics(period: str = '12m'):
+    """What Folio has printed, by person and printer (only jobs Folio sent)."""
+    return {**stats.summary(DATA_DIR, stats_period(period)), 'guest_user': cupsadmin.GUEST_USER}
+
+
+@app.get('/api/admin/stats/export')
+def export_print_statistics(period: str = 'all'):
+    period = stats_period(period)  # Before streaming starts; it also names the file
+
+    def cell(value):
+        # Spreadsheets run cells that start with these as formulas.
+        text = '' if value is None else str(value)
+        return "'" + text if text[:1] in ('=', '+', '-', '@', '\t', '\r') else text
+
+    def lines():
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(stats.CSV_COLUMNS)
+        for row in stats.export_rows(DATA_DIR, period):
+            writer.writerow([cell(value) for value in row])
+            yield buffer.getvalue()
+            buffer.seek(0)
+            buffer.truncate()
+        yield buffer.getvalue()
+    filename = f'folio-print-log-{period}-{datetime.now().strftime("%Y-%m-%d")}.csv'
+    return StreamingResponse(lines(), media_type='text/csv; charset=utf-8',
+                             headers={'Content-Disposition': f'attachment; filename="{filename}"'})
+
+
+@app.put('/api/admin/stats/settings')
+def save_statistics_settings(body: StatsSettingsBody):
+    try:
+        return stats.save_settings(DATA_DIR, enabled=body.enabled, retention_days=body.retention_days)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.delete('/api/admin/stats')
+def clear_print_statistics():
+    return {'deleted': stats.clear(DATA_DIR)}
 
 
 @app.get('/api/print/jobs')
@@ -1381,6 +1468,7 @@ def cancel_my_print_job(body: CancelJobBody, request: Request):
         cups_call(cupsadmin.cancel_job, cupsadmin.connection(DATA_DIR, body.server, admin=True), body.job_id, user)
     except ipp.IPPError as exc:
         raise HTTPException(502, str(exc)) from exc
+    stats.mark_cancelled(DATA_DIR, body.server, body.job_id)
     return {'cancelled': body.job_id}
 
 
@@ -2175,12 +2263,12 @@ async def print_folio_document(job_id: str, request: Request, background: bool =
         with tempfile.TemporaryDirectory(prefix='folio-print-document-') as tmp:
             filepath = Path(tmp) / 'document.pdf'
             filepath.write_bytes(pdf_bytes)
-            return await asyncio.to_thread(run_print, filepath, 'pdf', j['title'], choices)
+            return await asyncio.to_thread(run_print, filepath, 'pdf', j['title'], choices, origin='document')
 
     def work(task: tasks.Task) -> dict:
         document = task.directory / 'document.pdf'
         build_job_pdf(job_id, j, document, 'balanced', False, task, progress=(0.0, .6))
-        return run_print(document, 'pdf', j['title'], choices, task, progress=(.6, 1.0))
+        return run_print(document, 'pdf', j['title'], choices, task, progress=(.6, 1.0), origin='document')
     return task_response(tasks.runner.submit('print', 'print', task_owner(request), work))
 
 
@@ -2224,6 +2312,7 @@ def ensure_directories():
     tasks.runner.start(DATA_DIR / 'tasks')
     clear_old_previews()
     security.init(DATA_DIR)
+    stats.init(DATA_DIR)
     cfg=registry()
     devices.write_managed_sane_config(cfg,managed_sane_path())
     # Existing v0.3 job.json files have no owner. Claim them for the original

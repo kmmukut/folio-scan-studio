@@ -16,7 +16,7 @@ Most of what makes an old printer feel modern comes from the sharing layer.
 Folio's job is to make the device and sharing layers easy to set up and keep
 healthy, and to make the workflow layer excellent.
 
-## Current structure (0.12)
+## Current structure (0.13)
 
 - `backend/app.py`: FastAPI routes, auth middleware, scan and print flows.
 - `backend/devices.py`: scanner registry (`data/devices.json`), generated
@@ -34,11 +34,14 @@ healthy, and to make the workflow layer excellent.
 - `backend/ipp.py`: minimal IPP client (CUPS administration and job queries).
 - `backend/cupsadmin.py`: stored CUPS admin logins, discovery, drivers,
   queue management and per-user print jobs.
+- `backend/stats.py`: Folio's print log and the statistics built from it
+  (D12).
 - `frontend/`: framework-free HTML/CSS/JS, served as static files.
 
 Storage: page originals are immutable PNGs under `data/jobs/<id>/pages/`;
 edits are metadata in `job.json`; previews are a disposable cache under
-`data/jobs/<id>/cache/`. Accounts live in `data/access.sqlite3`.
+`data/jobs/<id>/cache/`. Accounts live in `data/access.sqlite3`; the print
+log in `data/print-log.sqlite3`.
 
 ## Decisions
 
@@ -105,6 +108,26 @@ so USB-specific work (passthrough recipes, IPP-over-USB, per-model quirks)
 is left to community contributors with hardware rather than built
 untested. Folio's design already allows it: CUPS and SANE own the devices.
 
+### D12 — Print statistics come from Folio's own log, in SQLite (0.13)
+Folio records each job it hands to CUPS in a separate SQLite file. CUPS's
+page log was considered and rejected: it is off by default (as on the
+maintainer's server), it lives inside the CUPS container where Folio cannot
+read it, and it would mix in jobs from other computers. Folio's own log is
+exact for what Folio sent, works with any CUPS server, and stays isolated:
+it can be switched off or deleted without touching accounts. No document
+names are stored.
+
+PostgreSQL was considered and rejected for the same reasons as in D4. It
+would add a second container (about 30–60 MB of memory at rest), a password
+to manage, its own backups (`pg_dump`) and dump-and-restore on every major
+version upgrade, all for a table that grows by a few thousand rows a year.
+Its strengths (many writers, several app instances, network access for
+reporting tools) don't apply: Folio is one process. SQLite in WAL mode
+handles this volume with room to spare, is backed up by copying `data/`,
+and the CSV export covers spreadsheets and reporting tools. The SQL is kept
+plain, so the log could move to another database later if a real need
+appears.
+
 ### D6 — Capabilities come from the device, never from model names
 Sizes, trays, duplex, colour, scan modes and resolutions are what CUPS/SANE
 report. Folio does not fabricate options, and no device, address or network
@@ -118,10 +141,11 @@ may change with real use.
 1. ~~**0.10 — Background jobs.**~~ Done; see D7 and D8.
 2. ~~**0.11 — Printer management.**~~ Done; see D2 and D9.
 3. ~~**0.12 — Lite and Full editions.**~~ Done; see D10.
-4. **Next candidates:** usage statistics from CUPS's page log (jobs now
-   carry user names); arm64 image builds; an optional bundled CUPS + Avahi
-   container with AirPrint advertising and a first-run wizard. USB-specific
-   work waits for community testers (D11).
+4. ~~**0.13 — Print statistics.**~~ Done; see D12.
+5. **Next candidates:** arm64 image builds; an optional bundled CUPS + Avahi
+   container with AirPrint advertising and a first-run wizard; optional
+   per-person print quotas built on the print log. USB-specific work waits
+   for community testers (D11).
 
 Before 1.0: a fresh Raspberry Pi plus a supported USB printer reaches a first
 print in under 10 minutes; upgrades preserve data; a compatibility list

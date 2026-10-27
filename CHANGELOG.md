@@ -4,6 +4,72 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.13.0 — Print statistics
+
+Administrators get a **Statistics** page: how much was printed, by whom, on
+which printer and when, from a log Folio keeps of every job it sends.
+
+- **Totals for a period** (last 30 days, this or last month, this year, last
+  12 months, all time): pages printed, sheets of paper, print jobs, and
+  sheets saved by double-sided and multi-page printing, plus how many pages
+  were in colour, in greyscale, or left to the printer ("Automatic" on a
+  colour printer).
+- **Sheets of paper per day or month**, as a chart with a table view.
+- **By person and by printer.** Guests are counted together as "Guests".
+- **Download CSV** of the individual jobs in the chosen period.
+- **Record keeping:** keep statistics for 3 months, 1 year (default), 2 or 5
+  years, or until deleted; switch them off; or delete them all.
+
+What is recorded, per job: time, Folio user, print server and printer,
+whether it came from a scanned document, an upload or a test page, pages,
+copies, pages per sheet, one- or two-sided, sheets, colour mode, paper size,
+and the CUPS job number. **Document names and contents are never stored.**
+Deleting an account removes its name from the records (its pages still
+count for the printer). Only administrators can see or change any of this.
+
+How the numbers are worked out: pages are the pages Folio sent (after any
+page range) times copies; sheets also account for pages per sheet and
+double-sided printing, with each copy starting on a new sheet. A job
+cancelled in Folio is marked and left out of the totals. Folio does not know
+what the printer physically did, so a paper jam or a job cancelled at the
+printer still counts. Jobs sent to CUPS from other computers are not
+included; Folio only counts what it sent itself.
+
+The log is a separate SQLite file, `data/print-log.sqlite3`, apart from
+accounts, so it can be switched off or deleted without touching anything
+else. If it ever cannot be written, printing carries on; System check shows
+its state. No new service or container is needed.
+
+### Also
+- New setting `TZ` (default `UTC`) so jobs count on the right local day and
+  month, e.g. `TZ=Europe/Berlin`.
+
+### Verified
+- 16 new tests: page and sheet arithmetic (copies, duplex, pages per sheet),
+  periods and day/month grouping including time zones, retention, switching
+  off, cancelled jobs, removed accounts, every way of printing (upload,
+  background job, saved document, test page, guest), statistics never
+  stopping a print, administrator-only access for every endpoint, and CSV
+  cells that cannot run as spreadsheet formulas.
+- The whole test suite runs inside both built images: Full 158 passed;
+  Lite 155 passed and 3 skipped (the auto-straighten tests).
+- End to end against a real CUPS (a throwaway container, printers pointing
+  at unused addresses so nothing printed): uploads, a 2-up job and a test
+  page went through `lp`, the CUPS job numbers were recorded, a job
+  cancelled in Folio dropped out of the totals, and times followed `TZ`.
+- In headless Chrome at desktop and phone width (375 px): the page, chart
+  hover, period switching, CSV download, retention change (asks before
+  deleting older records), switching off, deleting everything, and that a
+  member does not see the page. No horizontal scrolling at either width.
+- **Not verified:** with your printers. Counts are what Folio sent, so they
+  do not depend on the printer, but check a few against real prints.
+
+### Upgrading
+Nothing to change; the print log starts empty and fills from the first job
+after the upgrade (earlier prints are not counted). Optionally set `TZ` in
+`.env` or the Portainer stack variables. The image tag is now
+`folio-scan-studio:0.13.0-full` (or `-lite`).
+
 ## 0.12.0 — Lite and Full editions from one codebase
 
 Folio can now be built in two editions from the same source, chosen with a

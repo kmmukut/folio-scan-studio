@@ -415,7 +415,7 @@ async def guard_private_api(request: Request, call_next):
             return JSONResponse({'detail':'Administrator privileges required'}, status_code=403)
         # Print-only accounts have access only to account management for
         # themselves and the authenticated printing API, never scan files.
-        if session['role'] == 'printer' and not (path.startswith('/api/auth/') or (path in ('/api/print','/api/print/status','/api/print/inspect','/api/print/submit-preview','/api/printers') or path.startswith(('/api/print/preview/', '/api/print/jobs', '/api/tasks/')))):
+        if session['role'] == 'printer' and not (path.startswith('/api/auth/') or (path in ('/api/print','/api/print/status','/api/print/quota','/api/print/inspect','/api/print/submit-preview','/api/printers') or path.startswith(('/api/print/preview/', '/api/print/jobs', '/api/tasks/')))):
             return JSONResponse({'detail':'Printing-only account'}, status_code=403)
         # Every job endpoint (including thumbnails, exports and mutations)
         # is protected: members access only documents they created.
@@ -519,7 +519,42 @@ def change_guest(body: GuestSettings):
 
 @app.get('/api/admin/users')
 def users():
-    return security.list_users(DATA_DIR)
+    return [{**user, 'quota': quota_state(user['username'])} for user in security.list_users(DATA_DIR)]
+
+
+class QuotaBody(BaseModel):
+    monthly_pages: int | None = Field(default=None, ge=-1, le=100000)
+
+
+@app.put('/api/admin/users/{username}/quota')
+def set_user_quota(username: str, body: QuotaBody):
+    """``null``: follow the default; -1: no limit; otherwise pages a month."""
+    try:
+        security.set_quota(DATA_DIR, username, body.monthly_pages)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return quota_state(username)
+
+
+@app.get('/api/admin/quota-default')
+def quota_default():
+    return {'monthly_pages': security.quota_default(DATA_DIR), 'statistics_enabled': stats.settings(DATA_DIR)['enabled']}
+
+
+@app.put('/api/admin/quota-default')
+def set_quota_default(body: QuotaBody):
+    if body.monthly_pages == -1:
+        body.monthly_pages = None
+    try:
+        security.set_quota_default(DATA_DIR, body.monthly_pages)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return quota_default()
+
+
+@app.get('/api/print/quota')
+def my_print_quota(request: Request):
+    return quota_state(request.state.username)
 
 
 @app.post('/api/admin/users', status_code=201)
@@ -922,12 +957,30 @@ def run_print(source: Path, kind: str, title: str, choices: dict,
                                             progress=page_progress)
         except printing.PrintFileError as exc:
             raise HTTPException(400, str(exc)) from exc
+        check_quota(choices.get('user'), selected * choices.get('copies', 1))
         if task:
             # Last point at which cancelling stops the job; CUPS owns it after this.
             task.update('Sending to the printer…', start + (end - start) * .95)
         outcome = print_with_cups(target, title, **choices)
     log_print(choices, selected, origin, outcome)
     return {**cups_receipt(outcome), 'pages_selected': selected}
+
+
+def quota_state(username: str) -> dict:
+    limit = security.quota_for(DATA_DIR, username)
+    used = stats.pages_this_month(DATA_DIR, username)
+    return {'limit': limit, 'used': used, 'left': None if limit is None else max(0, limit - used)}
+
+
+def check_quota(username: str | None, pages: int) -> None:
+    """Refuse a print that would go over the person's monthly pages."""
+    if not username or username == cupsadmin.GUEST_USER:
+        return  # Guests have their own limits
+    state = quota_state(username)
+    if state['limit'] is not None and pages > state['left']:
+        raise HTTPException(403, f"This would print {pages} {'page' if pages == 1 else 'pages'}, but you have "
+                                 f"{state['left']} of your {state['limit']} pages left this month. "
+                                 'Ask an administrator for more.')
 
 
 def task_owner(request: Request, guest: bool = False) -> str:
@@ -1761,7 +1814,22 @@ def admin_diagnostics(request: Request):
     return diagnostics.run_checks(
         data_dir=DATA_DIR, jobs_dir=JOBS_DIR, cups_servers=servers, registry=cfg,
         request=request, cookie_secure=COOKIE_SECURE, version=__version__,
-        default_printer=cfg.get('default_printer'), printers=present[:20], supplies_for=quiet_supplies)
+        default_printer=cfg.get('default_printer'), printers=present[:20], supplies_for=quiet_supplies,
+        extra=quota_checks())
+
+
+def quota_checks() -> list[dict]:
+    """Quotas are counted from the print log, so they need statistics kept."""
+    limited = security.quota_default(DATA_DIR) is not None or any(
+        u['monthly_pages'] is not None and u['monthly_pages'] >= 0
+        for u in security.list_users(DATA_DIR) if u['role'] != 'admin')
+    if not limited:
+        return []
+    if not stats.settings(DATA_DIR)['enabled']:
+        return [diagnostics.check('quotas', 'Print quotas', 'warn', 'Monthly page limits are set, but print '
+                                  'statistics are switched off, so pages aren’t counted and nobody is limited. '
+                                  'Turn statistics on under Statistics → What Folio keeps.')]
+    return [diagnostics.check('quotas', 'Print quotas', 'ok', 'Monthly page limits are counted from the print log.')]
 
 
 @app.get('/api/scanner')

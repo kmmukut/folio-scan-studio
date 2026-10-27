@@ -148,6 +148,15 @@ def record(data_dir: Path, *, user: str, server: str, queue: str, origin: str, p
     return True
 
 
+def pages_this_month(data_dir: Path, user: str, now: float | None = None) -> int:
+    """Pages ``user`` printed through Folio this calendar month (for quotas)."""
+    start = _month_start(datetime.fromtimestamp(now or time.time()))
+    with connection(data_dir) as db:
+        row = db.execute("SELECT COALESCE(SUM(pages * copies), 0) FROM print_log WHERE user=? AND status='sent' "
+                         "AND origin != 'cups' AND printed_at >= ?", (user, int(start.timestamp()))).fetchone()
+    return int(row[0])
+
+
 def mark_cancelled(data_dir: Path, server: str, cups_job: int) -> None:
     """A job cancelled in Folio before it finished no longer counts as printed."""
     with connection(data_dir) as db:

@@ -16,7 +16,7 @@ Most of what makes an old printer feel modern comes from the sharing layer.
 Folio's job is to make the device and sharing layers easy to set up and keep
 healthy, and to make the workflow layer excellent.
 
-## Current structure (0.17)
+## Current structure (0.18)
 
 - `backend/app.py`: FastAPI routes, auth middleware, scan and print flows.
 - `backend/devices.py`: scanner registry (`data/devices.json`), generated
@@ -234,7 +234,12 @@ may change with real use.
    setup checklist, no root, backup and restore; see D15.
 8. ~~**0.17 — Scans go where you keep documents.**~~ Paperless-ngx and folder
    destinations, blank pages; see D16.
-9. **0.18 — Print quotas** per person, built on the print log.
+9. ~~**0.18 — Print quotas.**~~ Pages per person per calendar month, counted
+   from the print log (so they need statistics kept); checked after the
+   page range is applied and before anything reaches CUPS. Administrators
+   have none; guests keep their own limits.
+10. **Next candidates:** a Raspberry Pi check and community hardware reports
+   toward 1.0; translations; saved scan presets.
 USB-specific work waits for community testers (D11).
 
 Before 1.0: a fresh Raspberry Pi plus a supported USB printer reaches a first

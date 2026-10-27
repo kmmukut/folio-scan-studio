@@ -60,6 +60,8 @@ def init(data_dir: Path):
             db.execute('ALTER TABLE users ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1')
         if 'created' not in columns:
             db.execute('ALTER TABLE users ADD COLUMN created INTEGER NOT NULL DEFAULT 0')
+        if 'monthly_pages' not in columns:  # Print quota: NULL = the default, -1 = no limit
+            db.execute('ALTER TABLE users ADD COLUMN monthly_pages INTEGER')
         db.execute('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, csrf TEXT NOT NULL, expires INTEGER NOT NULL)')
         db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
         db.execute("INSERT OR IGNORE INTO settings (key,value) VALUES ('guest_print','off')")
@@ -191,8 +193,45 @@ def update_password(data_dir: Path, username: str, old_password: str, new_passwo
 
 def list_users(data_dir: Path):
     with connection(data_dir) as db:
-        rows = db.execute('SELECT username,role,enabled,created FROM users ORDER BY created,username').fetchall()
-    return [{'username': r[0], 'role': r[1], 'enabled': bool(r[2]), 'created': r[3]} for r in rows]
+        rows = db.execute('SELECT username,role,enabled,created,monthly_pages FROM users ORDER BY created,username').fetchall()
+    return [{'username': r[0], 'role': r[1], 'enabled': bool(r[2]), 'created': r[3], 'monthly_pages': r[4]} for r in rows]
+
+
+# --- Print quotas ---------------------------------------------------------------
+# Pages per calendar month. Administrators have none; guests have their own
+# limits. Each account follows the default unless it has its own number (or
+# -1 for no limit).
+
+def quota_default(data_dir: Path) -> int | None:
+    with connection(data_dir) as db:
+        row = db.execute("SELECT value FROM settings WHERE key='default_monthly_pages'").fetchone()
+    return int(row[0]) if row and row[0] != '' else None
+
+
+def set_quota_default(data_dir: Path, pages: int | None) -> None:
+    if pages is not None and not 0 <= pages <= 100000:
+        raise ValueError('Choose between 0 and 100,000 pages a month, or no limit')
+    with connection(data_dir) as db:
+        db.execute("INSERT INTO settings (key,value) VALUES ('default_monthly_pages', ?) "
+                   'ON CONFLICT(key) DO UPDATE SET value=excluded.value', ('' if pages is None else str(pages),))
+
+
+def set_quota(data_dir: Path, username: str, pages: int | None) -> None:
+    """``None``: follow the default; -1: no limit; otherwise pages a month."""
+    if pages is not None and not -1 <= pages <= 100000:
+        raise ValueError('Choose between 0 and 100,000 pages a month, no limit, or the default')
+    with connection(data_dir) as db:
+        if not db.execute('UPDATE users SET monthly_pages=? WHERE username=?', (pages, username)).rowcount:
+            raise ValueError('User does not exist')
+
+
+def quota_for(data_dir: Path, username: str) -> int | None:
+    """The pages this person may print a month; ``None`` means no limit."""
+    with connection(data_dir) as db:
+        row = db.execute('SELECT role,monthly_pages FROM users WHERE username=?', (username,)).fetchone()
+    if not row or row[0] == 'admin' or row[1] == -1:
+        return None
+    return row[1] if row[1] is not None else quota_default(data_dir)
 
 
 def add_user(data_dir: Path, username: str, password: str, role: str):

@@ -4,6 +4,49 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.18.0 — Print quotas
+
+An optional monthly page limit per person.
+
+- **People & access → Print quotas:** a limit for everyone (members and
+  print-only accounts), and, for each person, *Default*, *No limit* or their
+  own number. Administrators have no limit; guests keep their own rules (one
+  copy, rate-limited).
+- **How it counts:** pages printed through Folio this calendar month, in
+  your time zone, copies included, after any page range. Prints sent straight
+  to the print server from phones don't count, and nor do earlier months.
+- **A print that would go over is stopped before it reaches the printer,**
+  with the reason: *"This would print 4 pages, but you have 2 of your 5
+  pages left this month. Ask an administrator for more."* That works for
+  background prints too.
+- **People see where they stand** on the Print desk: *"This month you have
+  printed 12 of your 20 pages; 8 left."* Administrators see each person's
+  pages this month on People & access.
+- **Quotas are counted from the print statistics.** If statistics are
+  switched off, nobody can be limited; People & access and System check say
+  so.
+
+### Verified
+- **Tests:** 208 on the host. Inside the images, on amd64: Full 209, Lite
+  206 with 3 skipped. They cover:
+  - the default and per-person limits, and "no limit"
+  - the exact refusal before anything reaches the print server
+  - administrators and guests being exempt
+  - background prints
+  - earlier months and direct prints not counting
+  - the warning when statistics are off
+  - members being unable to change limits
+- **In headless Chrome:**
+  - setting a limit for everyone, then one person's own limit
+  - that person seeing their usage on the Print desk at phone width (375 px)
+- **Start-up check:** both images start healthy, with Folio as the
+  ordinary user.
+- **Not verified:** the arm64 images (built and tested by the release
+  workflow).
+
+### Upgrading
+Nothing is required. There are no limits until you set one.
+
 ## 0.17.0 — Scans go where you keep documents
 
 Finished documents can be sent straight to Paperless-ngx or a folder, and

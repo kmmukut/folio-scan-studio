@@ -645,11 +645,18 @@ async function loadPrinterStatus(){
     const low=(r.supplies_low||[]).map(s=>`${s.name} ${s.level} %`).join(', ');
     $('#print-status-text').textContent=(r.ready?r.message:`${r.message}${r.available_queues?.length?' · Available: '+r.available_queues.join(', '):''}`)+(low?` · Running low: ${low}`:'');
     $('#print-status-led').classList.toggle('on',!!r.ready);
+    showMyQuota().catch(()=>{});
     // If CUPS supplied concrete PPD PageSize values, mark unsupported choices.
     // Refresh capabilities consistently for all three print flows; the
     // device-specific selector is authoritative (not this status probe).
     for(const prefix of ['member','saved'])refreshPrintOptions(prefix);
   }catch(e){$('#print-status-text').textContent=e.message;}
+}
+// "42 of 100 pages this month", for people with a monthly limit.
+async function showMyQuota(){
+  const quota=await api('/api/print/quota');
+  $('#print-quota').classList.toggle('hidden',quota.limit===null);
+  if(quota.limit!==null)$('#print-quota').textContent=`This month you have printed ${count(quota.used)} of your ${count(quota.limit)} pages; ${count(quota.left)} left.`;
 }
 async function showPrintDesk(){
   workspace(true);
@@ -870,6 +877,7 @@ async function loadUsers(){
       <label>Role <select class="person-role"><option value="member" ${u.role==='member'?'selected':''}>Member</option><option value="printer" ${u.role==='printer'?'selected':''}>Printer only</option><option value="admin" ${u.role==='admin'?'selected':''}>Administrator</option></select></label>
       <label class="checkline"><input class="person-enabled" type="checkbox" ${u.enabled?'checked':''}> Account enabled</label>
       <label>Reset password (optional) <input class="person-password" type="password" minlength="12" autocomplete="new-password" placeholder="New password, 12+ chars"></label>
+      ${u.role==='admin'?'':`<div class="person-quota"><label>Pages a month <select class="person-quota-mode"><option value="default" ${u.monthly_pages===null?'selected':''}>Default</option><option value="none" ${u.monthly_pages===-1?'selected':''}>No limit</option><option value="custom" ${u.monthly_pages>=0?'selected':''}>Their own</option></select></label><input class="person-quota-pages ${u.monthly_pages>=0?'':'hidden'}" type="number" min="0" max="100000" value="${u.monthly_pages>=0?u.monthly_pages:''}" aria-label="Pages a month"><small>${count(u.quota.used)} printed this month${u.quota.limit===null?'':` of ${count(u.quota.limit)}`}</small></div>`}
       <div class="person-actions"><button class="button outline-button person-save">Save changes</button><button class="small-action danger person-delete">Delete user</button></div>
     </div>`).join('')||'<p>No accounts found.</p>';
     $$('.person-save').forEach(button=>button.onclick=async()=>{
@@ -877,8 +885,17 @@ async function loadUsers(){
       let body={role:row.querySelector('.person-role').value,enabled:row.querySelector('.person-enabled').checked};
       let newPassword=row.querySelector('.person-password').value;
       if(newPassword)body.password=newPassword;
-      try{await api(`/api/admin/users/${encodeURIComponent(username)}`,{method:'PATCH',body});toast('Updated '+username);await loadUsers();}catch(e){problem(e);}
+      try{
+        await api(`/api/admin/users/${encodeURIComponent(username)}`,{method:'PATCH',body});
+        const mode=row.querySelector('.person-quota-mode')?.value;
+        if(mode){
+          const pages=mode==='default'?null:mode==='none'?-1:Number(row.querySelector('.person-quota-pages').value||0);
+          await api(`/api/admin/users/${encodeURIComponent(username)}/quota`,{method:'PUT',body:{monthly_pages:pages}});
+        }
+        toast('Updated '+username);await loadUsers();
+      }catch(e){problem(e);}
     });
+    $$('.person-quota-mode').forEach(select=>select.onchange=()=>select.closest('.person').querySelector('.person-quota-pages').classList.toggle('hidden',select.value!=='custom'));
     $$('.person-delete').forEach(button=>button.onclick=async()=>{
       const username=button.closest('.person').dataset.person;
       if(!confirm(`Delete account "${username}"? Its scans will remain available to administrators.`))return;
@@ -1134,7 +1151,21 @@ for(const prefix of ['member','guest']){
   };
 }
 
-$('#users-tab').onclick=async()=>{if(state.role!=='admin')return;workspace(false,true);await loadUsers();};
+$('#users-tab').onclick=async()=>{if(state.role!=='admin')return;workspace(false,true);await Promise.all([loadUsers(),loadQuotaDefault()]);};
+async function loadQuotaDefault(){
+  const result=await api('/api/admin/quota-default');
+  $('#quota-default').value=result.monthly_pages??'';
+  $('#quota-warning').classList.toggle('hidden',result.statistics_enabled);
+}
+$('#quota-default-form').onsubmit=async event=>{
+  event.preventDefault();
+  const value=$('#quota-default').value.trim();
+  try{
+    await api('/api/admin/quota-default',{method:'PUT',body:{monthly_pages:value===''?null:Number(value)}});
+    toast(value===''?'No monthly limit by default.':`Everyone may print ${count(Number(value))} pages a month unless they have their own limit.`);
+    await Promise.all([loadUsers(),loadQuotaDefault()]);
+  }catch(e){problem(e);}
+};
 $('#save-guest').onclick=async()=>{try{let r=await api('/api/admin/guest',{method:'POST',body:{enabled:$('#guest-enable').checked}});state.guestEnabled=r.enabled;toast(r.enabled?'Guest printing enabled':'Guest printing disabled');}catch(e){problem(e);}};
 $('#open-guest-view').onclick=openGuest;
 $('#guest-back').onclick=closeGuest;

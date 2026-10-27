@@ -83,6 +83,8 @@ and privacy-conscious design.
   cancel your own.
 - **Print statistics:** pages, sheets and paper saved by person, printer and
   month, from Folio's own log (no document names), with CSV export.
+- **Print quotas:** an optional monthly page limit per person, shown to
+  them on the Print desk.
 - **Share safely:** administrator, member and print-only accounts, private
   document libraries, and optional rate-limited guest printing.
 

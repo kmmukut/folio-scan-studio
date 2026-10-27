@@ -18,7 +18,7 @@ Folio is configured in two places:
 | `SCAN_STUDIO_ADMIN_USER` | `admin` | Username of that first administrator, when created from the setting. |
 | `PUID` / `PGID` | `1000` / `1000` | The user and group Folio runs as, and who owns its files on the host. `PUID=0` runs it as root (some USB scanners need that). |
 | `FOLIO_EDITION` | `full` | `full` or `lite`. Picks the image (`…-full` / `…-lite`), or what is built from source. See [Editions](../README.md#images-and-editions). |
-| `FOLIO_VERSION` | `0.17` | Image version. `0.17` receives 0.17.x fixes on `docker compose pull`; `0.17.0` stays exactly there. |
+| `FOLIO_VERSION` | `0.18` | Image version. `0.18` receives 0.18.x fixes on `docker compose pull`; `0.18.0` stays exactly there. |
 | `FOLIO_PORT` | `8870` | Port on the host that Folio is reachable on. |
 | `TZ` | `UTC` | Time zone, e.g. `Europe/Berlin`. Decides which day and month a print counts in for statistics. |
 | `COOKIE_SECURE` | `false` | Set `true` when Folio is served over HTTPS (behind a reverse proxy). Sign-in cookies are then only sent over HTTPS. |
@@ -47,7 +47,7 @@ recreates the container); data is kept.
 | **Devices → Destinations** | Paperless-ngx servers and folders documents can be sent to from the workbench. |
 | **Devices → Backup** | Download a backup of everything, or restore one. |
 | **Workbench → Getting started** | A checklist of the first steps; hide it when you're done. |
-| **People & access** | Accounts: administrator, member (own documents and printing), print-only. |
+| **People & access** | Accounts: administrator, member (own documents and printing), print-only; monthly page limits (a default, and per person). |
 | **Print desk** | Guest printing on or off. |
 | **Statistics** | Whether print statistics are kept and for how long, and whether prints sent straight to the print server (from phones and computers) are counted too. |
 

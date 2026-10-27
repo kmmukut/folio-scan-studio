@@ -14,7 +14,7 @@ released and credit you if you wish.
 ## Supported versions
 
 Fixes go into the newest release. Before 1.0, only the latest minor
-version (currently 0.17.x) receives security fixes, so please keep up to
+version (currently 0.18.x) receives security fixes, so please keep up to
 date: `docker compose pull && docker compose up -d`.
 
 ## How Folio protects your data

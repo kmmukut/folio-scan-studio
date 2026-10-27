@@ -100,8 +100,3 @@ The release workflow then tests both editions on amd64 and arm64, publishes
 the images to GHCR and Docker Hub, and creates the GitHub release with that
 version's changelog and a source archive. A tag like `v1.0.0-rc.1` is
 published as a pre-release and doesn't move `latest`, `full` or `lite`.
-
-## Code of Conduct
-
-Everyone taking part is expected to follow the
-[Code of Conduct](CODE_OF_CONDUCT.md).

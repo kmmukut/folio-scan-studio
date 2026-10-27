@@ -156,8 +156,8 @@ most valuable contribution right now.
   way.
 - Bug reports, fixes and ideas: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Please follow the [Code of Conduct](CODE_OF_CONDUCT.md), and report security
-issues privately as described in [SECURITY.md](SECURITY.md).
+Please report security issues privately, as described in
+[SECURITY.md](SECURITY.md).
 
 ## License
 

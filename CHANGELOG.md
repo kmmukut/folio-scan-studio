@@ -28,9 +28,8 @@ how Folio works; this release is about installing and contributing.
 - Guides: [Deployment](docs/DEPLOYMENT.md) (Compose, Portainer, Raspberry
   Pi, CUPS, USB, reverse proxies, backups), [Configuration](docs/CONFIGURATION.md)
   and [Hardware](docs/HARDWARE.md), with the start of a compatibility list.
-- CONTRIBUTING, Code of Conduct (Contributor Covenant 2.1), SECURITY
-  (private vulnerability reporting), and issue forms for bugs, features
-  and **hardware reports**.
+- CONTRIBUTING, SECURITY (private vulnerability reporting), and issue
+  forms for bugs, features and **hardware reports**.
 
 ### License
 Folio is licensed under the **GNU AGPL-3.0-or-later**, matching PyMuPDF and

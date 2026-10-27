@@ -29,6 +29,7 @@ CUPS_DELETE_PRINTER = 0x4004
 CUPS_ACCEPT_JOBS = 0x4008
 CUPS_GET_DEVICES = 0x400B
 CUPS_GET_PPDS = 0x400C
+CUPS_GET_PPD = 0x400F
 
 # Delimiter tags (attribute groups)
 OPERATION, JOB, END, PRINTER = 0x01, 0x02, 0x03, 0x04
@@ -104,6 +105,7 @@ class Response:
     status: int
     request_id: int
     groups: list[tuple[int, dict[str, list]]] = field(default_factory=list)
+    data: bytes = b''  # Document data after the attributes (e.g. a PPD file)
 
     @property
     def ok(self) -> bool:
@@ -180,6 +182,7 @@ def decode(data: bytes) -> Response:
         while pos < len(data):
             tag = data[pos]
             if tag == END:
+                response.data = data[pos + 1:]
                 break
             if tag < 0x10:  # A new attribute group
                 current = {}
@@ -237,11 +240,12 @@ class Connection:
 
     def request(self, operation: int, attributes: list[tuple[int, str, Any]] = (),
                 resource: str = '/', printer_attributes: list | None = None,
-                timeout: float | None = None, authenticate: bool = True) -> Response:
+                timeout: float | None = None, authenticate: bool = True, data: bytes = b'') -> Response:
+        """Send one request; ``data`` is document data sent after the attributes."""
         groups = [operation_attributes(*attributes)]
         if printer_attributes:
             groups.append((PRINTER, printer_attributes))
-        body = encode(operation, groups)
+        body = encode(operation, groups) + data
         headers = {'Content-Type': 'application/ipp'}
         if authenticate and self.username and self.password is not None:
             token = base64.b64encode(f'{self.username}:{self.password}'.encode()).decode()

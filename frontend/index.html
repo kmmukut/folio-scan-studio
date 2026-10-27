@@ -40,8 +40,15 @@
   <main class="auth-panel">
     <div class="overline dark-line">FOLIO / PRIVATE WORKSPACE</div>
     <div class="brand-auth"><span class="brand-symbol">F.</span><span>folio<span class="brand-period">.</span></span></div>
-    <h1>Your paper,<br><em>in good hands.</em></h1>
-    <p>Sign in to organize your scans, edit individual pages, and finish documents at your own pace.</p>
+    <h1 id="auth-title">Your paper,<br><em>in good hands.</em></h1>
+    <p id="auth-intro">Sign in to organize your scans, edit individual pages, and finish documents at your own pace.</p>
+    <form id="setup-form" class="auth-form hidden">
+      <label for="setup-name">ADMINISTRATOR USERNAME</label><input id="setup-name" autocomplete="username" required minlength="3" maxlength="32" value="admin">
+      <label for="setup-password">PASSWORD (12+ CHARACTERS)</label><input id="setup-password" type="password" autocomplete="new-password" required minlength="12" maxlength="256">
+      <label for="setup-repeat">THE SAME PASSWORD AGAIN</label><input id="setup-repeat" type="password" autocomplete="new-password" required minlength="12" maxlength="256">
+      <button class="button main-button" type="submit">Create and open Folio <svg class="svg-icon"><use href="#ico-arrow"/></svg></button>
+    </form>
+    <p id="setup-closed" class="setup-closed hidden">For safety, the administrator can only be created in the first 15 minutes after Folio starts. Restart Folio (<code>docker compose restart</code>), then reload this page.</p>
     <form id="login-form" class="auth-form">
       <label for="login-name">USERNAME</label><input id="login-name" autocomplete="username" required value="" maxlength="50" placeholder="Username">
       <label for="login-password">PASSWORD</label><input id="login-password" type="password" autocomplete="current-password" required>
@@ -68,7 +75,7 @@
     <div class="rail-bottom">
       <div class="machine-status"><span class="led" id="device-led"></span><div><span id="rail-scanner-name">Selected scanner</span><small id="device-status">Checking connection…</small></div></div>
       <button class="rail-logout" id="logout-button">SIGN OUT <span>↗</span></button>
-      <div class="rail-license">EDITION <span>0.15.0</span></div>
+      <div class="rail-license">EDITION <span>0.16.0</span></div>
       <a class="rail-source" href="https://github.com/kmmukut/folio-scan-studio" target="_blank" rel="noopener">Source code · AGPL-3.0</a>
     </div>
   </aside>
@@ -81,6 +88,10 @@
       <section class="masthead">
         <div><div class="overline">THE DOCUMENT ATELIER <span>— 01</span></div><h1>Good paper<br><em>doesn't rush.</em></h1><p>Capture. Arrange. Refine. Make every page worth keeping.</p></div>
         <div class="masthead-stamp" aria-hidden="true"><span>SCAN</span><b>✳</b><span>KEEP</span></div>
+      </section>
+      <section id="setup-checklist" class="setup-checklist hidden" aria-labelledby="checklist-title">
+        <div class="checklist-head"><div><span class="overline">GETTING STARTED</span><h2 id="checklist-title">Set up your paper desk.</h2><p id="checklist-progress"></p></div><button type="button" class="small-link" id="checklist-hide">Hide this</button></div>
+        <ol id="checklist-steps" class="checklist-steps"></ol>
       </section>
       <div class="doc-bar">
         <div class="doc-title-block"><div class="overline">CURRENT / DOCUMENT</div><input id="document-title" aria-label="Document name" value="Untitled document" maxlength="100"><div class="doc-subline"><span id="doc-count">0 pages</span><span class="dot">•</span><span id="doc-date">New draft</span></div></div>
@@ -259,6 +270,15 @@
         <div class="device-heading"><span class="overline">03 / DIAGNOSTICS</span><h2>System check.</h2><p id="diagnostics-summary">Checks storage, memory, proxy settings, every CUPS server and every scanner. Nothing is changed.</p></div>
         <button class="button outline-button" type="button" id="diagnostics-run">Run checks</button>
         <div id="diagnostics-results" class="diagnostics-results" aria-live="polite"></div>
+      </div>
+      <div class="diagnostics-panel backup-panel" id="backup-panel">
+        <div class="device-heading"><span class="overline">04 / BACKUP</span><h2>Keep a copy.</h2><p>One file with your documents, accounts, settings, print statistics, and the built-in printers with their drivers. It holds your accounts and print-server logins, so keep it somewhere safe.</p></div>
+        <div class="backup-row"><button class="button outline-button" type="button" id="backup-run">Download a backup</button><span id="backup-status" class="inline-note" aria-live="polite"></span></div>
+        <div class="backup-restore">
+          <h3>Restore from a backup</h3>
+          <p class="inline-note">Replaces Folio’s documents, accounts and settings with the backup’s, and sets up the built-in printers it contains again. What it replaces is kept in <code>data/.before-restore</code>.</p>
+          <div class="backup-row"><label class="button ghost-button file-button">Choose a backup file…<input type="file" id="restore-file" accept=".tar.gz,.tgz,application/gzip"></label><span id="restore-status" class="inline-note" aria-live="polite"></span></div>
+        </div>
       </div>
     </section>
     <section id="admin-stats-view" class="stats-desk hidden">

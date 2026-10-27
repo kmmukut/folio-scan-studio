@@ -4,6 +4,103 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.16.0 — The first minutes
+
+Installing Folio no longer needs a password in a settings file, Folio no
+longer runs as root, and everything can be backed up and restored from the
+browser.
+
+### Create the administrator in the browser
+- `SCAN_STUDIO_ADMIN_PASSWORD` is now optional. Without it, open Folio after
+  starting it and create the administrator account on the welcome page.
+- For safety that's possible only in the first 15 minutes after Folio
+  starts, so a forgotten installation that others can reach can't be
+  claimed later. `docker compose restart` reopens the window.
+- Two people trying at once get one administrator.
+- Setting the password in `.env` still works as before.
+
+### A getting-started checklist
+The workbench shows administrators the first steps, each ticked off by what
+is actually set up:
+- add a printer
+- print a test page
+- add a scanner
+- optional: invite people, let phones print, download a backup
+
+Each step has a button that takes you there; **Hide this** when you're done.
+
+### Folio no longer runs as root
+- Folio's web application runs as an ordinary user, `PUID`/`PGID` (1000 by
+  default). Its files in the data folder belong to that user on the host.
+  Existing installations are handed over automatically at the first start.
+- Only the built-in print server's small supervisor stays root. It now also
+  writes the AirPrint announcements (the host's folder belongs to root):
+  - checked every 30 seconds, so new printers appear within half a minute
+  - withdrawn when the container stops, so phones don't look for printers
+    that are gone
+- `PUID=0` runs Folio as root again, for USB scanners only root may open.
+
+### Backup and restore
+- **Devices → Backup → Download a backup:** one file with your documents
+  (original scans and edits), accounts, settings, print statistics, logins
+  for other print servers, and the built-in printers with their drivers.
+  Preview caches and sign-ins are left out.
+- **Restore from a backup** puts it all back, on this installation or a new
+  one:
+  - the built-in printers in it are set up again, with their drivers, even
+    when the printer itself is switched off
+  - what it replaces is kept in `data/.before-restore`
+  - you stay signed in if your account is in the backup
+- Backups from a newer Folio, files that aren't Folio backups, and archives
+  with anything unexpected inside are refused before anything is touched.
+
+### Also
+- System check no longer reports an error when the built-in print server
+  has no printers yet. It said "No destinations added", which is just CUPS
+  having nothing to announce.
+- The CI start-up check also confirms Folio runs as the ordinary user.
+
+### Verified
+- **Tests:** 184 on the host (the real-CUPS test runs only inside the
+  images). Inside the images, on amd64: Full 185, Lite 182 with 3 skipped
+  (the auto-straighten tests).
+- **A real installation without a password, as the ordinary user:**
+  - the processes run as expected: Folio as `folio`; the supervisor and CUPS
+    as root
+  - the data belongs to `folio`, except the print server's folder; Folio's
+    print-server login is readable by its group only
+  - the administrator was created in the browser, and a second attempt was
+    refused
+  - a printer was added on the built-in server
+  - a backup with that printer's driver was made; the printer was removed,
+    the backup restored, and the printer came back and was announced again
+  - stopping the container withdrew the announcements
+- **Upgrade:** a 0.15 installation (all files root's) was started as 0.16:
+  - Folio's files were handed to `folio`, the print server's stayed root's
+  - the account signed in, and the document and built-in printer were still
+    there
+- **`PUID=0`:** Folio runs as root and answers.
+- **Start-up check:** both images start healthy, with Folio as the ordinary
+  user and the built-in print server answering.
+- **In headless Chrome:**
+  - the welcome page at phone width (375 px): no sideways scrolling
+  - creating the administrator, and the checklist
+  - the backup panel, and restoring a backup through it; the page reloads
+    still signed in
+  - Downloading through the page wasn't checked here, because this test
+    setup's browser can't save downloads. The same file, fetched directly,
+    restores fine.
+- **Not verified:** USB scanners as the ordinary user (no USB hardware),
+  and the arm64 images (built and tested by the release workflow).
+
+### Upgrading
+Nothing is required.
+- At the first start, Folio hands its files in the data folder to user and
+  group 1000. If your own ids differ (`id -u`, `id -g`), set `PUID` and
+  `PGID` first, so the files end up yours on the host.
+- `SCAN_STUDIO_ADMIN_PASSWORD` can stay in your settings; it is only used
+  when no accounts exist.
+
 ## 0.15.0 — Folio is the print server
 
 Folio now includes its own print server, so printing works without setting

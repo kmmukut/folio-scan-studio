@@ -438,3 +438,20 @@
 .supply.low .supply-meter span{background:var(--clay)}.supply.low b{color:#98492d}
 .stats-cups-note{margin:-6px 0 14px 32px;max-width:560px}
 @media(max-width:640px){.supply{grid-template-columns:minmax(0,1fr) 56px 64px}.stats-cups-note{margin-left:0}}
+
+/* v0.16: first-run administrator creation */
+.setup-closed{max-width:385px;background:#f5eddc;border:1px solid #d8ccb3;color:#675336;padding:12px 15px;line-height:1.6;font-size:12px;margin-top:24px}
+.setup-checklist{margin:0 43px;padding:24px 28px;border:1px solid #d7dcce;border-top:0;background:#fbfaf5}
+.checklist-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.checklist-head h2{font:normal 26px Georgia,serif;margin:8px 0 6px}.checklist-head p{font-size:12px;color:#687e6d;margin:0}
+.checklist-steps{list-style:none;padding:0;margin:16px 0 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
+.checklist-steps li{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid #e1e3d8;background:#fffefa;min-width:0}
+.checklist-steps li.done{background:#f1f5ec;color:#55705a}
+.checklist-mark{width:20px;height:20px;border:1px solid #b7c3b2;border-radius:50%;display:grid;place-items:center;flex-shrink:0}
+.checklist-steps li.done .checklist-mark{background:#55705a;border-color:#55705a;color:#fff}.checklist-mark .svg-icon{width:12px;height:12px}
+.checklist-title{flex:1;font-size:12px;min-width:0}.checklist-title small{color:var(--muted);font-size:10px;margin-left:4px}
+@media(max-width:850px){.setup-checklist{margin:0 20px}}
+@media(max-width:640px){.setup-checklist{margin:0;padding:18px 16px;border-left:0;border-right:0}.checklist-head{flex-direction:column}}
+.backup-panel{margin-top:22px}.backup-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px}
+.backup-restore{border-top:1px solid #e3e6db;margin-top:20px;padding-top:16px}.backup-restore h3{font:normal 20px Georgia,serif;margin:0 0 6px}
+.file-button{position:relative;overflow:hidden}.file-button input{position:absolute;inset:0;opacity:0;cursor:pointer}

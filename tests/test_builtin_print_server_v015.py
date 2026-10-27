@@ -205,21 +205,40 @@ def test_printers_are_added_to_it_without_a_login_step(builtin, tmp_path_factory
     fake, admin = builtin
     avahi = tmp_path_factory.mktemp('avahi-services')
     monkeypatch.setattr(airprint, 'SERVICES_DIR', avahi)
-    assert admin.get('/api/admin/cups/servers').json()[0]['announcing'] is True
+    monkeypatch.setattr(airprint, 'STATUS_FILE', tmp_path_factory.mktemp('run') / 'airprint.json')
     started = admin.post(f'{server_path(fake)}/printers', json={
         'name': 'Hallway', 'connection': 'socket', 'address': '192.0.2.5', 'driver': 'everywhere'})
     assert started.status_code == 202, started.text
     assert follow(admin, started.json()['task'])['status'] == 'done'
     assert fake.printers['Hallway']['device-uri'] == 'socket://192.0.2.5:9100'
-    assert sorted(p.name for p in avahi.iterdir()) == ['folio-Hallway.service', 'folio-Office.service']
-    assert admin.delete(f"/api/admin/printers/{quote(f'{fake.server}|Hallway', safe='')}").status_code == 200
-    for _ in range(50):  # Withdrawn in the background
-        if not (avahi / 'folio-Hallway.service').exists():
-            break
-        time.sleep(.05)
-    assert sorted(p.name for p in avahi.iterdir()) == ['folio-Office.service']
     # The fake CUPS only accepts administration with Folio's generated login.
     assert admin.get(f'{server_path(fake)}/devices').status_code == 200
+    # The print server's supervisor announces what it shares, and Folio shows it.
+    assert admin.get('/api/admin/cups/servers').json()[0]['announcing'] is False  # Nothing announced yet
+    assert printserver.announce(web.DATA_DIR, fake.server) == ['Hallway', 'Office']
+    assert sorted(p.name for p in avahi.iterdir()) == ['folio-Hallway.service', 'folio-Office.service']
+    assert admin.get('/api/admin/cups/servers').json()[0]['announcing'] is True
+    steps = {s['id']: s for s in admin.get('/api/admin/checklist').json()['steps']}
+    assert steps['airprint']['done'] is True
+    assert admin.delete(f"/api/admin/printers/{quote(f'{fake.server}|Hallway', safe='')}").status_code == 200
+    assert printserver.announce(web.DATA_DIR, fake.server) == ['Office']
+    assert sorted(p.name for p in avahi.iterdir()) == ['folio-Office.service']
+    airprint.withdraw()  # What the supervisor does when the container stops
+    assert list(avahi.iterdir()) == []
+
+
+def test_a_failed_announcement_shows_in_system_check(builtin, tmp_path_factory, monkeypatch):
+    fake, admin = builtin
+    monkeypatch.setattr(airprint, 'SERVICES_DIR', tmp_path_factory.mktemp('avahi-services'))
+    monkeypatch.setattr(airprint, 'STATUS_FILE', tmp_path_factory.mktemp('run') / 'airprint.json')
+    monkeypatch.setattr(diagnostics, 'probe_cups_server', lambda server: diagnostics.check(
+        f'cups:{server}', f'CUPS {server}', 'ok', 'Reachable in 1 ms; 1 printer, 1 ready'))
+    assert printserver.announce(web.DATA_DIR, '127.0.0.1:9') == []  # Nothing listens there
+    check = {c['id']: c for c in admin.get('/api/admin/diagnostics').json()['sections']['printing']}['airprint']
+    assert check['status'] == 'warn' and check['detail'].startswith('Announcing failed')
+    printserver.announce(web.DATA_DIR, fake.server)
+    check = {c['id']: c for c in admin.get('/api/admin/diagnostics').json()['sections']['printing']}['airprint']
+    assert check['status'] == 'ok' and 'Office' in check['detail']
 
 
 def test_supplies_are_read_cleaned_up_and_flagged(builtin, monkeypatch):
@@ -347,6 +366,7 @@ def test_a_real_print_through_the_built_in_server(monkeypatch):
         avahi = tmp_path / 'avahi-services'
         avahi.mkdir()
         monkeypatch.setattr(airprint, 'SERVICES_DIR', avahi)
+        monkeypatch.setattr(airprint, 'STATUS_FILE', tmp_path / 'airprint.json')
         security._guest_submissions.clear()
         with TestClient(web.app):
             admin = login('admin', PASSWORD)
@@ -355,6 +375,7 @@ def test_a_real_print_through_the_built_in_server(monkeypatch):
                 'port': sink.getsockname()[1], 'driver': 'drv:///sample.drv/generic.ppd'})
             assert started.status_code == 202, started.text
             assert follow(admin, started.json()['task'], timeout=60)['status'] == 'done'
+            assert printserver.announce(tmp_path, server) == ['Real_Test']
             announced = (avahi / 'folio-Real_Test.service').read_text()
             assert 'rp=printers/Real_Test' in announced and 'URF=' in announced and 'pdl=application/pdf' in announced
             key = quote(f'{server}|Real_Test', safe='')

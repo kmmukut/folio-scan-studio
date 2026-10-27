@@ -226,12 +226,7 @@ def check_printing(cups_servers: list[str], default_printer: str | None, data_di
     if data_dir is not None:
         for server in cups_servers:
             if cupsadmin.is_builtin(server):
-                results.append(check('airprint', 'Printers on your network', 'info',
-                    f'Shared printers are announced to phones and computers (AirPrint) by the host’s Avahi; '
-                    f'they print to port {airprint.port()} on the host, which must reach the built-in print server.'
-                    if airprint.available() else
-                    'Not announced on the network. To let phones and computers find the built-in printers '
-                    '(AirPrint), mount the host’s /etc/avahi/services and publish port 631 (see the deployment guide).'))
+                results.append(check_airprint())
                 continue
             login = cupsadmin.admin_status(data_dir, server)
             results.append(check(f'cups-admin:{server}', f'Printer administration on {server}', 'info',
@@ -248,6 +243,23 @@ def check_printing(cups_servers: list[str], default_printer: str | None, data_di
         results.append(check('default-printer', 'Default printer', 'warn',
                              'None chosen. Pick one under Devices so Print Desk knows where to send jobs.'))
     return results
+
+
+def check_airprint() -> dict:
+    """What the print server's supervisor last announced through the host's Avahi."""
+    state = airprint.status()
+    if not state.get('mounted'):
+        return check('airprint', 'Printers on your network', 'info',
+                     'Not announced. To let phones and computers find the built-in printers (AirPrint), mount the '
+                     'host’s /etc/avahi/services and publish port 631 (see the deployment guide).')
+    if state.get('error'):
+        return check('airprint', 'Printers on your network', 'warn',
+                     f"Announcing failed: {state['error']}")
+    names = state.get('announced') or []
+    return check('airprint', 'Printers on your network', 'ok' if names else 'info',
+                 (f"Announced to phones and computers (AirPrint): {', '.join(names)}. They print to port "
+                  f"{airprint.port()} on the host, which must reach the built-in print server.") if names else
+                 'Ready to announce printers; add one under Devices → Add a printer.')
 
 
 def check_supplies(printers: list[tuple[str, str]], supplies_for) -> list[dict]:

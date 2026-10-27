@@ -1,14 +1,14 @@
 # Folio Scan Studio
-#   cp .env.example .env    # then set SCAN_STUDIO_ADMIN_PASSWORD
-#   docker compose up -d    # open http://<this-host>:8870
+#   cp .env.example .env    # optional: adjust settings (TZ, edition…)
+#   docker compose up -d    # open http://<this-host>:8870 and create the administrator
 # Every setting is explained in .env.example and docs/CONFIGURATION.md.
 # To build the image from this source instead of pulling it:
 #   docker compose -f compose.yaml -f compose.build.yaml up -d --build
 services:
   scan-studio:
     # FOLIO_EDITION: "full" (default) or "lite" for Raspberry Pi-class hosts.
-    # FOLIO_VERSION: "0.15" follows 0.15.x fixes; pin e.g. "0.15.0" to stay put.
-    image: "ghcr.io/kmmukut/folio-scan-studio:${FOLIO_VERSION:-0.15}-${FOLIO_EDITION:-full}"
+    # FOLIO_VERSION: "0.16" follows 0.16.x fixes; pin e.g. "0.16.0" to stay put.
+    image: "ghcr.io/kmmukut/folio-scan-studio:${FOLIO_VERSION:-0.16}-${FOLIO_EDITION:-full}"
     container_name: scan-studio
     restart: unless-stopped
     stop_grace_period: 45s
@@ -20,7 +20,9 @@ services:
     environment:
       DATA_DIR: /data
       SCAN_STUDIO_ADMIN_USER: "${SCAN_STUDIO_ADMIN_USER:-admin}"
-      SCAN_STUDIO_ADMIN_PASSWORD: "${SCAN_STUDIO_ADMIN_PASSWORD:?Set a strong admin password in .env or Portainer variables}"
+      SCAN_STUDIO_ADMIN_PASSWORD: "${SCAN_STUDIO_ADMIN_PASSWORD:-}"
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
       TZ: "${TZ:-UTC}"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       FORWARDED_ALLOW_IPS: "${FORWARDED_ALLOW_IPS:-127.0.0.1}"

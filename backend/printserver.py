@@ -10,7 +10,8 @@ the built-in one off entirely.
 ``cupsd`` running; the container starts it as root, before Folio. Folio's
 web process only reads the generated administrator password.
 
-Announcing its printers on the network (AirPrint) is airprint.py's job.
+The supervisor also keeps its printers announced on the network (AirPrint,
+see airprint.py), checking every 30 seconds and withdrawing them when it stops.
 """
 from __future__ import annotations
 
@@ -23,10 +24,13 @@ import sys
 import time
 from pathlib import Path
 
+from backend import airprint, ipp
+
 SERVER = 'localhost:631'
 ADMIN_USER = 'folio-cups'
 DEFAULTS = Path('/etc/cups')          # The cups package's own files, copied once
 RESTART_DELAYS = (2, 5, 10, 30, 60)   # Seconds before restarting cupsd after it stops
+ANNOUNCE_EVERY = 30                    # Seconds between AirPrint checks
 
 
 def enabled() -> bool:
@@ -197,6 +201,9 @@ def prepare(data_dir: Path, *, port: int = 631, system: bool = True) -> Path:
         secret.write_text(secrets.token_urlsafe(24), encoding='utf-8')
     secret.chmod(0o600)
     if system:
+        # Folio runs as an ordinary user in the FOLIO_GID group and must read it.
+        shutil.chown(secret, 'root', int(os.environ.get('FOLIO_GID', '0')))
+        secret.chmod(0o640)
         for folder in ('/run/cups', '/var/cache/cups', '/var/log/cups', '/var/spool/cups/tmp'):
             Path(folder).mkdir(parents=True, exist_ok=True)
         shutil.chown('/var/spool/cups/tmp', 'root', 'lp')
@@ -224,8 +231,24 @@ def cupsd_command(root: Path) -> list[str]:
     return ['cupsd', '-f', '-c', str(root / 'cupsd.conf'), '-s', str(root / 'cups-files.conf')]
 
 
+def announce(data_dir: Path, server: str = SERVER) -> list[str]:
+    """Announce the shared printers (AirPrint) and record the result for Folio."""
+    if not airprint.available():
+        airprint.write_status(announced=[])
+        return []
+    try:
+        login = credentials(data_dir)
+        announced = airprint.sync(ipp.Connection(server, *(login or (None, None)), timeout=10))
+    except (ipp.IPPError, OSError) as exc:
+        airprint.write_status(announced=[], error=str(exc)[:200])
+        return []
+    airprint.write_status(announced=announced)
+    return announced
+
+
 def supervise(data_dir: Path) -> int:
-    """Run cupsd until asked to stop, restarting it with a growing delay if it exits."""
+    """Run cupsd until asked to stop, restarting it with a growing delay if it exits,
+    and keep its printers announced while it runs."""
     stopping = False
     child: subprocess.Popen | None = None
 
@@ -246,6 +269,12 @@ def supervise(data_dir: Path) -> int:
         if root is not None:
             started = time.monotonic()
             child = subprocess.Popen(cupsd_command(root))
+            next_announcement = started + 3  # Give cupsd a moment to load its printers
+            while child.poll() is None and not stopping:
+                if time.monotonic() >= next_announcement:
+                    announce(data_dir)
+                    next_announcement = time.monotonic() + ANNOUNCE_EVERY
+                time.sleep(.5)
             child.wait()
             if time.monotonic() - started > 300:
                 failures = 0  # It ran fine for a while; start over with short delays
@@ -257,6 +286,8 @@ def supervise(data_dir: Path) -> int:
         deadline = time.monotonic() + delay
         while not stopping and time.monotonic() < deadline:
             time.sleep(.2)
+    airprint.withdraw()  # Don't leave phones looking for printers that are gone
+    airprint.write_status(announced=[])
     return 0
 
 

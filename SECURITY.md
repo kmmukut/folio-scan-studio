@@ -14,13 +14,19 @@ released and credit you if you wish.
 ## Supported versions
 
 Fixes go into the newest release. Before 1.0, only the latest minor
-version (currently 0.15.x) receives security fixes, so please keep up to
+version (currently 0.16.x) receives security fixes, so please keep up to
 date: `docker compose pull && docker compose up -d`.
 
 ## How Folio protects your data
 
 - Everything runs on your own network. Folio makes no connections to the
   internet and sends no telemetry.
+- Folio's web application runs as an ordinary user (`PUID`), not root.
+  Only the built-in print server's small supervisor runs as root.
+- A new installation's administrator can be created in the browser only
+  in the first 15 minutes after Folio starts, so a forgotten, exposed
+  installation can't be claimed later. Backups hold accounts and logins:
+  store them safely.
 - Passwords are stored as salted PBKDF2 hashes. Sessions use HTTP-only,
   same-site cookies with CSRF tokens; set `COOKIE_SECURE=true` behind HTTPS.
 - Members see only their own documents and print jobs; every request is

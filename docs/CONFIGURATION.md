@@ -14,10 +14,11 @@ Folio is configured in two places:
 
 | Variable | Default | What it does |
 |---|---|---|
-| `SCAN_STUDIO_ADMIN_PASSWORD` | (required) | Password of the first administrator, created on first start when no accounts exist. 12+ characters. Change it later in Folio; editing this afterwards has no effect. |
-| `SCAN_STUDIO_ADMIN_USER` | `admin` | Username of that first administrator. |
+| `SCAN_STUDIO_ADMIN_PASSWORD` | empty | Empty: create the first administrator in the browser (within 15 minutes of starting). Set (12+ characters): create it at the first start. Change it later in Folio; editing this afterwards has no effect. |
+| `SCAN_STUDIO_ADMIN_USER` | `admin` | Username of that first administrator, when created from the setting. |
+| `PUID` / `PGID` | `1000` / `1000` | The user and group Folio runs as, and who owns its files on the host. `PUID=0` runs it as root (some USB scanners need that). |
 | `FOLIO_EDITION` | `full` | `full` or `lite`. Picks the image (`…-full` / `…-lite`), or what is built from source. See [Editions](../README.md#images-and-editions). |
-| `FOLIO_VERSION` | `0.15` | Image version. `0.15` receives 0.15.x fixes on `docker compose pull`; `0.15.0` stays exactly there. |
+| `FOLIO_VERSION` | `0.16` | Image version. `0.16` receives 0.16.x fixes on `docker compose pull`; `0.16.0` stays exactly there. |
 | `FOLIO_PORT` | `8870` | Port on the host that Folio is reachable on. |
 | `TZ` | `UTC` | Time zone, e.g. `Europe/Berlin`. Decides which day and month a print counts in for statistics. |
 | `COOKIE_SECURE` | `false` | Set `true` when Folio is served over HTTPS (behind a reverse proxy). Sign-in cookies are then only sent over HTTPS. |
@@ -43,6 +44,8 @@ recreates the container); data is kept.
 | **Devices → Printers** | Default printer, who may use each printer (members, print-only accounts, guests), toner and parts levels, test page, pause, remove, jobs. |
 | **Devices → Scanners** | Network scanners by address (WSD or eSCL), and scanners SANE finds. |
 | **Devices → Run checks** | Read-only System check of storage, memory, proxy, print servers and scanners. |
+| **Devices → Backup** | Download a backup of everything, or restore one. |
+| **Workbench → Getting started** | A checklist of the first steps; hide it when you're done. |
 | **People & access** | Accounts: administrator, member (own documents and printing), print-only. |
 | **Print desk** | Guest printing on or off. |
 | **Statistics** | Whether print statistics are kept and for how long, and whether prints sent straight to the print server (from phones and computers) are counted too. |

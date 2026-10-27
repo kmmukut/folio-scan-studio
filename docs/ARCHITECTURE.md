@@ -16,7 +16,7 @@ Most of what makes an old printer feel modern comes from the sharing layer.
 Folio's job is to make the device and sharing layers easy to set up and keep
 healthy, and to make the workflow layer excellent.
 
-## Current structure (0.15)
+## Current structure (0.16)
 
 - `backend/app.py`: FastAPI routes, auth middleware, scan and print flows.
 - `backend/devices.py`: scanner registry (`data/devices.json`), generated
@@ -41,6 +41,10 @@ healthy, and to make the workflow layer excellent.
   and keeps `cupsd` running (D14).
 - `backend/airprint.py`: announces the built-in printers through the host's
   Avahi services folder (D14).
+- `backend/backup.py`: backups of everything Folio keeps, and restoring one,
+  including the built-in printers with their drivers (D15).
+- `docker-entrypoint.sh`: starts the print-server supervisor as root, then
+  Folio as the `PUID` user (D15).
 - `frontend/`: framework-free HTML/CSS/JS, served as static files.
 
 Storage: page originals are immutable PNGs under `data/jobs/<id>/pages/`;
@@ -167,6 +171,30 @@ the host's D-Bus would let CUPS announce by itself, but it gives a root
 container root-equivalent control of the host through D-Bus; a folder of
 announcements gives nothing else away.
 
+### D15 — The first minutes: browser setup, no root, backups (0.16)
+A new installation no longer needs a password in its settings: the first
+visitor creates the administrator in the browser. That is possible only in
+the first 15 minutes after Folio starts (a restart reopens it), so a
+forgotten installation reachable from elsewhere can't be claimed later; the
+check and the insert are one database transaction.
+
+Folio's web application runs as an ordinary user (`PUID`/`PGID`, default
+1000), which also makes the data folder belong to that user on the host. The
+start-up script, still root, hands Folio its files and starts the print
+server's supervisor, which stays root: cupsd needs it, the host's Avahi
+folder belongs to root, and it owns the AirPrint announcements (refreshed
+every 30 seconds, withdrawn on stop, reported to Folio through a status
+file). Folio reads its login to the print server through group permission.
+`PUID=0` is the escape hatch for devices only root may open.
+
+Backups are one archive Folio writes and reads itself: consistent SQLite
+copies (without sign-ins), settings, logins and documents (not caches), and
+the built-in printers with their PPD files, fetched and recreated over IPP
+(CUPS-Get-PPD, CUPS-Add-Modify-Printer with the file attached). Folio never
+needs to read CUPS's root-owned files to do it. A restore keeps what it
+replaces in data/.before-restore, swaps item by item, and keeps the person
+restoring signed in if their account is in the backup.
+
 ### D6 — Capabilities come from the device, never from model names
 Sizes, trays, duplex, colour, scan modes and resolutions are what CUPS/SANE
 report. Folio does not fabricate options, and no device, address or network
@@ -184,8 +212,8 @@ may change with real use.
 5. ~~**0.14 — Public release.**~~ Published images, CI, community docs; see D13.
 6. ~~**0.15 — Folio is the print server.**~~ Built-in CUPS with drivers,
    AirPrint announcements, printer supplies; see D14.
-7. **0.16 — The first minutes:** create the administrator in the browser, a
-   setup checklist, the web app as a non-root user, backup and restore.
+7. ~~**0.16 — The first minutes.**~~ Administrator created in the browser,
+   setup checklist, no root, backup and restore; see D15.
 8. **0.17 — Scans go where you keep documents:** Paperless-ngx and folder
    destinations, blank-page removal.
 9. **0.18 — Print quotas** per person, built on the print log.
@@ -193,4 +221,4 @@ USB-specific work waits for community testers (D11).
 
 Before 1.0: a fresh Raspberry Pi plus a supported USB printer reaches a first
 print in under 10 minutes; upgrades preserve data; a compatibility list
-exists; the container runs as a non-root user.
+exists. (Running Folio as a non-root user was done in 0.16.)

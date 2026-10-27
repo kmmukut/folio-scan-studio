@@ -8,7 +8,7 @@ FROM python:3.12-slim-bookworm@sha256:fc169880a4d941f3142c0e2e623f05f246150add19
 # Both include the built-in print server: CUPS with every printer driver
 # Debian packages, because old printers on small hosts need them most.
 ARG FOLIO_EDITION=full
-ARG FOLIO_VERSION=0.15.0
+ARG FOLIO_VERSION=0.16.0
 LABEL org.opencontainers.image.title="Folio Scan Studio" \
       org.opencontainers.image.version="${FOLIO_VERSION}-${FOLIO_EDITION}" \
       org.opencontainers.image.description="Self-hosted scanning, printing and document workbench for CUPS/SANE devices" \

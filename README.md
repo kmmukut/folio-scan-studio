@@ -94,18 +94,19 @@ All you need is Docker with Compose; Folio includes its own print server.
 mkdir folio && cd folio
 curl -fsSLO https://raw.githubusercontent.com/kmmukut/folio-scan-studio/main/compose.yaml
 curl -fsSL https://raw.githubusercontent.com/kmmukut/folio-scan-studio/main/.env.example -o .env
-nano .env          # set SCAN_STUDIO_ADMIN_PASSWORD (12+ characters) and TZ
-chmod 600 .env
+nano .env          # optional: your time zone (TZ), edition, and who owns the data (PUID/PGID)
 docker compose up -d
 ```
 
-Open `http://<host>:8870` and sign in as `admin`. Then:
+Open `http://<host>:8870` within 15 minutes and create the administrator
+account. A checklist then walks you through the rest:
 
 1. **Devices → Add a printer:** type the printer's IP address or search for
    it, choose *Driverless* or your model's driver, and print a test page.
 2. **Devices → Add a network scanner:** name, IP address and protocol (WSD
    or eSCL). Press **Test**.
 3. **Devices → Run checks** confirms storage, printers and scanners.
+4. **Devices → Backup:** download a copy of everything Folio keeps.
 
 Want phones to print without Folio (AirPrint), USB printers, or to use the
 CUPS server you already have? See [Printing](docs/DEPLOYMENT.md#printing).

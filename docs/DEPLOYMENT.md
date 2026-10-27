@@ -26,14 +26,20 @@ Folio runs as one Docker container. It needs:
 mkdir folio && cd folio
 curl -fsSLO https://raw.githubusercontent.com/kmmukut/folio-scan-studio/main/compose.yaml
 curl -fsSL https://raw.githubusercontent.com/kmmukut/folio-scan-studio/main/.env.example -o .env
-nano .env          # at least SCAN_STUDIO_ADMIN_PASSWORD and TZ
-chmod 600 .env     # it holds a password
+nano .env          # optional: TZ, FOLIO_EDITION, PUID/PGID
 docker compose up -d
 ```
 
-Open `http://<host>:8870` and sign in as `admin` with that password. Your
-data is in `./data`. Every setting is described in
-[Configuration](CONFIGURATION.md).
+Open `http://<host>:8870` and create the administrator account. For safety
+that is only possible in the first 15 minutes after Folio starts; if you
+miss it, `docker compose restart` opens the window again. (Or set
+`SCAN_STUDIO_ADMIN_PASSWORD` in `.env` to create the administrator at the
+first start instead.) Your data is in `./data`. Every setting is described
+in [Configuration](CONFIGURATION.md).
+
+Folio runs as an ordinary user, `PUID`/`PGID` (1000 by default), so the
+files in `./data` belong to that user on the host. Set them to your own ids
+(`id -u`, `id -g`) if they differ.
 
 ## Portainer
 
@@ -42,11 +48,12 @@ data is in `./data`. Every setting is described in
 2. Change `./data:/data` to an absolute path on the host, e.g.
    `/opt/folio/data:/data`. Portainer resolves relative paths inside its
    own folders, which makes backups hard to find.
-3. Under **Environment variables** add at least
-   `SCAN_STUDIO_ADMIN_PASSWORD` and `TZ`, plus any others from
+3. Under **Environment variables** add `TZ`, plus any others from
    [.env.example](../.env.example) you want to change.
-4. **Deploy the stack**. To upgrade later, open the stack and choose
-   **Update the stack** with **Re-pull image** switched on.
+4. **Deploy the stack**, open Folio and create the administrator account
+   within 15 minutes.
+   To upgrade later, open the stack and choose **Update the stack** with
+   **Re-pull image** switched on.
 
 ## Raspberry Pi
 
@@ -149,7 +156,8 @@ Give Folio's container the host's USB devices, in `compose.yaml`:
 - **USB printer:** plug it into the host, restart Folio, then **Devices →
   Add a printer → Search** on the built-in print server.
 - **USB scanner:** check `docker exec scan-studio scanimage -L`, then attach
-  the scanner in **Devices**.
+  the scanner in **Devices**. Folio runs as an ordinary user; if the scanner
+  isn't listed because only root may open it, set `PUID=0`.
 
 A device plugged in after Folio started may need a restart of the container
 to appear.
@@ -178,7 +186,14 @@ off unless you need it.
 
 ## Backups and upgrades
 
-Everything Folio keeps is in the data folder. To back it up:
+**In Folio:** **Devices → Backup → Download a backup** gives you one file
+with your documents, accounts, settings, print statistics, and the built-in
+printers with their drivers. **Restore from a backup** puts it all back,
+also on a new installation: the built-in printers are set up again from the
+backup. What a restore replaces is kept in `data/.before-restore`. The file
+holds your accounts and print-server logins, so keep it somewhere safe.
+
+**From the host:** everything Folio keeps is in the data folder.
 
 ```bash
 docker compose stop
@@ -194,8 +209,8 @@ docker compose pull
 docker compose up -d
 ```
 
-With `FOLIO_VERSION=0.15` this picks up 0.15.x fixes. To move to a new
-minor version, change `FOLIO_VERSION` (e.g. to `0.16`). To go back, restore
+With `FOLIO_VERSION=0.16` this picks up 0.16.x fixes. To move to a new
+minor version, change `FOLIO_VERSION` (e.g. to `0.17`). To go back, restore
 the backup and set the previous version; newer versions may change the
 data folder in ways older ones don't understand.
 

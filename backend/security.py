@@ -64,8 +64,10 @@ def init(data_dir: Path):
         db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
         db.execute("INSERT OR IGNORE INTO settings (key,value) VALUES ('guest_print','off')")
         count = db.execute('SELECT COUNT(*) FROM users').fetchone()[0]
-        if count == 0:
-            password = os.environ.get('SCAN_STUDIO_ADMIN_PASSWORD', '')
+        password = os.environ.get('SCAN_STUDIO_ADMIN_PASSWORD', '')
+        # Without a password in the settings, the first administrator is created
+        # in the browser instead (create_first_admin).
+        if count == 0 and password:
             username = os.environ.get('SCAN_STUDIO_ADMIN_USER', 'admin')
             if not 1 <= len(username) <= 50 or not username.replace('_','').replace('-','').isalnum():
                 raise RuntimeError('SCAN_STUDIO_ADMIN_USER must be letters, numbers, _ or -')
@@ -102,12 +104,56 @@ def try_login(data_dir: Path, username: str, password: str, ip: str):
         return None, 'Invalid username or password'
     with _auth_lock:
         _login_attempts[key].clear()
+    return start_session(data_dir, username, row[2]), None
+
+
+def start_session(data_dir: Path, username: str, role: str) -> dict:
     token = secrets.token_urlsafe(32)
     csrf = secrets.token_urlsafe(32)
     expiry = int(time.time() + SESSION_SECONDS)
     with connection(data_dir) as db:
         db.execute('INSERT INTO sessions VALUES (?,?,?,?)', (hashlib.sha256(token.encode()).hexdigest(), username, csrf, expiry))
-    return {'token': token, 'csrf': csrf, 'username': username, 'role': row[2]}, None
+    return {'token': token, 'csrf': csrf, 'username': username, 'role': role}
+
+
+def keep_session(data_dir: Path, token: str, username: str, csrf: str) -> bool:
+    """After a restore: keep the person restoring signed in, if the restored
+    accounts still have them as an enabled administrator."""
+    with connection(data_dir) as db:
+        row = db.execute('SELECT role,enabled FROM users WHERE username=?', (username,)).fetchone()
+        if not row or row[0] != 'admin' or not row[1]:
+            return False
+        db.execute('INSERT OR REPLACE INTO sessions VALUES (?,?,?,?)', (hashlib.sha256(token.encode()).hexdigest(),
+                   username, csrf, int(time.time() + SESSION_SECONDS)))
+    return True
+
+
+def setup_required(data_dir: Path) -> bool:
+    """True until the first account exists."""
+    with connection(data_dir) as db:
+        return db.execute('SELECT COUNT(*) FROM users').fetchone()[0] == 0
+
+
+def create_first_admin(data_dir: Path, username: str, password: str) -> dict:
+    """Create the first administrator from the browser and sign them in. Only
+    possible while no account exists; the check and insert are one transaction."""
+    if not USERNAME_PATTERN.fullmatch(username):
+        raise ValueError('Username needs 3–32 letters, numbers, dots, underscores or dashes (starting with a letter)')
+    if not 12 <= len(password) <= 256:
+        raise ValueError('Password must contain 12–256 characters')
+    salt = secrets.token_bytes(24)
+    db = sqlite3.connect(db_path(data_dir), timeout=10, isolation_level=None)
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        if db.execute('SELECT COUNT(*) FROM users').fetchone()[0]:
+            db.execute('ROLLBACK')
+            raise PermissionError('Folio already has an administrator. Sign in instead.')
+        db.execute('INSERT INTO users (username,salt,password_hash,role,enabled,created) VALUES (?,?,?,?,?,?)',
+                   (username, salt, hash_password(password, salt), 'admin', 1, int(time.time())))
+        db.execute('COMMIT')
+    finally:
+        db.close()
+    return start_session(data_dir, username, 'admin')
 
 
 def session(data_dir: Path, token: str | None):

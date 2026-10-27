@@ -33,7 +33,7 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 from backend import security
 from backend.processing import transform_page, find_deskew_angle
-from backend import printing, devices, diagnostics, tasks, ipp, cupsadmin, cupsimport, features, stats, printserver, airprint
+from backend import printing, devices, diagnostics, tasks, ipp, cupsadmin, cupsimport, features, stats, printserver, airprint, backup
 from backend.version import __version__
 
 log = logging.getLogger('folio')
@@ -47,6 +47,8 @@ JOB_ID_RE = re.compile(r'^[a-f0-9]{12}$')
 PAGE_ID_RE = re.compile(r'^[a-f0-9]{16}$')
 TASK_ID_RE = re.compile(r'^[a-f0-9]{32}$')
 SUPPLIES_TTL = 300  # Toner levels change slowly; ask the printer at most every 5 minutes
+SETUP_WINDOW = 15 * 60  # Creating the first administrator in the browser is possible this long after starting
+_setup_opened = time.monotonic()
 lock = threading.RLock()
 scanner_lock = threading.Lock()
 ocr_lock = threading.Lock()
@@ -107,32 +109,16 @@ async def lifespan(_app: FastAPI):
 
 
 def background_upkeep(stop: threading.Event, first: float = 20, interval: float = 600) -> None:
-    """Every few minutes: keep the built-in printers announced on the network,
-    and count prints sent straight to CUPS (when that setting is on) before
-    CUPS forgets them. The first run waits for the print server to start."""
+    """Every few minutes, count prints sent straight to CUPS (when that setting
+    is on) before CUPS forgets them. The first run waits for the print server."""
     wait = first
     while not stop.wait(wait):
         wait = interval
-        announce_printers()
         try:
             cupsimport.import_jobs(DATA_DIR, cups_servers())
         except Exception:  # noqa: BLE001 - background upkeep must never take Folio down
             log.warning('Counting prints sent straight to CUPS failed', exc_info=True)
 
-
-def announce_printers() -> list[str]:
-    """Announce the built-in server's shared printers (AirPrint), if the host's
-    Avahi folder is mounted; returns the printers announced."""
-    try:
-        conn = cupsadmin.connection(DATA_DIR, printserver.SERVER, timeout=10) if printserver.enabled() else None
-        return airprint.sync(conn)
-    except (ipp.IPPError, OSError):
-        log.warning('Announcing printers on the network failed', exc_info=True)
-        return []
-
-
-def announce_soon() -> None:
-    threading.Thread(target=announce_printers, daemon=True, name='folio-announce').start()
 
 
 app = FastAPI(title='Folio Scan Studio', version=__version__, docs_url=None, redoc_url=None,
@@ -407,7 +393,7 @@ def choose_print_queue(request: Request, authenticated: bool) -> str:
 async def guard_private_api(request: Request, call_next):
     path = request.url.path
     # No account or documents are revealed on public endpoints.
-    public = ('/api/health', '/api/features', '/api/auth/login', '/api/auth/status', '/api/guest/status', '/api/guest/print', '/api/guest/inspect', '/api/guest/printers')
+    public = ('/api/health', '/api/features', '/api/auth/login', '/api/auth/status', '/api/setup/admin', '/api/guest/status', '/api/guest/print', '/api/guest/inspect', '/api/guest/printers')
     if request.method in ('POST','PUT','PATCH','DELETE'):
         # Fail closed for cross-site browser requests, including login and guest print.
         if request.headers.get('sec-fetch-site', '').lower() == 'cross-site':
@@ -464,7 +450,36 @@ def auth_status(request: Request):
     return {'authenticated':bool(session), 'username':session['username'] if session else None,
             'role':session['role'] if session else None,
             'csrf':session['csrf'] if session else None,
-            'guest_print':security.guest_enabled(DATA_DIR)}
+            'guest_print':security.guest_enabled(DATA_DIR),
+            **setup_state()}
+
+
+def setup_state() -> dict:
+    """Whether the first administrator still has to be created, and whether that
+    is still possible (for SETUP_WINDOW after Folio started, so a forgotten
+    installation can't be claimed by whoever finds it later)."""
+    required = security.setup_required(DATA_DIR)
+    return {'setup_required': required,
+            'setup_open': required and time.monotonic() - _setup_opened < SETUP_WINDOW}
+
+
+@app.post('/api/setup/admin')
+def create_first_administrator(body: LoginBody, response: Response):
+    state = setup_state()
+    if not state['setup_required']:
+        raise HTTPException(409, 'Folio already has an administrator. Sign in instead.')
+    if not state['setup_open']:
+        raise HTTPException(403, 'For safety, the first administrator can only be created in the first '
+                                 f'{SETUP_WINDOW // 60} minutes after Folio starts. Restart Folio and try again.')
+    try:
+        record = security.create_first_admin(DATA_DIR, body.username.strip(), body.password)
+    except PermissionError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    response.set_cookie(security.COOKIE_NAME, record['token'], httponly=True,
+                        secure=COOKIE_SECURE, samesite='strict', max_age=security.SESSION_SECONDS, path='/')
+    return {'authenticated':True, 'username':record['username'], 'role':record['role'], 'csrf':record['csrf']}
 
 
 @app.post('/api/auth/login')
@@ -693,6 +708,9 @@ def log_print(choices: dict, pages: int, origin: str, outcome: str) -> None:
         if not target:
             return
         caps = devices.cups_capabilities(target['server'], target['queue'])
+        if not cfg.get('first_print_at'):
+            cfg['first_print_at'] = now()
+            persist_registry(cfg)
         stats.record(DATA_DIR, user=choices.get('user') or '', server=target['server'], queue=target['queue'],
                      origin=origin, pages=pages, copies=choices.get('copies', 1), nup=choices.get('nup', 1),
                      sides=choices.get('sides', 'one-sided'),
@@ -1251,7 +1269,7 @@ class PrintServerBody(BaseModel):
 def list_print_servers():
     return [{'server': server, 'admin': cupsadmin.admin_status(DATA_DIR, server),
              'reachable': not devices.cups_backoff(server), 'source': server_source(server),
-             'announcing': airprint.available() if cupsadmin.is_builtin(server) else None}
+             'announcing': bool(airprint.status().get('mounted')) if cupsadmin.is_builtin(server) else None}
             for server in cups_servers()]
 
 
@@ -1368,8 +1386,6 @@ def cups_add_printer(server: str, body: AddPrinterBody, request: Request):
             cfg['default_printer'] = key
         persist_registry(cfg)
         task.update('Checking the new printer…', .8)
-        if cupsadmin.is_builtin(server):
-            announce_printers()
         return {'id': key, 'queue': body.name, 'server': server, 'state': cups_call(cupsadmin.printer_state, conn, body.name)}
     return task_response(tasks.runner.submit('printer-setup', 'print', task_owner(request), work))
 
@@ -1384,8 +1400,6 @@ def cups_remove_printer(printer: str):
     if cfg.get('default_printer') == target['id']:
         cfg['default_printer'] = None
     persist_registry(cfg)
-    if cupsadmin.is_builtin(target['server']):
-        announce_soon()
     return {'deleted': target['id']}
 
 
@@ -1465,6 +1479,108 @@ def stats_period(period: str) -> str:
     if period not in stats.PERIODS:
         raise HTTPException(400, 'Unknown period')
     return period
+
+
+def builtin_admin() -> ipp.Connection | None:
+    if not printserver.enabled():
+        return None
+    return cupsadmin.connection(DATA_DIR, printserver.SERVER, admin=True, timeout=15)
+
+
+@app.post('/api/admin/backup', status_code=202)
+def start_backup(request: Request):
+    """Pack everything Folio keeps into one file, as a background job."""
+    def work(task: tasks.Task) -> dict:
+        task.update('Collecting the built-in printers…', .02)
+        try:
+            printers = backup.builtin_printers(builtin_admin()) if printserver.enabled() else []
+        except (ipp.IPPError, OSError) as exc:
+            raise RuntimeError(f'The built-in print server did not answer ({exc}). Try again in a minute.') from exc
+        name = f"folio-backup-{datetime.now().strftime('%Y-%m-%d')}.tar.gz"
+        target = task.directory / name
+        manifest = backup.create(DATA_DIR, target, version=__version__, edition=features.edition(),
+                                 printers=printers, progress=lambda done, total: task.update(
+                                     f'Packing documents ({done} of {total} files)…', .05 + .9 * done / max(total, 1)))
+        task.file, task.filename = target, name
+        cfg = registry()
+        cfg['last_backup_at'] = now()
+        persist_registry(cfg)
+        return {**manifest, 'bytes': target.stat().st_size}
+    return task_response(tasks.runner.submit('backup', 'export', task_owner(request), work))
+
+
+@app.post('/api/admin/restore', status_code=202)
+async def start_restore(request: Request):
+    """Upload a backup, check it, then replace Folio's data with it in the background."""
+    upload = DATA_DIR / '.restore-upload.tar.gz'
+    free = shutil.disk_usage(DATA_DIR).free
+    total = 0
+    with upload.open('wb') as target:
+        async for chunk in request.stream():
+            total += len(chunk)
+            if total > free // 2:
+                target.close()
+                upload.unlink(missing_ok=True)
+                raise HTTPException(413, 'Not enough free space to restore this backup')
+            target.write(chunk)
+    try:
+        manifest = backup.inspect(upload, __version__)
+    except backup.BackupError as exc:
+        upload.unlink(missing_ok=True)
+        raise HTTPException(400, str(exc)) from exc
+    # Keep the person restoring signed in, if their account is in the backup.
+    token = request.cookies.get(security.COOKIE_NAME)
+    current = security.session(DATA_DIR, token)
+
+    def work(task: tasks.Task) -> dict:
+        def swapped() -> None:
+            task.update('Starting up with the restored data…', .9)
+            JOBS_DIR.mkdir(parents=True, exist_ok=True)  # A backup without documents has no jobs folder
+            security.init(DATA_DIR)
+            if current and token:
+                security.keep_session(DATA_DIR, token, current['username'], current['csrf'])
+            stats.init(DATA_DIR)
+            keep_private()
+            devices.invalidate()
+            devices.write_managed_sane_config(registry(), managed_sane_path())
+        try:
+            return backup.restore(upload, DATA_DIR, current_version=__version__, conn=builtin_admin(),
+                                  on_swapped=swapped, progress=lambda done, total: task.update(
+                                      f'Restoring ({done} of {total} files)…', .05 + .8 * done / max(total, 1)))
+        finally:
+            upload.unlink(missing_ok=True)
+    task = tasks.runner.submit('restore', 'export', task_owner(request), work)
+    return JSONResponse({'task': task.public(tasks.runner.position(task)), 'manifest': manifest}, status_code=202)
+
+
+class ChecklistBody(BaseModel):
+    dismissed: bool
+
+
+@app.get('/api/admin/checklist')
+def setup_checklist():
+    """The first steps after installing, ticked off by what is actually set up."""
+    cfg, records = printer_inventory()
+    steps = [
+        {'id': 'printer', 'title': 'Add a printer', 'done': bool(records)},
+        {'id': 'print', 'title': 'Print a test page', 'done': bool(cfg.get('first_print_at'))},
+        {'id': 'scanner', 'title': 'Add a scanner', 'done': bool(cfg.get('scanners'))},
+        {'id': 'people', 'title': 'Invite the people who will use Folio', 'optional': True,
+         'done': len(security.list_users(DATA_DIR)) > 1},
+        {'id': 'airprint', 'title': 'Let phones print to your printers', 'optional': True,
+         'done': bool(airprint.status().get('announced'))},
+        {'id': 'backup', 'title': 'Download a backup', 'optional': True, 'done': bool(cfg.get('last_backup_at'))},
+    ]
+    return {'steps': steps, 'dismissed': bool(cfg.get('checklist_dismissed')), 'last_backup_at': cfg.get('last_backup_at'),
+            'complete': all(step['done'] for step in steps if not step.get('optional'))}
+
+
+@app.put('/api/admin/checklist')
+def save_setup_checklist(body: ChecklistBody):
+    cfg = registry()
+    cfg['checklist_dismissed'] = body.dismissed
+    persist_registry(cfg)
+    return setup_checklist()
 
 
 @app.get('/api/admin/stats')
@@ -2379,7 +2495,8 @@ def task_file(task_id: str, request: Request):
     task = owned_task(task_id, task_owner(request))
     if task.status != 'done' or not task.file or not task.file.is_file():
         raise HTTPException(409, 'This file is not ready yet')
-    return FileResponse(task.file, media_type='application/pdf', filename=task.filename,
+    media_type = 'application/gzip' if task.file.name.endswith('.tar.gz') else 'application/pdf'
+    return FileResponse(task.file, media_type=media_type, filename=task.filename,
                         headers={'Cache-Control': 'no-store'})
 
 
@@ -2417,6 +2534,8 @@ def keep_private() -> None:
 
 
 def ensure_directories():
+    global _setup_opened
+    _setup_opened = time.monotonic()
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
     tasks.runner.start(DATA_DIR / 'tasks')
     clear_old_previews()

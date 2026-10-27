@@ -13,7 +13,7 @@ const cropView={zoom:1,fitWidth:0,pan:false};
 async function api(url, options={}) {
   const opts={credentials:'same-origin',...options,headers:{...(options.headers||{})}};
   if(state.csrf && options.method && !['GET','HEAD'].includes(options.method.toUpperCase()))opts.headers['X-CSRF-Token']=state.csrf;
-  if(opts.body && typeof opts.body!=='string' && !(opts.body instanceof FormData)){
+  if(opts.body && typeof opts.body!=='string' && !(opts.body instanceof FormData) && !(opts.body instanceof Blob)){
     opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(opts.body);
   }
   const response=await fetch(url,opts);
@@ -35,7 +35,16 @@ function showLogin(){
   if(typeof clearPrintSelections==='function')clearPrintSelections();
   clearTimeout(pollTimer);state.csrf=null;state.user=null;state.role=null;
   $('#login-name').value='';$('#login-password').value='';
-  setViews('auth-view');$('#login-guest-button').classList.remove('hidden');
+  setViews('auth-view');
+  // A new installation: the first visitor creates the administrator.
+  const setup=state.setup?.setup_required;
+  $('#setup-form').classList.toggle('hidden',!setup||!state.setup.setup_open);
+  $('#setup-closed').classList.toggle('hidden',!setup||state.setup.setup_open);
+  $('#login-form').classList.toggle('hidden',!!setup);
+  $('#auth-title').innerHTML=setup?'Welcome to<br><em>your paper desk.</em>':'Your paper,<br><em>in good hands.</em>';
+  $('#auth-intro').textContent=setup?'Create the administrator account. You can add people, printers and scanners next.':'Sign in to organize your scans, edit individual pages, and finish documents at your own pace.';
+  $('#login-guest-button').classList.toggle('hidden',!!setup);$('#login-guest-status').classList.toggle('hidden',!!setup);
+  if(setup)return;
   $('#login-guest-button').textContent=state.guestEnabled?'Just need to print? Open guest printing →':'Guest printing is currently disabled';
   $('#login-guest-status').textContent=state.guestEnabled?'No account needed for a limited print job.':'An administrator can enable anonymous printing in Print desk.';
 }
@@ -72,6 +81,7 @@ async function setupAdmin(){
   try{let jobs=await api('/api/jobs');let saved=localStorage.getItem('folio.lastDocument');if(jobs.length)await loadJob(jobs.some(j=>j.id===saved)?saved:jobs[0].id);else await newJob();}
   catch(e){problem(e);}
   updateSettings();
+  if(state.role==='admin')loadChecklist().catch(()=>{});
   api('/api/scanner').then(r=>{$('#device-led').classList.toggle('on',r.connected);$('#device-status').textContent=r.connected?`Connected via ${r.protocol||'SANE'}`:'Scanner unavailable';}).catch(()=>{$('#device-status').textContent='Detection unavailable';});
   pollScan();
   refreshScannerChoices().catch(problem);
@@ -104,6 +114,7 @@ async function boot(){
   await loadFeatures();
   const status=await api('/api/auth/status').catch(()=>null);
   state.guestEnabled=!!status?.guest_print;
+  state.setup={setup_required:!!status?.setup_required,setup_open:!!status?.setup_open};
   if(status?.authenticated){state.csrf=status.csrf;state.user=status.username;state.role=status.role;if(state.role==='printer')await setupPrintOnly();else await setupAdmin();}
   else showLogin();
   if(location.hash==='#guest' && state.guestEnabled && state.role!=='printer')await openGuest();
@@ -970,11 +981,40 @@ async function clearStats(){
   toast(`Deleted ${count(result.deleted)} ${result.deleted===1?'record':'records'}.`);
   await loadStats();
 }
+// First steps for administrators, ticked off by what is actually set up.
+const CHECKLIST_ACTIONS={
+  printer:['Add a printer',async()=>{await openDeviceManager();$('#add-printer-panel').scrollIntoView({behavior:'smooth'});}],
+  print:['Print a test page',async()=>{await openDeviceManager();$('#device-printer-list').scrollIntoView({behavior:'smooth'});}],
+  scanner:['Add a scanner',async()=>{await openDeviceManager();$('#device-scanner-list').scrollIntoView({behavior:'smooth'});}],
+  people:['Add people',async()=>{workspace(false,true);await loadUsers();}],
+  airprint:['How',()=>window.open('https://github.com/kmmukut/folio-scan-studio/blob/main/docs/DEPLOYMENT.md#airprint-phones-and-computers','_blank','noopener')],
+  backup:['Back up',async()=>{await openDeviceManager();$('#backup-panel').scrollIntoView({behavior:'smooth'});}],
+};
+async function loadChecklist(){
+  const list=await api('/api/admin/checklist');
+  const required=list.steps.filter(s=>!s.optional),done=required.filter(s=>s.done).length;
+  $('#setup-checklist').classList.toggle('hidden',list.dismissed);
+  if(list.dismissed)return;
+  $('#checklist-progress').textContent=list.complete?'The essentials are done. The optional steps make Folio more useful.':`${done} of ${required.length} essential steps done.`;
+  $('#checklist-steps').innerHTML=list.steps.map(s=>`<li class="${s.done?'done':''}"><span class="checklist-mark">${s.done?icon('check'):''}</span><span class="checklist-title">${html(s.title)}${s.optional?' <small>optional</small>':''}</span>${s.done?'':`<button type="button" class="small-action" data-checklist="${html(s.id)}">${html(CHECKLIST_ACTIONS[s.id]?.[0]||'Open')}</button>`}</li>`).join('');
+  $$('[data-checklist]').forEach(b=>b.onclick=()=>Promise.resolve(CHECKLIST_ACTIONS[b.dataset.checklist]?.[1]()).catch(problem));
+}
+$('#checklist-hide').onclick=async()=>{try{await api('/api/admin/checklist',{method:'PUT',body:{dismissed:true}});$('#setup-checklist').classList.add('hidden');toast('Hidden. Everything stays available under Devices and People & access.');}catch(e){problem(e);}};
 $('#login-form').onsubmit=async e=>{e.preventDefault();try{await signIn();}catch(err){problem(err);}};
+$('#setup-form').onsubmit=async e=>{
+  e.preventDefault();
+  if($('#setup-password').value!==$('#setup-repeat').value){toast('The two passwords are different.',true);return;}
+  try{
+    const status=await api('/api/setup/admin',{method:'POST',body:{username:$('#setup-name').value.trim(),password:$('#setup-password').value}});
+    state.setup={setup_required:false,setup_open:false};
+    state.user=status.username;state.role=status.role;state.csrf=status.csrf;$('#setup-password').value='';$('#setup-repeat').value='';
+    await setupAdmin();
+  }catch(err){problem(err);}
+};
 $('#login-guest-button').onclick=openGuest;
 $('#logout-button').onclick=signOut;
 $('#top-logout').onclick=signOut;
-$('#workspace-tab').onclick=()=>workspace(false);
+$('#workspace-tab').onclick=()=>{workspace(false);if(state.role==='admin')loadChecklist().catch(()=>{});};
 $('#print-tab').onclick=()=>showPrintDesk().catch(problem);
 $('#devices-tab').onclick=()=>openDeviceManager().catch(problem);
 $('#stats-tab').onclick=()=>openStats().catch(problem);
@@ -983,6 +1023,36 @@ $('#stats-save').onclick=()=>saveStatsSettings().catch(problem);
 $('#stats-clear').onclick=()=>clearStats().catch(problem);
 $('#devices-refresh').onclick=()=>refreshDeviceManager(true).catch(problem);
 $('#diagnostics-run').onclick=()=>runDiagnostics().catch(problem);
+// Backup and restore (administrators, Devices page).
+async function showLastBackup(){
+  try{const list=await api('/api/admin/checklist');
+    $('#backup-status').textContent=list.last_backup_at?`Last backup: ${today(list.last_backup_at)}.`:'No backup yet.';}catch{}
+}
+$('#backup-run').onclick=async()=>{
+  const button=$('#backup-run');button.disabled=true;
+  try{
+    const started=await api('/api/admin/backup',{method:'POST'});
+    const done=await followTask(started.task,{onUpdate:task=>{$('#backup-status').textContent=taskText(task);}});
+    const link=document.createElement('a');link.href=`/api/tasks/${done.id}/file`;link.download=done.filename||'';
+    document.body.append(link);link.click();link.remove();
+    const docs=done.result.documents,printers=done.result.printers.length;
+    $('#backup-status').textContent=`Backup ready: ${count(docs)} ${docs===1?'document':'documents'}, ${printers} built-in ${printers===1?'printer':'printers'}, ${(done.result.bytes/1048576).toFixed(1)} MB.`;
+  }catch(error){$('#backup-status').textContent='';problem(error);}
+  finally{button.disabled=false;}
+};
+$('#restore-file').onchange=async event=>{
+  const file=event.target.files[0];event.target.value='';
+  if(!file)return;
+  if(!confirm(`Restore “${file.name}”? Folio’s current documents, accounts and settings are replaced by the backup’s (and kept aside in data/.before-restore).`))return;
+  const status=$('#restore-status');status.textContent='Uploading…';
+  try{
+    const started=await api('/api/admin/restore',{method:'POST',body:file,headers:{'Content-Type':'application/gzip'}});
+    const done=await followTask(started.task,{onUpdate:task=>{status.textContent=taskText(task);}});
+    const failed=Object.entries(done.result.printers_failed||{});
+    status.textContent=`Restored the backup from ${today(done.result.manifest.created)}.`+(done.result.printers_restored.length?` Printers set up again: ${done.result.printers_restored.join(', ')}.`:'')+(failed.length?` Not restored: ${failed.map(([n,why])=>`${n} (${why})`).join('; ')}.`:'');
+    toast('Backup restored. Reloading…');setTimeout(()=>location.reload(),2500);
+  }catch(error){status.textContent='';problem(error);}
+};
 $('#print-refresh').onclick=()=>loadPrinterStatus().catch(problem);
 // Keep a quick refresh right beside the drag-and-drop upload tray control.
 // This re-queries CUPS after an administrator changes the driver's trays.
@@ -1219,6 +1289,7 @@ function refreshPrintOptions(prefix){
 async function openDeviceManager(){
   if(state.role!=='admin')return;
   workspace(false,false,true);
+  showLastBackup();
   await refreshDeviceManager();
 }
 async function refreshDeviceManager(refresh=false){

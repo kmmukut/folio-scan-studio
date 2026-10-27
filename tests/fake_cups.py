@@ -34,6 +34,7 @@ class FakeCups:
         self.printers: dict[str, dict] = {}
         self.jobs: dict[int, dict] = {}
         self.requests: list[tuple[int, dict, dict]] = []
+        self.documents: list[bytes] = []  # Document data sent with each request (e.g. a PPD)
         self.devices = [('direct', 'usb://Samsung/M2020%20Series?serial=Z7', 'Samsung M2020 Series', 'Samsung M2020 Series USB',
                          'MFG:Samsung;MDL:M2020 Series;'),
                         ('network', 'socket', 'Unknown', 'AppSocket/HP JetDirect', '')]
@@ -63,8 +64,10 @@ class FakeCups:
                 needs_auth = operation in ADMIN_OPERATIONS or (operation == ipp.CANCEL_JOB and fake.cancel_needs_auth)
                 if needs_auth and not authed:
                     return self.reply(401, b'')
-                status, groups = fake.handle(operation, attrs, printer_attrs, authed)
-                self.reply(200, response(status, request.request_id, groups))
+                fake.documents.append(request.data)
+                answer = fake.handle(operation, attrs, printer_attrs, authed)
+                status, groups, document = answer if len(answer) == 3 else (*answer, b'')
+                self.reply(200, response(status, request.request_id, groups) + document)
 
             def reply(self, code, body):
                 self.send_response(code)
@@ -133,8 +136,11 @@ class FakeCups:
             return 0, [[], *[(ipp.PRINTER, [(ipp.NAME, 'ppd-name', name), (ipp.TEXT, 'ppd-make-and-model', model),
                                             (ipp.LANGUAGE, 'ppd-natural-language', 'en')]) for _, name, model in found]]
         if operation == ipp.CUPS_GET_PRINTERS:
+            if not self.printers:  # What a real CUPS answers when it has no printers
+                return 0x0406, [[(ipp.TEXT, 'status-message', 'No destinations added.')]]
             return 0, [[], *[(ipp.PRINTER, [
                 (ipp.NAME, 'printer-name', name), (ipp.TEXT, 'printer-info', entry.get('printer-info', name)),
+                (ipp.URI, 'device-uri', entry.get('device-uri', 'socket://192.0.2.9')),
                 (ipp.BOOLEAN, 'printer-is-shared', entry.get('printer-is-shared', True)),
                 (ipp.TEXT, 'printer-make-and-model', 'Fake Laser'), (ipp.TEXT, 'printer-location', entry.get('printer-location', '')),
                 (ipp.MIME_TYPE, 'document-format-supported', ['application/octet-stream', 'image/urf', 'application/pdf']),
@@ -148,7 +154,14 @@ class FakeCups:
             entry = self.printers.setdefault(queue, {'state': 3, 'reasons': []})
             entry.update({k: v[0] for k, v in printer_attrs.items()})
             entry['ppd-name'] = (attrs.get('ppd-name') or [entry.get('ppd-name')])[0]
+            if self.documents[-1]:
+                entry['ppd-file'] = self.documents[-1]  # A driver sent along, like lpadmin -P
             return 0, [[]]
+        if operation == ipp.CUPS_GET_PPD:
+            entry = self.printers.get(queue)
+            if not entry or not entry.get('ppd-file'):
+                return 0x0406, [[(ipp.TEXT, 'status-message', 'No PPD for this printer')]]
+            return 0, [[]], entry['ppd-file']
         if operation == ipp.CUPS_DELETE_PRINTER:
             if self.printers.pop(queue, None) is None:
                 return 0x0406, [[(ipp.TEXT, 'status-message', 'The printer or class does not exist.')]]

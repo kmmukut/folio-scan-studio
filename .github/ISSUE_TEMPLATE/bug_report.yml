@@ -1,0 +1,69 @@
+name: Bug report
+description: Something in Folio doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! If the problem is with a specific printer or scanner model, a
+        [hardware report](https://github.com/kmmukut/folio-scan-studio/issues/new?template=hardware_report.yml) may fit better.
+        Please remove passwords, addresses you consider private and document contents from anything you paste.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Print desk
+        2. Choose …
+        3. …
+  - type: input
+    id: version
+    attributes:
+      label: Folio version and edition
+      description: Shown at the bottom of the sidebar, e.g. "0.14.0, Full".
+    validations:
+      required: true
+  - type: dropdown
+    id: arch
+    attributes:
+      label: Host
+      options:
+        - x86-64 (PC, server, NAS)
+        - Raspberry Pi (64-bit OS)
+        - Other 64-bit ARM
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installed with
+      options:
+        - docker compose (published image)
+        - Portainer
+        - Built from source
+        - Other
+  - type: textarea
+    id: checks
+    attributes:
+      label: System check
+      description: Devices → Run checks, then copy the results here.
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output of `docker logs scan-studio --tail 100` around the time of the problem.
+      render: text
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: e.g. Firefox 140 on Windows, Safari on iPhone

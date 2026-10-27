@@ -1,0 +1,10 @@
+# Build Folio from this source instead of pulling the published image:
+#   docker compose -f compose.yaml -f compose.build.yaml up -d --build
+# FOLIO_EDITION in .env chooses what is built: "full" (default) or "lite".
+services:
+  scan-studio:
+    build:
+      context: .
+      args:
+        FOLIO_EDITION: "${FOLIO_EDITION:-full}"
+    image: "folio-scan-studio:local-${FOLIO_EDITION:-full}"

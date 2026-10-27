@@ -1,0 +1,60 @@
+name: CI
+
+# Every push to main and every pull request: tests on the host, both
+# editions built, the suite run inside each image, and a start-up check.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install
+        run: pip install -r requirements-dev.txt
+      - name: Lint (errors only)
+        run: ruff check backend tests
+      - name: Check the page script
+        run: node --check frontend/app.js
+      - name: Tests
+        run: python -m pytest -q
+
+  image:
+    name: Image (${{ matrix.edition }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [full, lite]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          build-args: FOLIO_EDITION=${{ matrix.edition }}
+          load: true
+          tags: folio-scan-studio:ci-${{ matrix.edition }}
+          cache-from: type=gha,scope=ci-${{ matrix.edition }}
+          cache-to: type=gha,mode=max,scope=ci-${{ matrix.edition }}
+      - name: Tests inside the image
+        run: .github/scripts/test-image.sh folio-scan-studio:ci-${{ matrix.edition }}
+      - name: Start-up check
+        run: .github/scripts/smoke-test.sh folio-scan-studio:ci-${{ matrix.edition }} ${{ matrix.edition }}

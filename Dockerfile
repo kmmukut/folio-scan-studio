@@ -1,13 +1,19 @@
-FROM python:3.12-slim-bookworm
+# Pinned by digest for reproducible builds; Dependabot proposes updates
+# (Debian and Python security fixes) as pull requests that CI tests.
+FROM python:3.12-slim-bookworm@sha256:fc169880a4d941f3142c0e2e623f05f246150add19dc36fc9224df20fb19e5fd
 # One codebase, two editions:
 #   full (default): everything, including searchable PDFs and auto-straighten
 #   lite:           for Raspberry Pi-class hosts; leaves out the OCR stack
 #                   (OCRmyPDF, Tesseract, Ghostscript) and OpenCV/NumPy
 ARG FOLIO_EDITION=full
-ARG FOLIO_VERSION=0.13.0
+ARG FOLIO_VERSION=0.14.0
 LABEL org.opencontainers.image.title="Folio Scan Studio" \
       org.opencontainers.image.version="${FOLIO_VERSION}-${FOLIO_EDITION}" \
-      org.opencontainers.image.description="Self-hosted scanning, printing and document workbench for CUPS/SANE devices"
+      org.opencontainers.image.description="Self-hosted scanning, printing and document workbench for CUPS/SANE devices" \
+      org.opencontainers.image.source="https://github.com/kmmukut/folio-scan-studio" \
+      org.opencontainers.image.url="https://github.com/kmmukut/folio-scan-studio" \
+      org.opencontainers.image.documentation="https://github.com/kmmukut/folio-scan-studio#readme" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DEBIAN_FRONTEND=noninteractive
 RUN case "$FOLIO_EDITION" in full|lite) ;; *) echo "FOLIO_EDITION must be full or lite" >&2; exit 1;; esac \
     && apt-get update && apt-get install -y --no-install-recommends \
@@ -19,6 +25,7 @@ COPY requirements.txt requirements-full.txt ./
 RUN pip install --no-cache-dir -r "$( [ "$FOLIO_EDITION" = full ] && echo requirements-full.txt || echo requirements.txt )"
 COPY backend ./backend
 COPY frontend ./frontend
+COPY LICENSE ./
 RUN mkdir -p /data/jobs /etc/sane.d/airscan.d \
     && ln -s /data/managed-airscan.conf /etc/sane.d/airscan.d/folio-managed.conf
 ENV DATA_DIR=/data SCANNER_DEVICE="" FOLIO_EDITION=${FOLIO_EDITION}

@@ -2,140 +2,171 @@
 
 **Modern features. Existing hardware. Minimal resources.**
 
-Folio turns printers and scanners that Linux can drive (through CUPS and
-SANE) into a private, browser-based print and scan workstation. Run it on a
-Raspberry Pi–class computer, a mini PC or an existing Docker host, and use
-it from any phone, tablet or computer on your network.
+[![CI](https://github.com/kmmukut/folio-scan-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/kmmukut/folio-scan-studio/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/kmmukut/folio-scan-studio?include_prereleases&sort=semver)](https://github.com/kmmukut/folio-scan-studio/releases)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
-- **Scan:** flatbed and document feeder, colour or grayscale, multipage
-  documents, manual duplex (fronts then backs), cancel and recover.
+Folio turns printers and scanners that still work into a private,
+browser-based print and scan workstation. Run it on a Raspberry Pi, a mini
+PC or the server you already have, and use it from any phone, tablet or
+computer on your network.
+
+![Folio's workbench: a scanned document with page thumbnails, preview and editing tools](docs/images/workbench.png)
+
+## Why Folio
+
+Millions of printers and scanners are set aside not because the hardware
+failed, but because the manufacturer's software stopped being updated, a
+utility no longer runs, or a new operating system dropped the driver. Folio
+bridges that gap with open technologies (CUPS, SANE, IPP, eSCL, WSD), so a
+small Linux computer can give a working device a modern workflow.
+
+**Replace obsolete software, not functioning hardware.**
+
+We believe:
+
+- Functioning hardware deserves a longer life, and reusing it reduces
+  electronic waste.
+- A printer should not need replacing because its software is outdated.
+- Modern printing and scanning should not depend on cloud subscriptions.
+- You should keep ownership of your devices, documents and data.
+- A low-cost, low-power computer should be enough.
+
+Folio respects what the hardware can do. It cannot make a monochrome
+printer print in colour, but it unlocks everything the device does support
+and builds modern workflows around it.
+
+### Vision
+
+Someone should be able to find an old printer in storage, connect it to a
+small Linux computer, install Folio and, if the hardware has Linux support,
+give it a new role in a home or office. Someone with a server should be
+able to do the same without buying anything, and someone with a brand-new
+multifunction printer should still benefit from Folio's document workflows
+and privacy-conscious design.
+
+### Principles
+
+- **Lightweight:** one container, no external database or message queue,
+  and a Lite image for small hosts.
+- **Hardware-independent:** paper sizes, trays, duplex, colour, scan modes
+  and resolutions come from what each device reports. Nothing is hardcoded.
+- **Private by default:** everything runs on your network. No cloud
+  account, no telemetry, no external services.
+- **Approachable:** ordinary scanning and printing should not require
+  knowing what CUPS or SANE are.
+- **Non-destructive:** original scans are never modified.
+- **Honest:** the docs and changelog say what was verified and what wasn't.
+
+## What it does
+
+- **Scan** from flatbeds and document feeders, in colour or greyscale, into
+  multipage documents, including manual duplex (fronts, then backs).
 - **Edit without losing the original:** crop, rotate, straighten,
-  brightness/contrast/auto-levels, reorder, delete and undo. The original
-  scan is never modified.
-- **Export:** PDF, optionally searchable (OCR), as a background job with
-  progress, so long exports aren't cut off by a reverse proxy.
-- **Set up printers:** add USB and network printers to CUPS from Folio,
-  driverless or with a driver picked by model, then test, pause or remove them.
-- **Print:** upload a PDF or image, or print a saved document, with
-  page ranges, paper size and tray, envelopes, duplex, scaling, pages per
-  sheet and colour mode — limited to what each printer actually reports.
-- **Follow your jobs:** see whether each print is waiting, printing, stopped
-  (and why) or done, and cancel it.
-- **Print statistics:** pages, sheets and paper saved, by person, printer and
-  month, from Folio's own log (no document names), with a CSV export.
+  brightness and contrast, reorder, delete, undo.
+- **Export** PDFs, optionally searchable (OCR), as background jobs with
+  progress.
+- **Set up printers:** add printers to CUPS from the browser, driverless or
+  with a driver chosen by model; test, pause and remove them.
+- **Print** uploads or saved documents with page ranges, paper size and tray,
+  envelopes, duplex, scaling, pages per sheet and colour mode, limited to
+  what each printer actually reports.
+- **Follow print jobs:** waiting, printing, stopped (and why) or done, and
+  cancel your own.
+- **Print statistics:** pages, sheets and paper saved by person, printer and
+  month, from Folio's own log (no document names), with CSV export.
 - **Share safely:** administrator, member and print-only accounts, private
-  documents, and optional rate-limited guest printing.
+  document libraries, and optional rate-limited guest printing.
 
-Folio unlocks what the hardware can do; it cannot add features the device
-lacks (a monochrome printer will not print in colour).
+| Print desk | Statistics |
+|---|---|
+| ![Print desk with upload, printer choice and print options](docs/images/print-desk.png) | ![Statistics page with totals, a monthly chart and tables by person and printer](docs/images/statistics.png) |
 
-## Editions
+## Quick start
 
-One codebase, two images. Pick with `FOLIO_EDITION` in `.env`:
-
-- **Full** (default, ~1.2 GB): everything, including searchable PDFs (OCR)
-  and automatic straightening suggestions.
-- **Lite** (~660 MB): for Raspberry Pi–class computers. Identical except it
-  leaves out OCR and automatic straightening; manual straightening, PDF
-  export, printing and printer management are all there.
-
-## Requirements
-
-- Docker with Compose (Portainer works too).
-- A computer running CUPS (a "print server"; it can be another container).
-  Add it in **Devices → Print servers**; Folio can then add printers to it
-  once you connect a CUPS administrator login.
-- For scanning: an eSCL/AirScan or WSD network scanner, or any scanner SANE
-  supports that is visible inside the container.
-
-## Install
+You need Docker with Compose, and a computer running CUPS that Folio can
+send print jobs to. It can be another container; see
+[Deployment](docs/DEPLOYMENT.md#a-cups-server).
 
 ```bash
-git clone <repository-url> folio && cd folio
-cp .env.example .env
-nano .env          # Set SCAN_STUDIO_ADMIN_PASSWORD (12+ characters)
+mkdir folio && cd folio
+curl -fsSLO https://raw.githubusercontent.com/kmmukut/folio-scan-studio/main/compose.yaml
+curl -fsSL https://raw.githubusercontent.com/kmmukut/folio-scan-studio/main/.env.example -o .env
+nano .env          # set SCAN_STUDIO_ADMIN_PASSWORD (12+ characters) and TZ
 chmod 600 .env
-docker compose up -d --build
+docker compose up -d
 ```
 
-Open `http://<host>:8870`, sign in as `admin` (or `SCAN_STUDIO_ADMIN_USER`),
-then:
+Open `http://<host>:8870` and sign in as `admin`. Then:
 
-1. **Devices → Add a network scanner**: name, IP address, protocol (WSD or
-   eSCL) and, if needed, port and endpoint path. Press **Test**.
-2. **Devices → Print servers**: add the computer running CUPS and connect
-   its administrator login. Then **Add a printer**, print a test page, and
-   choose who may use it.
-3. **Devices → Run checks** to confirm storage, printers and scanners.
+1. **Devices → Print servers:** add the computer running CUPS and connect
+   its administrator login.
+2. **Devices → Add a printer:** pick the print server, type the printer's
+   IP address or search for it, choose a driver, and print a test page.
+3. **Devices → Add a network scanner:** name, IP address and protocol (WSD
+   or eSCL). Press **Test**.
+4. **Devices → Run checks** confirms storage, printers and scanners.
 
-### Portainer
+Using Portainer, a reverse proxy or a Raspberry Pi? See
+[Deployment](docs/DEPLOYMENT.md).
 
-The Compose file builds the image from source (`build: .`). Either run
-`docker compose up -d --build` in the source directory and manage the
-container from Portainer, or build the image first
-(`docker build --build-arg FOLIO_EDITION=full -t folio-scan-studio:0.13.0-full .`), then paste `compose.yaml`
-into a Portainer stack without the `build:` line and set the variables there.
+## Images and editions
 
-## Configuration
+Images are published for **x86-64 (amd64)** and **64-bit ARM (arm64)**:
+Raspberry Pi 3, 4 and 5 running a 64-bit OS, and other ARM servers.
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `FOLIO_EDITION` | `full` | `full` or `lite` (build setting; see Editions) |
-| `SCAN_STUDIO_ADMIN_PASSWORD` | — (required) | First administrator's password, used only when no accounts exist |
-| `SCAN_STUDIO_ADMIN_USER` | `admin` | First administrator's username |
-| `CUPS_SERVERS` | empty | Optional: print servers to always use, e.g. `cups:631,192.168.1.10:631`. More can be added in Devices |
-| `COOKIE_SECURE` | `false` | Set `true` when Folio is served over HTTPS |
-| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Reverse proxies to trust for the visitor's address (IPs or networks) |
-| `TZ` | `UTC` | Time zone, e.g. `Europe/Berlin`; decides which day and month a print counts in |
-| `FOLIO_AIRSCAN_DISCOVERY` | `off` | `on` to also discover eSCL/WSD scanners by multicast |
-| `FOLIO_RENDER_CONCURRENCY` | 2 (1 on one core) | Full-resolution page decodes allowed at once |
-| `USER_PRINT_MAX_MB` | `256` | Upload size ceiling for signed-in users (64–2048) |
-| `SCAN_TIMEOUT_SECONDS` / `SCAN_GRACE_SECONDS` | `900` / `30` | Maximum scan time; time allowed for a scanner to cancel cleanly |
+| Edition | Includes | Size | Image |
+|---|---|---|---|
+| **Full** | Everything, including searchable PDFs (OCR) and automatic straightening suggestions | ~1.2 GB | `ghcr.io/kmmukut/folio-scan-studio:0.14-full` |
+| **Lite** | Everything except those two; for Raspberry Pi–class hosts | ~660 MB | `ghcr.io/kmmukut/folio-scan-studio:0.14-lite` |
 
-All state lives in `./data` (accounts, documents, device registry, print log). Back it
-up before upgrading; see [CHANGELOG.md](CHANGELOG.md) for upgrade notes.
+Choose with `FOLIO_EDITION=full` or `lite` in `.env`. Tags: `0.14.0-full`
+(exact), `0.14-full` (receives 0.14.x fixes), `full` (newest release), and
+the same with `-lite`. `latest` is the newest Full release. The images are
+also mirrored to Docker Hub as `kmmukut/folio-scan-studio`.
 
-### Behind a reverse proxy
+## Documentation
 
-Serve Folio over HTTPS, set `COOKIE_SECURE=true`, and set
-`FORWARDED_ALLOW_IPS` to the proxy's address or Docker network. Without it,
-every visitor appears to come from the proxy, so sign-in lockouts and guest
-limits are shared by everyone. Don't use `*` if port 8870 is also reachable
-directly. **Devices → Run checks** reports whether the proxy is trusted.
+- [Deployment](docs/DEPLOYMENT.md): Compose, Portainer, Raspberry Pi,
+  reverse proxies, a CUPS server, USB devices, backups and upgrades.
+- [Configuration](docs/CONFIGURATION.md): every setting.
+- [Hardware](docs/HARDWARE.md): what has been tested, and how to report
+  your device.
+- [Architecture](docs/ARCHITECTURE.md): how Folio is built and why.
+- [Changelog](CHANGELOG.md): what changed in each release, with upgrade
+  notes.
 
-## Troubleshooting
+## Project status
 
-Start with **Devices → Run checks**. From the Docker host you can also run:
+Folio is in **public beta** (0.x) and is used daily on an x86-64 Docker
+host with a network multifunction printer. Each release runs the full test
+suite inside both editions on both architectures before it is published.
+Not yet verified by the maintainers: a real Raspberry Pi, and USB printers
+or scanners (we have none to test with). Reports from your hardware are the
+most valuable contribution right now.
 
-```bash
-docker exec scan-studio scanimage -L                        # Scanners SANE can see
-docker exec scan-studio scanimage -d 'DEVICE' --all-options  # A scanner's modes, sources, DPI
-docker exec scan-studio lpstat -h CUPS_SERVER -p             # Printer queues on a CUPS server
-docker exec scan-studio lpoptions -h CUPS_SERVER -p QUEUE -l # Sizes, trays, duplex for a queue
-```
+## Help wanted
 
-A printer option that CUPS does not report (a tray, an envelope size) cannot
-be selected in Folio; fix it in the queue's driver settings in CUPS, then
-press **Refresh devices**. A successful network test alone does not prove a
-scanner can negotiate a scan session; use **Test** in Devices.
+- **Tell us about your hardware.** Open a
+  [hardware report](https://github.com/kmmukut/folio-scan-studio/issues/new?template=hardware_report.yml),
+  whether it worked or not. Reports become the compatibility list.
+- **USB printers and scanners:** passthrough recipes, IPP-over-USB and
+  per-model notes, tested on real devices.
+- **Raspberry Pi:** install time, memory use and anything that got in the
+  way.
+- Bug reports, fixes and ideas: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Development
+Please follow the [Code of Conduct](CODE_OF_CONDUCT.md), and report security
+issues privately as described in [SECURITY.md](SECURITY.md).
 
-```bash
-python -m venv .venv && . .venv/bin/activate
-pip install -r requirements-dev.txt
-python -m pytest
-docker run --rm -v "$PWD/frontend:/src:ro" node:22-alpine node --check /src/app.js
-```
+## License
 
-Tests simulate scanners and CUPS; they never need hardware or write outside
-temporary directories. `requirements-dev.txt` includes the Full extras. To
-test the Lite edition, run the suite inside its image (tests needing OpenCV
-are skipped automatically):
+Folio is free software under the
+[GNU Affero General Public License v3.0 or later](LICENSE). If you run a
+modified version for other people over a network, you must offer them its
+source code.
 
-```bash
-docker build --build-arg FOLIO_EDITION=lite -t folio-scan-studio:lite .
-docker run --rm --entrypoint sh -v "$PWD:/src:ro" -w /src folio-scan-studio:lite \
-  -c 'pip install -q pytest httpx pypdf && python -m pytest -q -p no:cacheprovider'
-``` Design decisions and direction are in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The images also contain third-party software under its own licenses,
+including PyMuPDF and Ghostscript (AGPL-3.0), OCRmyPDF (MPL-2.0), Tesseract
+and OpenCV (Apache-2.0), FastAPI (MIT), and the SANE and CUPS client tools,
+on a Debian base.

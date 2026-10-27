@@ -1,0 +1,27 @@
+# Adds a CUPS print server next to Folio, for hosts that don't run one yet:
+#   docker compose -f compose.yaml -f compose.cups.yaml up -d
+# Set CUPS_ADMIN_PASSWORD in .env first. Then in Folio: Devices > Print
+# servers shows "cups:631"; connect it with CUPS_ADMIN / CUPS_ADMIN_PASSWORD
+# and add printers. anujdatar/cups is a community image (amd64, arm64, armv7).
+services:
+  scan-studio:
+    environment:
+      CUPS_SERVERS: "cups:631"
+    depends_on:
+      - cups
+  cups:
+    image: anujdatar/cups:latest
+    restart: unless-stopped
+    environment:
+      CUPSADMIN: "${CUPS_ADMIN:-cupsadmin}"
+      CUPSPASSWORD: "${CUPS_ADMIN_PASSWORD:?Set CUPS_ADMIN_PASSWORD in .env for the CUPS administrator}"
+      TZ: "${TZ:-UTC}"
+    volumes:
+      - ./cups:/etc/cups
+    # A USB printer: let CUPS see the host's USB devices (not yet tested by
+    # the maintainers; please share what works in a hardware report).
+    # devices:
+    #   - /dev/bus/usb:/dev/bus/usb
+    # Only needed to open the CUPS web page or print from other computers:
+    # ports:
+    #   - "631:631"

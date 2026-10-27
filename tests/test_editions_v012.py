@@ -121,7 +121,9 @@ def test_build_files_offer_both_editions_from_one_version():
     compose = (ROOT / 'compose.yaml').read_text()
     assert re.search(r'ARG FOLIO_VERSION=([\d.]+)', dockerfile).group(1) == __version__
     assert 'ARG FOLIO_EDITION=full' in dockerfile
-    assert f'folio-scan-studio:{__version__}-${{FOLIO_EDITION:-full}}' in compose
+    minor = '.'.join(__version__.split('.')[:2])
+    assert f'folio-scan-studio:${{FOLIO_VERSION:-{minor}}}-${{FOLIO_EDITION:-full}}' in compose  # Published images
+    assert 'FOLIO_EDITION: "${FOLIO_EDITION:-full}"' in (ROOT / 'compose.build.yaml').read_text()  # Local builds
     # Lite must not pull in the Full-only Python packages.
     core = (ROOT / 'requirements.txt').read_text().lower()
     assert 'opencv' not in core and 'numpy' not in core

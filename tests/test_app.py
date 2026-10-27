@@ -1,6 +1,5 @@
 """Hardware-free API contract tests with simulated sane-airscan batch output."""
 import importlib
-import json
 import subprocess
 import sys
 import threading
@@ -310,7 +309,6 @@ def test_auto_straighten_and_old_document_defaults(client, monkeypatch):
 
 
 def test_login_csrf_session_protection_and_password_change(client):
-    from fastapi.testclient import TestClient
     assert client.get('/api/auth/status').json()['authenticated'] is True
     token=client.headers.pop('X-CSRF-Token')
     assert client.post('/api/jobs',json={'title':'unauthorized mutation'}).status_code == 403
@@ -332,7 +330,6 @@ def test_login_csrf_session_protection_and_password_change(client):
 def test_guest_print_is_disabled_by_default_and_restricts_scanner(client, monkeypatch):
     from pypdf import PdfWriter
     from io import BytesIO
-    import os
     jid=create(client)
     scan_and_wait(client,jid,count=1)
     # Logged-out guest can never read scanned page even with a known ID.
@@ -389,7 +386,6 @@ def test_guest_page_limit(client,monkeypatch):
 
 def test_new_user_accounts_roles_and_migration(client, monkeypatch):
     from fastapi.testclient import TestClient
-    from backend import security
     from io import BytesIO
     from pypdf import PdfWriter
     # An administrator can create accounts, and the server restricts by role.
@@ -723,7 +719,7 @@ def test_print_saved_folio_document_is_per_user_and_real_pdf(client,monkeypatch)
     import sys, types
     jid=create(client);scan_and_wait(client,jid, count=2)
     try:
-        import img2pdf
+        import img2pdf  # noqa: F401 - only checks it is installed
     except ImportError:
         from pypdf import PdfWriter
         def fake_convert(images):

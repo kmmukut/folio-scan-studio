@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import ipaddress
 import os
 import re
 import subprocess
@@ -207,19 +208,25 @@ def test_no_default_cups_server_without_configuration():
 
 
 def test_no_development_network_addresses_in_shipped_files():
+    """Examples use loopback, documentation ranges or obvious placeholders, never a real network."""
+    allowed = [ipaddress.ip_network(n) for n in ('127.0.0.0/8', '0.0.0.0/32', '192.0.2.0/24', '198.51.100.0/24',
+                                                 '203.0.113.0/24', '192.168.1.0/24', '172.19.0.0/16')]
     shipped = [*ROOT.glob('backend/*.py'), *ROOT.glob('frontend/*'), ROOT / 'compose.yaml',
                ROOT / '.env.example', ROOT / 'Dockerfile']
     for path in shipped:
-        text = path.read_text(encoding='utf-8')
-        for address in ('198.51.100.2', '192.0.2.124', '203.0.113.'):
-            assert address not in text, f'{address} is hardcoded in {path.name}'
+        for found in re.findall(r'\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b', path.read_text(encoding='utf-8')):
+            network = ipaddress.ip_network(found, strict=False)
+            assert any(network.subnet_of(ok) for ok in allowed), f'{found} in {path.name} looks like a real network'
 
 
 def test_version_is_consistent_across_release_files():
     html = (ROOT / 'frontend' / 'index.html').read_text()
     compose = (ROOT / 'compose.yaml').read_text()
     assert re.search(r'rail-license">[^<]*<span>([\d.]+)</span>', html).group(1) == __version__
-    assert f'folio-scan-studio:{__version__}' in compose
+    minor = '.'.join(__version__.split('.')[:2])
+    assert f'folio-scan-studio:${{FOLIO_VERSION:-{minor}}}-' in compose
+    assert f'\nFOLIO_VERSION={minor}\n' in (ROOT / '.env.example').read_text()
+    assert f'ARG FOLIO_VERSION={__version__}\n' in (ROOT / 'Dockerfile').read_text()
     assert web.app.version == __version__
 
 

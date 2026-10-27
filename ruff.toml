@@ -1,0 +1,6 @@
+# Errors only (pyflakes and syntax errors); style follows the surrounding code.
+target-version = "py312"
+line-length = 140
+
+[lint]
+select = ["F", "E9"]

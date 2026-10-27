@@ -1,0 +1,78 @@
+name: Hardware report
+description: Tell us how Folio worked with your printer or scanner, whether it worked or not.
+title: "[Hardware] <make and model>"
+labels: [hardware]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports like this build Folio's [compatibility list](https://github.com/kmmukut/folio-scan-studio/blob/main/docs/HARDWARE.md).
+        Devices that didn't work are just as useful to know about. USB devices and Raspberry Pi hosts are especially welcome.
+  - type: input
+    id: device
+    attributes:
+      label: Make and model
+      placeholder: e.g. Brother HL-L2350DW
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is it?
+      options:
+        - Printer
+        - Scanner
+        - Multifunction (print and scan)
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      multiple: true
+      options:
+        - Network (Ethernet or Wi-Fi)
+        - USB
+        - IPP-over-USB
+    validations:
+      required: true
+  - type: dropdown
+    id: printing
+    attributes:
+      label: Printing
+      options:
+        - Works
+        - Works with limitations (see notes)
+        - Doesn't work
+        - Not tried / not a printer
+    validations:
+      required: true
+  - type: dropdown
+    id: scanning
+    attributes:
+      label: Scanning
+      options:
+        - Works
+        - Works with limitations (see notes)
+        - Doesn't work
+        - Not tried / not a scanner
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: How is it set up?
+      description: Printer driver (driverless or which driver), scanner protocol (WSD, eSCL, a SANE backend).
+      placeholder: e.g. Driverless (IPP Everywhere); scanner via eSCL
+  - type: input
+    id: host
+    attributes:
+      label: Folio version, edition and host
+      placeholder: e.g. 0.14.0 Lite on a Raspberry Pi 4 (4 GB), Raspberry Pi OS 64-bit
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: What worked, what didn't, anything you had to do (USB passthrough, extra drivers). Paste System check output if something failed.

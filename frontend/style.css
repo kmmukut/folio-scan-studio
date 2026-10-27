@@ -417,3 +417,8 @@
 @media(max-width:1120px){.stats-grid{grid-template-columns:1fr}.stats-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:850px){.stats-desk{padding:26px 22px}}
 @media(max-width:640px){.stats-desk{padding:22px 16px}.stats-desk>h1{font-size:41px}.stats-panel{padding:20px}.stat-tile{padding:15px}.stat-tile strong{font-size:26px}.stats-meter{display:none}.stats-toolbar select{min-width:0}.stats-toolbar label{flex:1}}
+
+/* Free-software notice (AGPL-3.0 section 13: network users can get the source). */
+.rail-source{display:block;margin:8px 4px 0;font-size:10px;color:#778e7b;text-decoration:none}.rail-source:hover{color:#dce6dc;text-decoration:underline}
+.auth-foot a{color:#b67153;text-decoration:none}.auth-foot a:hover{text-decoration:underline}
+.guest-privacy a{color:inherit}

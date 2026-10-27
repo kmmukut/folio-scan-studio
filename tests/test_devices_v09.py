@@ -1,7 +1,6 @@
 """Folio v0.9 device migration, safety and color conversion regressions."""
 from __future__ import annotations
 
-import io
 import subprocess
 import sys
 from pathlib import Path

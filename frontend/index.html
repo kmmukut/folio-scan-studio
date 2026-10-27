@@ -48,7 +48,7 @@
       <button class="button main-button" type="submit">Open workspace <svg class="svg-icon"><use href="#ico-arrow"/></svg></button>
     </form>
     <button type="button" id="login-guest-button" class="text-link">Just need to print? Check guest printing →</button><p id="login-guest-status" class="guest-login-note">Guest printing is disabled until an administrator enables it.</p>
-    <div class="auth-foot">LOCAL / PRIVATE / YOURS <span>EST. 2026</span></div>
+    <div class="auth-foot">LOCAL / PRIVATE / YOURS <a href="https://github.com/kmmukut/folio-scan-studio" target="_blank" rel="noopener">SOURCE · AGPL-3.0</a></div>
   </main>
 </div>
 
@@ -68,7 +68,8 @@
     <div class="rail-bottom">
       <div class="machine-status"><span class="led" id="device-led"></span><div><span id="rail-scanner-name">Selected scanner</span><small id="device-status">Checking connection…</small></div></div>
       <button class="rail-logout" id="logout-button">SIGN OUT <span>↗</span></button>
-      <div class="rail-license">PRIVATE EDITION <span>0.13.0</span></div>
+      <div class="rail-license">EDITION <span>0.14.0</span></div>
+      <a class="rail-source" href="https://github.com/kmmukut/folio-scan-studio" target="_blank" rel="noopener">Source code · AGPL-3.0</a>
     </div>
   </aside>
   <div class="app-main">
@@ -328,7 +329,7 @@
       </div>
       <p class="print-help">Page selection applies before pages-per-sheet layout. Paper sizes, trays and duplex options come from the selected CUPS queue; unavailable trays are not offered.</p>
     </section><button class="button main-button" type="submit">Send to printer <svg class="svg-icon"><use href="#ico-arrow"/></svg></button><div id="guest-print-feedback" class="print-feedback hidden" role="status" aria-live="polite"></div></form>
-    <div class="guest-privacy"><svg class="svg-icon"><use href="#ico-lock"/></svg> Guest jobs are limited to one copy and rate-limited. Temporary previews expire after 15 minutes and never enter the Folio document library.</div></div>
+    <div class="guest-privacy"><svg class="svg-icon"><use href="#ico-lock"/></svg> Guest jobs are limited to one copy and rate-limited. Temporary previews expire after 15 minutes and never enter the Folio document library. Folio is free software: <a href="https://github.com/kmmukut/folio-scan-studio" target="_blank" rel="noopener">source code</a>.</div></div>
 </section>
 
 <dialog id="saved-print-dialog" class="saved-print-dialog" aria-label="Print a saved document">

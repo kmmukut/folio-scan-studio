@@ -35,7 +35,6 @@ def qa(tmp_path,monkeypatch):
     monkeypatch.setattr(appmod,'JOBS_DIR',tmp_path/'jobs')
     monkeypatch.setattr(appmod,'PREVIEW_ROOT',tmp_path/'print-previews')
     monkeypatch.setenv('SCAN_STUDIO_ADMIN_PASSWORD','qa-admin-long-password')
-    from backend import security
     security._guest_submissions.clear(); security._global_submissions.clear()
     with TestClient(appmod.app) as client:
         login=client.post('/api/auth/login',json={'username':'admin','password':'qa-admin-long-password'})

@@ -1,0 +1,181 @@
+name: Release
+
+# Pushing a tag like v0.14.0 builds both editions natively on amd64 and
+# arm64, tests each image on its own architecture, publishes multi-arch
+# images to GHCR (and Docker Hub when configured), then creates the GitHub
+# release from that version's changelog section.
+#
+# Docker Hub is optional: set the repository variable DOCKERHUB_IMAGE
+# (e.g. kmmukut/folio-scan-studio) and the secrets DOCKERHUB_USERNAME and
+# DOCKERHUB_TOKEN. Without them, only GHCR is used.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+env:
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}
+  DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
+
+jobs:
+  check:
+    name: Check version and changelog
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: version
+        name: Tag matches the code
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          code=$(sed -n "s/^__version__ = '\(.*\)'$/\1/p" backend/version.py)
+          if [ "${tag%%-*}" != "$code" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match backend/version.py ($code)"
+            exit 1
+          fi
+          case "$tag" in *-*) prerelease=true ;; *) prerelease=false ;; esac
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+      - name: Changelog has this version
+        run: .github/scripts/release-notes.sh "${{ steps.version.outputs.version }}" > /dev/null
+
+  build:
+    name: Build ${{ matrix.edition }} (${{ matrix.arch }})
+    needs: check
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        edition: [full, lite]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build for testing
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          build-args: FOLIO_EDITION=${{ matrix.edition }}
+          load: true
+          tags: folio-scan-studio:test
+          cache-from: type=gha,scope=release-${{ matrix.edition }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.edition }}-${{ matrix.arch }}
+      - name: Tests inside the image
+        run: .github/scripts/test-image.sh folio-scan-studio:test
+      - name: Start-up check
+        run: .github/scripts/smoke-test.sh folio-scan-studio:test ${{ matrix.edition }}
+      - name: Push by digest
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          build-args: FOLIO_EDITION=${{ matrix.edition }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=release-${{ matrix.edition }}-${{ matrix.arch }}
+          provenance: mode=max
+          sbom: true
+      - name: Export digest
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          digest="${{ steps.push.outputs.digest }}"
+          touch "$RUNNER_TEMP/digests/${digest#sha256:}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.edition }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish ${{ matrix.edition }}
+    needs: [check, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        edition: [full, lite]
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ matrix.edition }}-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - if: env.DOCKERHUB_IMAGE != ''
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Tags for v0.14.0: 0.14.0-full, 0.14-full, full (and 0.14.0, 0.14, latest
+      # for Full); the same with -lite. Pre-releases get only their exact tags.
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ${{ env.GHCR_IMAGE }}
+            ${{ env.DOCKERHUB_IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}},suffix=-${{ matrix.edition }}
+            type=semver,pattern={{major}}.{{minor}},suffix=-${{ matrix.edition }},enable=${{ needs.check.outputs.prerelease == 'false' }}
+            type=raw,value=${{ matrix.edition }},enable=${{ needs.check.outputs.prerelease == 'false' }}
+            type=semver,pattern={{version}},enable=${{ matrix.edition == 'full' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ matrix.edition == 'full' && needs.check.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ matrix.edition == 'full' && needs.check.outputs.prerelease == 'false' }}
+      - name: Create multi-arch tags
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          # shellcheck disable=SC2046 # one argument per tag and per digest
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "$GHCR_IMAGE@sha256:%s " *)
+      - name: Inspect
+        run: docker buildx imagetools inspect "$GHCR_IMAGE:${{ needs.check.outputs.version }}-${{ matrix.edition }}"
+
+  release:
+    name: GitHub release
+    needs: [check, publish]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+          PRERELEASE: ${{ needs.check.outputs.prerelease }}
+        run: |
+          .github/scripts/release-notes.sh "$VERSION" > notes.md
+          title=$(grep -m1 "^## $VERSION" CHANGELOG.md | sed "s/^## /Folio /")
+          cp .env.example env.example
+          flags=(--title "$title" --notes-file notes.md --verify-tag)
+          [ "$PRERELEASE" = true ] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" compose.yaml compose.cups.yaml env.example

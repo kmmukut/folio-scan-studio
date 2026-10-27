@@ -16,7 +16,7 @@ Most of what makes an old printer feel modern comes from the sharing layer.
 Folio's job is to make the device and sharing layers easy to set up and keep
 healthy, and to make the workflow layer excellent.
 
-## Current structure (0.13)
+## Current structure (0.14)
 
 - `backend/app.py`: FastAPI routes, auth middleware, scan and print flows.
 - `backend/devices.py`: scanner registry (`data/devices.json`), generated
@@ -128,6 +128,17 @@ and the CSV export covers spreadsheets and reporting tools. The SQL is kept
 plain, so the log could move to another database later if a real need
 appears.
 
+### D13 — Published images, built and tested by CI (0.14)
+Folio is published under the AGPL-3.0-or-later (PyMuPDF and Ghostscript,
+which the images ship, are AGPL-3.0). Images go to GHCR, mirrored to Docker
+Hub, for amd64 and arm64 only: there is no 32-bit ARM wheel for PyMuPDF,
+so a 32-bit build would compile MuPDF every time. Each architecture is built
+on a native GitHub runner rather than under emulation, and the full test
+suite runs inside every image on its own architecture before anything is
+published. Tags carry the edition (`0.14.0-full`, `0.14-lite`); `latest`
+is the newest Full release. The base image is pinned by digest and updated
+through Dependabot pull requests, so every rebuild is deliberate and tested.
+
 ### D6 — Capabilities come from the device, never from model names
 Sizes, trays, duplex, colour, scan modes and resolutions are what CUPS/SANE
 report. Folio does not fabricate options, and no device, address or network
@@ -142,7 +153,8 @@ may change with real use.
 2. ~~**0.11 — Printer management.**~~ Done; see D2 and D9.
 3. ~~**0.12 — Lite and Full editions.**~~ Done; see D10.
 4. ~~**0.13 — Print statistics.**~~ Done; see D12.
-5. **Next candidates:** arm64 image builds; an optional bundled CUPS + Avahi
+5. ~~**0.14 — Public release.**~~ Published images, CI, community docs; see D13.
+6. **Next candidates:** a non-root container user; an optional bundled CUPS + Avahi
    container with AirPrint advertising and a first-run wizard; optional
    per-person print quotas built on the print log. USB-specific work waits
    for community testers (D11).

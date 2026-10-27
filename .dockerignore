@@ -8,3 +8,6 @@ pytest.ini
 tests
 /data
 *.zip
+.github
+docs
+/cups

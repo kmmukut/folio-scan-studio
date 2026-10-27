@@ -4,6 +4,78 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.14.0 — Ready for GitHub: published images, CI and community docs
+
+Folio is now set up as a public open-source project. Nothing changes in
+how Folio works; this release is about installing and contributing.
+
+### Install without building
+- Images are published to the GitHub Container Registry, and mirrored to
+  Docker Hub, for **x86-64 and 64-bit ARM** (Raspberry Pi 3/4/5 on a 64-bit
+  OS): `ghcr.io/kmmukut/folio-scan-studio:0.14-full` and `…:0.14-lite`.
+  Also `0.14.0-full` (exact), `full`/`lite` (newest), and `latest` (Full).
+- `compose.yaml` now pulls the image. Choose the edition with
+  `FOLIO_EDITION` and the version with `FOLIO_VERSION` (default `0.14`,
+  which receives 0.14.x fixes). `FOLIO_PORT` sets the port.
+  `compose.build.yaml` builds from source instead.
+- **compose.cups.yaml** adds a CUPS print server next to Folio for hosts
+  that don't have one: `docker compose -f compose.yaml -f compose.cups.yaml up -d`.
+- `.env.example` explains every setting.
+
+### Documentation and community
+- A new README with the project's mission, vision and principles, and
+  screenshots.
+- Guides: [Deployment](docs/DEPLOYMENT.md) (Compose, Portainer, Raspberry
+  Pi, CUPS, USB, reverse proxies, backups), [Configuration](docs/CONFIGURATION.md)
+  and [Hardware](docs/HARDWARE.md), with the start of a compatibility list.
+- CONTRIBUTING, Code of Conduct (Contributor Covenant 2.1), SECURITY
+  (private vulnerability reporting), and issue forms for bugs, features
+  and **hardware reports**.
+
+### License
+Folio is licensed under the **GNU AGPL-3.0-or-later**, matching PyMuPDF and
+Ghostscript, which the images include. The sign-in page, the sidebar and
+the guest page link to the source code, as the AGPL asks of software used
+over a network; the license is also in the image at `/app/LICENSE`.
+
+### Automated builds
+- **CI** on every push and pull request: tests, an error-level lint (ruff),
+  a syntax check of the page script, both images built, the test suite run
+  inside each image, and a start-up check (version, edition, Docker health).
+- **Releases** from a version tag: each edition is built natively on amd64
+  and arm64, tested on its own architecture, published with an SBOM and
+  build provenance, and a GitHub release is created from this changelog.
+- **Dependabot** proposes weekly updates for Python packages, the base image
+  (now pinned by digest, for reproducible builds) and the workflow actions.
+
+### Also
+- The sidebar no longer says "Private edition"; it shows Full or Lite.
+- Personal network addresses in tests and old changelog entries were
+  replaced with documentation addresses; a test now rejects any address in
+  shipped files that isn't loopback, a documentation range or an obvious
+  placeholder.
+- Unused imports removed.
+
+### Verified
+- Full test suite on the host and inside both images (amd64).
+- The CI scripts (in-image tests, start-up check, release notes) were run
+  locally against both images; the workflows pass `actionlint` and
+  `shellcheck`.
+- `compose.yaml` + `compose.cups.yaml` started together from scratch: the
+  CUPS container filled its configuration, Folio listed `cups:631`, the
+  administrator login connected, 80 driver makes were listed and a printer
+  was added.
+- **Not verified yet:** the workflows themselves and the arm64 images. They
+  run for the first time on GitHub; the arm64 build and its tests run on
+  GitHub's ARM machines.
+
+### Upgrading
+Data is unchanged. To move from a locally built image to the published one,
+replace your `compose.yaml` with the new one (keep your `.env`), add
+`FOLIO_EDITION` and `FOLIO_VERSION=0.14` if you like, then
+`docker compose pull && docker compose up -d`. In Portainer, update the
+stack's compose text the same way and keep the data path you use today.
+
 ## 0.13.0 — Print statistics
 
 Administrators get a **Statistics** page: how much was printed, by whom, on

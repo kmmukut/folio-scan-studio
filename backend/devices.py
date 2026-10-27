@@ -16,7 +16,6 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import urlsplit
 from typing import Any, Callable
 from backend import printing
 
@@ -191,7 +190,7 @@ def write_managed_sane_config(registry: dict, conf_path: Path) -> None:
         display = f"Folio-{entry['id']} {entry['name']}"
         lines.append(f'"{display}" = {endpoint}, {entry["protocol"]}')
     # Use discovery across the local subnet only when explicitly enabled.
-    # On the user's VLAN-heavy Docker host, multicast probing many Docker
+    # On Docker hosts with many bridges or VLANs, multicast probing many Docker
     # bridges can be slow and can exhaust multicast group resources.
     if os.getenv('FOLIO_AIRSCAN_DISCOVERY', 'off').strip().lower() not in ('on','true','yes','1'):
         lines.extend(['', '[options]', 'discovery = disable'])

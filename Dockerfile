@@ -8,7 +8,7 @@ FROM python:3.12-slim-bookworm@sha256:fc169880a4d941f3142c0e2e623f05f246150add19
 # Both include the built-in print server: CUPS with every printer driver
 # Debian packages, because old printers on small hosts need them most.
 ARG FOLIO_EDITION=full
-ARG FOLIO_VERSION=0.18.0
+ARG FOLIO_VERSION=0.18.1
 LABEL org.opencontainers.image.title="Folio Scan Studio" \
       org.opencontainers.image.version="${FOLIO_VERSION}-${FOLIO_EDITION}" \
       org.opencontainers.image.description="Self-hosted scanning, printing and document workbench for CUPS/SANE devices" \
@@ -22,7 +22,11 @@ RUN case "$FOLIO_EDITION" in full|lite) ;; *) echo "FOLIO_EDITION must be full o
        sane-utils sane-airscan cups-client ca-certificates tini \
        cups cups-filters printer-driver-all foomatic-db-compressed-ppds openprinting-ppds hplip \
        $( [ "$FOLIO_EDITION" = full ] && echo ocrmypdf tesseract-ocr-eng ) \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # HP's SANE plug-in (from hplip, kept for its printer drivers) aborts every
+    # scanner listing when there is no D-Bus, as in a container; HP network
+    # scanners are reached through eSCL (sane-airscan) instead.
+    && sed -i 's/^hpaio/#hpaio/' /etc/sane.d/dll.d/hplip
 WORKDIR /app
 COPY requirements.txt requirements-full.txt ./
 RUN pip install --no-cache-dir -r "$( [ "$FOLIO_EDITION" = full ] && echo requirements-full.txt || echo requirements.txt )"

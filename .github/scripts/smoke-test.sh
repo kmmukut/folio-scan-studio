@@ -28,6 +28,9 @@ docker exec "$name" test -f /app/LICENSE || { echo "LICENSE missing from the ima
 user=$(docker exec "$name" sh -c 'ps -eo user=,args= | grep "bin/[u]vicorn" | head -n 1 | cut -d" " -f1')
 [ "$user" = folio ] || { echo "Folio runs as '$user', not as the folio user"; exit 1; }
 echo "Folio runs as: $user"
+# Scanning: listing scanners as Folio's user must work (no SANE plug-in may crash it).
+docker exec -u folio "$name" timeout 60 scanimage -L >/dev/null 2>&1 || { echo "scanimage -L failed in the image"; exit 1; }
+echo "scanner listing: works"
 # The built-in print server: signed in, System check must find it answering.
 jar=$(mktemp)
 curl -fsS -c "$jar" -H 'Content-Type: application/json' \

@@ -4,6 +4,35 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.18.1 — Scanning works again
+
+**Fixed: scanners showed as offline from 0.15 on.** The HP printer drivers
+added with the built-in print server in 0.15 come with HP's scanner
+plug-in for SANE. In a container, where there is no D-Bus, that plug-in
+crashes every scanner listing, so Folio could see no scanner at all.
+
+The plug-in is now switched off in the image, and all the printer drivers
+stay: 17,650 models, 7,141 of them HP. HP network scanners keep working
+through eSCL (AirScan), like other network scanners.
+
+Folio's tests simulated `scanimage`, so they couldn't notice. Two checks
+now run against the real one:
+- a test inside each image confirms listing scanners works
+- the CI start-up check lists scanners as Folio's own user
+
+### Verified
+- **With the maintainer's scanner settings:** the 0.18 image aborts; the
+  0.18.1 image lists the Samsung M2885FW (WSD). The scanner was only asked
+  what it is; nothing was scanned.
+- **Drivers:** still 17,650.
+- **Tests:** the full suite runs inside both images, and the start-up check
+  passes for both.
+
+### Upgrading
+Re-pull the image (`0.18` receives this fix). Until then, this restores
+scanning in a running 0.18 container until it is recreated:
+`docker exec scan-studio sed -i 's/^hpaio/#hpaio/' /etc/sane.d/dll.d/hplip`
+
 ## 0.18.0 — Print quotas
 
 An optional monthly page limit per person.

@@ -66,8 +66,12 @@ and privacy-conscious design.
   brightness and contrast, reorder, delete, undo.
 - **Export** PDFs, optionally searchable (OCR), as background jobs with
   progress.
-- **Set up printers:** add printers to CUPS from the browser, driverless or
-  with a driver chosen by model; test, pause and remove them.
+- **A print server built in:** CUPS with drivers for thousands of printer
+  models, set up from the browser (driverless or with a driver chosen by
+  model); test, pause and remove printers, and let phones print to them
+  (AirPrint).
+- **Printer care:** toner, ink and parts levels, with a warning when
+  something runs low.
 - **Print** uploads or saved documents with page ranges, paper size and tray,
   envelopes, duplex, scaling, pages per sheet and colour mode, limited to
   what each printer actually reports.
@@ -84,9 +88,7 @@ and privacy-conscious design.
 
 ## Quick start
 
-You need Docker with Compose, and a computer running CUPS that Folio can
-send print jobs to. It can be another container; see
-[Deployment](docs/DEPLOYMENT.md#a-cups-server).
+All you need is Docker with Compose; Folio includes its own print server.
 
 ```bash
 mkdir folio && cd folio
@@ -99,13 +101,14 @@ docker compose up -d
 
 Open `http://<host>:8870` and sign in as `admin`. Then:
 
-1. **Devices → Print servers:** add the computer running CUPS and connect
-   its administrator login.
-2. **Devices → Add a printer:** pick the print server, type the printer's
-   IP address or search for it, choose a driver, and print a test page.
-3. **Devices → Add a network scanner:** name, IP address and protocol (WSD
+1. **Devices → Add a printer:** type the printer's IP address or search for
+   it, choose *Driverless* or your model's driver, and print a test page.
+2. **Devices → Add a network scanner:** name, IP address and protocol (WSD
    or eSCL). Press **Test**.
-4. **Devices → Run checks** confirms storage, printers and scanners.
+3. **Devices → Run checks** confirms storage, printers and scanners.
+
+Want phones to print without Folio (AirPrint), USB printers, or to use the
+CUPS server you already have? See [Printing](docs/DEPLOYMENT.md#printing).
 
 Using Portainer, a reverse proxy or a Raspberry Pi? See
 [Deployment](docs/DEPLOYMENT.md).
@@ -117,11 +120,11 @@ Raspberry Pi 3, 4 and 5 running a 64-bit OS, and other ARM servers.
 
 | Edition | Includes | Size | Image |
 |---|---|---|---|
-| **Full** | Everything, including searchable PDFs (OCR) and automatic straightening suggestions | ~1.2 GB | `ghcr.io/kmmukut/folio-scan-studio:0.14-full` |
-| **Lite** | Everything except those two; for Raspberry Pi–class hosts | ~660 MB | `ghcr.io/kmmukut/folio-scan-studio:0.14-lite` |
+| **Full** | Everything, including searchable PDFs (OCR) and automatic straightening suggestions | ~1.3 GB | `ghcr.io/kmmukut/folio-scan-studio:0.15-full` |
+| **Lite** | Everything except those two; for Raspberry Pi–class hosts | ~890 MB | `ghcr.io/kmmukut/folio-scan-studio:0.15-lite` |
 
-Choose with `FOLIO_EDITION=full` or `lite` in `.env`. Tags: `0.14.0-full`
-(exact), `0.14-full` (receives 0.14.x fixes), `full` (newest release), and
+Choose with `FOLIO_EDITION=full` or `lite` in `.env`. Tags: `0.15.0-full`
+(exact), `0.15-full` (receives 0.15.x fixes), `full` (newest release), and
 the same with `-lite`. `latest` is the newest Full release. The images are
 also mirrored to Docker Hub as `kmmukut/folio-scan-studio`.
 

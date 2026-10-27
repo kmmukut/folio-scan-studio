@@ -16,7 +16,7 @@ Most of what makes an old printer feel modern comes from the sharing layer.
 Folio's job is to make the device and sharing layers easy to set up and keep
 healthy, and to make the workflow layer excellent.
 
-## Current structure (0.14)
+## Current structure (0.15)
 
 - `backend/app.py`: FastAPI routes, auth middleware, scan and print flows.
 - `backend/devices.py`: scanner registry (`data/devices.json`), generated
@@ -35,7 +35,12 @@ healthy, and to make the workflow layer excellent.
 - `backend/cupsadmin.py`: stored CUPS admin logins, discovery, drivers,
   queue management and per-user print jobs.
 - `backend/stats.py`: Folio's print log and the statistics built from it
-  (D12).
+  (D12); `backend/cupsimport.py` optionally adds jobs sent straight to CUPS.
+- `backend/printserver.py`: the built-in print server: writes CUPS's
+  configuration into `data/cups`, creates Folio's own administrator login,
+  and keeps `cupsd` running (D14).
+- `backend/airprint.py`: announces the built-in printers through the host's
+  Avahi services folder (D14).
 - `frontend/`: framework-free HTML/CSS/JS, served as static files.
 
 Storage: page originals are immutable PNGs under `data/jobs/<id>/pages/`;
@@ -139,6 +144,29 @@ published. Tags carry the edition (`0.14.0-full`, `0.14-lite`); `latest`
 is the newest Full release. The base image is pinned by digest and updated
 through Dependabot pull requests, so every rebuild is deliberate and tested.
 
+### D14 — A print server inside Folio (0.15)
+Folio's image now includes CUPS and every printer driver Debian packages,
+in both editions (Lite: +229 MB, Full: +81 MB; old printers on small hosts
+need legacy drivers more than they need OCR). A small supervisor, started
+as root before Folio, writes CUPS's configuration into `data/cups`, creates
+a system account with a generated password for Folio, and restarts `cupsd`
+if it stops. Folio treats it as the print server `localhost:631`: always
+listed, always connected, never removable (FOLIO_BUILTIN_CUPS=off turns it
+off). CUPS on other computers keeps working exactly as before.
+
+This reverses D2's "the Folio container gets no device access": USB scanners
+already needed the device in Folio's container, so one container owning USB
+printers and scanners is simpler and as safe. To limit what a compromised
+document converter (CUPS runs them as the unprivileged `lp` user) could
+reach, Folio's own files are private (0600/0700, umask 077) and the data
+folder is pass-through only for other users.
+
+Printers are announced to phones (AirPrint) by writing Avahi service files
+into the host's `/etc/avahi/services`, mounted into the container. Mounting
+the host's D-Bus would let CUPS announce by itself, but it gives a root
+container root-equivalent control of the host through D-Bus; a folder of
+announcements gives nothing else away.
+
 ### D6 — Capabilities come from the device, never from model names
 Sizes, trays, duplex, colour, scan modes and resolutions are what CUPS/SANE
 report. Folio does not fabricate options, and no device, address or network
@@ -154,10 +182,14 @@ may change with real use.
 3. ~~**0.12 — Lite and Full editions.**~~ Done; see D10.
 4. ~~**0.13 — Print statistics.**~~ Done; see D12.
 5. ~~**0.14 — Public release.**~~ Published images, CI, community docs; see D13.
-6. **Next candidates:** a non-root container user; an optional bundled CUPS + Avahi
-   container with AirPrint advertising and a first-run wizard; optional
-   per-person print quotas built on the print log. USB-specific work waits
-   for community testers (D11).
+6. ~~**0.15 — Folio is the print server.**~~ Built-in CUPS with drivers,
+   AirPrint announcements, printer supplies; see D14.
+7. **0.16 — The first minutes:** create the administrator in the browser, a
+   setup checklist, the web app as a non-root user, backup and restore.
+8. **0.17 — Scans go where you keep documents:** Paperless-ngx and folder
+   destinations, blank-page removal.
+9. **0.18 — Print quotas** per person, built on the print log.
+USB-specific work waits for community testers (D11).
 
 Before 1.0: a fresh Raspberry Pi plus a supported USB printer reaches a first
 print in under 10 minutes; upgrades preserve data; a compatibility list

@@ -16,7 +16,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from backend import cupsadmin, devices, features, stats
+from backend import airprint, cupsadmin, devices, features, stats
 
 LOW_DISK_WARN = 1024 ** 3        # 1 GiB
 LOW_DISK_FAIL = 200 * 1024 ** 2  # 200 MiB
@@ -220,8 +220,19 @@ def check_printing(cups_servers: list[str], default_printer: str | None, data_di
                       'No print server yet. Add one under Devices → Print servers.')]
     with ThreadPoolExecutor(max_workers=min(4, len(cups_servers))) as pool:
         results = list(pool.map(probe_cups_server, cups_servers))
+    for result in results:
+        if cupsadmin.is_builtin(result['id'].split(':', 1)[1]):
+            result['label'] = 'Built-in print server'
     if data_dir is not None:
         for server in cups_servers:
+            if cupsadmin.is_builtin(server):
+                results.append(check('airprint', 'Printers on your network', 'info',
+                    f'Shared printers are announced to phones and computers (AirPrint) by the host’s Avahi; '
+                    f'they print to port {airprint.port()} on the host, which must reach the built-in print server.'
+                    if airprint.available() else
+                    'Not announced on the network. To let phones and computers find the built-in printers '
+                    '(AirPrint), mount the host’s /etc/avahi/services and publish port 631 (see the deployment guide).'))
+                continue
             login = cupsadmin.admin_status(data_dir, server)
             results.append(check(f'cups-admin:{server}', f'Printer administration on {server}', 'info',
                                  f"Connected as {login['username']}" + (' over TLS' if login['encrypted'] else '')
@@ -230,12 +241,31 @@ def check_printing(cups_servers: list[str], default_printer: str | None, data_di
                                  'remove or pause printers from Folio.'))
     if default_printer:
         server, _, queue = default_printer.partition('|')
+        where = 'the built-in print server' if cupsadmin.is_builtin(server) else server
         results.append(check('default-printer', 'Default printer', 'info',
-                             f'{queue} on {server}' if queue else default_printer))
+                             f'{queue} on {where}' if queue else default_printer))
     else:
         results.append(check('default-printer', 'Default printer', 'warn',
                              'None chosen. Pick one under Devices so Print Desk knows where to send jobs.'))
     return results
+
+
+def check_supplies(printers: list[tuple[str, str]], supplies_for) -> list[dict]:
+    """Toner, ink and parts running low, on printers that report their levels."""
+    if not printers:
+        return []
+    with ThreadPoolExecutor(max_workers=min(4, len(printers))) as pool:
+        reported = dict(zip(printers, pool.map(lambda p: supplies_for(*p), printers)))
+    reporting = {printer: items for printer, items in reported.items() if items}
+    if not reporting:
+        return [check('supplies', 'Supplies', 'info', 'No printer reports its toner or ink levels.')]
+    low = [f"{supply['name']} on {queue} ({supply['level']} %)"
+           for (server, queue), items in reporting.items() for supply in items if supply['low']]
+    if low:
+        return [check('supplies', 'Supplies', 'warn', 'Running low: ' + '; '.join(low) + '.')]
+    count = len(reporting)
+    return [check('supplies', 'Supplies', 'ok',
+                  f"Nothing running low on {count} {'printer that reports' if count == 1 else 'printers that report'} levels.")]
 
 
 def check_scanning(registry: dict) -> list[dict]:
@@ -279,14 +309,16 @@ def check_ocr() -> dict:
 
 
 def run_checks(*, data_dir: Path, jobs_dir: Path, cups_servers: list[str], registry: dict,
-               request, cookie_secure: bool, version: str, default_printer: str | None) -> dict:
+               request, cookie_secure: bool, version: str, default_printer: str | None,
+               printers: list[tuple[str, str]] = (), supplies_for=None) -> dict:
     sections = {
         'system': [check('version', 'Folio', 'info',
                          f'Version {version}, {features.edition().capitalize()} edition, on Python '
                          f'{platform.python_version()}, up {int((time.time() - STARTED) // 60)} min'),
                    *check_storage(data_dir, jobs_dir), check_memory(),
                    *check_proxy(request, cookie_secure)],
-        'printing': check_printing(cups_servers, default_printer, data_dir),
+        'printing': [*check_printing(cups_servers, default_printer, data_dir),
+                     *(check_supplies(list(printers), supplies_for) if supplies_for else [])],
         'scanning': [*check_scanning(registry), check_ocr()],
     }
     statuses = [c['status'] for group in sections.values() for c in group]

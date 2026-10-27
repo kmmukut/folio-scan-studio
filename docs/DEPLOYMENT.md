@@ -6,16 +6,15 @@ Folio runs as one Docker container. It needs:
   works too.
 - **Memory:** about 60 MB at rest; previews and exports of large scans
   peak around 400 MB.
-- **A print server:** a computer running CUPS that Folio sends jobs to. It
-  can be the same machine, another container, or another computer. See
-  [A CUPS server](#a-cups-server).
+- **Nothing else for printing:** Folio has its own print server (CUPS with
+  drivers for most printers) built in. See [Printing](#printing).
 - **For scanning:** a network scanner that speaks eSCL (AirScan) or WSD,
   or a scanner SANE supports. See [Hardware](HARDWARE.md).
 
 - [Docker Compose](#docker-compose)
 - [Portainer](#portainer)
 - [Raspberry Pi](#raspberry-pi)
-- [A CUPS server](#a-cups-server)
+- [Printing](#printing)
 - [USB printers and scanners](#usb-printers-and-scanners)
 - [Behind a reverse proxy](#behind-a-reverse-proxy)
 - [Backups and upgrades](#backups-and-upgrades)
@@ -63,72 +62,97 @@ sudo usermod -aG docker "$USER"              # then log out and back in
 Then follow [Docker Compose](#docker-compose) with, in `.env`:
 
 ```bash
-FOLIO_EDITION=lite             # leaves out OCR and auto-straighten (~660 MB)
+FOLIO_EDITION=lite             # leaves out OCR and auto-straighten (~890 MB)
 FOLIO_RENDER_CONCURRENCY=1     # one full-size page decode at a time
 ```
 
-The arm64 images are built and their tests run on 64-bit ARM for every
-release, but the maintainers have not yet run Folio on a real Raspberry Pi.
+Raspberry Pi OS runs Avahi, so you can let phones find your printers; see
+[AirPrint](#airprint-phones-and-computers). The arm64 images are built and
+their tests run on 64-bit ARM for every release, but the maintainers have
+not yet run Folio on a real Raspberry Pi.
 If you do, please share how it went in a
 [hardware report](https://github.com/kmmukut/folio-scan-studio/issues/new?template=hardware_report.yml).
 
-## A CUPS server
+## Printing
 
-Folio doesn't drive printers itself: it sends jobs to CUPS, the standard
-print server on Linux and macOS, and manages CUPS printers over its network
-API. You need one CUPS server that Folio can reach on port 631.
+Folio's container includes a **built-in print server**: CUPS, the standard
+print server on Linux and macOS, with the printer drivers Debian ships for
+thousands of models. Folio sets it up and connects to it by itself, so
+**Devices → Add a printer** works straight away:
 
-**Option 1: CUPS next to Folio.** For hosts that don't run CUPS yet,
-[compose.cups.yaml](../compose.cups.yaml) adds a CUPS container (the
-community image `anujdatar/cups`):
+1. Choose the *Built-in* print server.
+2. Type the printer's IP address, or search for it.
+3. Choose *Driverless* for most network printers made since about 2015, or
+   pick the driver for your model.
 
-```bash
-curl -fsSLO https://raw.githubusercontent.com/kmmukut/folio-scan-studio/main/compose.cups.yaml
-nano .env          # set CUPS_ADMIN_PASSWORD
-docker compose -f compose.yaml -f compose.cups.yaml up -d
+Its printers, drivers and settings are kept in `data/cups`.
+
+### AirPrint: phones and computers
+
+To let phones, tablets and computers find the built-in printers and print
+to them without Folio (AirPrint, IPP), publish the print server's port and
+let the host announce the printers. In `compose.yaml`:
+
+```yaml
+    ports:
+      - "8870:8870"
+      - "631:631"                                  # the built-in print server
+    volumes:
+      - ./data:/data
+      - /etc/avahi/services:/etc/avahi/services    # announce its printers
 ```
 
-In Folio, **Devices → Print servers** shows `cups:631`; connect it with
-`CUPS_ADMIN` and `CUPS_ADMIN_PASSWORD`, then **Add a printer**.
+Folio then writes an announcement for each printer into the host's Avahi
+folder, and the host's Avahi advertises it with the host's own address.
+Raspberry Pi OS and most Linux desktops run Avahi already; on a server,
+install it with `sudo apt install avahi-daemon`. If you publish a different
+host port (e.g. `"6310:631"`), set `FOLIO_AIRPRINT_PORT=6310`.
 
-**Option 2: an existing CUPS server.** On that computer:
+Announcements only reach the network the host is on. If your phones are on
+another network or VLAN, your router has to repeat them (look for an "mDNS
+repeater" or "multicast DNS" setting) and allow traffic to the host's port.
+
+Prints sent this way don't go through Folio, so they aren't in Folio's
+statistics unless you switch on **Statistics → Also count prints sent
+straight to the print server**.
+
+### Other CUPS servers
+
+You can also use CUPS on other computers, alongside the built-in one or
+instead of it (`FOLIO_BUILTIN_CUPS=off`). On that computer:
 
 ```bash
 sudo cupsctl --share-printers --remote-admin --remote-any
 sudo usermod -aG lpadmin <user>    # the account Folio will log in with
 ```
 
-That lets CUPS accept connections from the network, and lets that user
-administer printers. In Folio, **Devices → Print servers → Add a print
+That lets CUPS accept connections from the network and lets that user
+administer printers. In Folio, **Devices → Print servers → Add another print
 server** with the computer's address (port 631 is assumed), then connect the
 login. Folio checks the server answers before saving it, and uses an
-encrypted connection when CUPS asks for one.
-
-Printers Folio creates are always shared, because CUPS only accepts jobs
-from other computers for shared printers. Folio itself contains no printer
-drivers: driverless printers (IPP Everywhere, AirPrint) need none, and older
-printers need a driver installed on the CUPS server.
+encrypted connection when CUPS asks for one. Printers Folio creates are
+always shared, because CUPS only accepts jobs from other computers for
+shared printers.
 
 ## USB printers and scanners
 
 USB support is a goal, but the maintainers have no USB devices to test
 with, so these instructions are untested. Please report what works.
 
-- **USB printer:** connect it to the computer running CUPS. With the CUPS
-  container from Option 1, uncomment the `devices:` lines in
-  `compose.cups.yaml` so CUPS can see `/dev/bus/usb`. The printer then
-  appears under **Devices → Add a printer → Search**.
-- **USB scanner:** Folio's container runs SANE, so it needs the device:
+Give Folio's container the host's USB devices, in `compose.yaml`:
 
-  ```yaml
-  services:
-    scan-studio:
-      devices:
-        - /dev/bus/usb:/dev/bus/usb
-  ```
+```yaml
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+```
 
-  Then check `docker exec scan-studio scanimage -L` and attach the scanner in
-  **Devices**.
+- **USB printer:** plug it into the host, restart Folio, then **Devices →
+  Add a printer → Search** on the built-in print server.
+- **USB scanner:** check `docker exec scan-studio scanimage -L`, then attach
+  the scanner in **Devices**.
+
+A device plugged in after Folio started may need a restart of the container
+to appear.
 
 ## Behind a reverse proxy
 
@@ -158,7 +182,7 @@ Everything Folio keeps is in the data folder. To back it up:
 
 ```bash
 docker compose stop
-tar -czf folio-data-$(date +%F).tgz data
+sudo tar -czf folio-data-$(date +%F).tgz data   # sudo: the print server's files belong to root
 docker compose start
 ```
 
@@ -170,8 +194,8 @@ docker compose pull
 docker compose up -d
 ```
 
-With `FOLIO_VERSION=0.14` this picks up 0.14.x fixes. To move to a new
-minor version, change `FOLIO_VERSION` (e.g. to `0.15`). To go back, restore
+With `FOLIO_VERSION=0.15` this picks up 0.15.x fixes. To move to a new
+minor version, change `FOLIO_VERSION` (e.g. to `0.16`). To go back, restore
 the backup and set the previous version; newer versions may change the
 data folder in ways older ones don't understand.
 

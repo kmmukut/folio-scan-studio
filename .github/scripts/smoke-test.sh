@@ -24,6 +24,19 @@ echo "features: $features"
 echo "$features" | grep -q "\"edition\":\"$edition\"" || { echo "expected edition $edition"; exit 1; }
 curl -fsS "$url/" | grep -q 'Source code' || { echo "page lacks the source-code link"; exit 1; }
 docker exec "$name" test -f /app/LICENSE || { echo "LICENSE missing from the image"; exit 1; }
+# The built-in print server: signed in, System check must find it answering.
+jar=$(mktemp)
+curl -fsS -c "$jar" -H 'Content-Type: application/json' \
+  -d "{\"username\":\"admin\",\"password\":\"smoke-test-password-$$\"}" "$url/api/auth/login" >/dev/null
+i=0
+# A new installation has no printers yet, which System check reports as "warn".
+until curl -fsS -b "$jar" "$url/api/admin/diagnostics" |
+    grep -Eq '"id":"cups:localhost:631","label":"Built-in print server","status":"(ok|warn)","detail":"Reachable'; do
+  i=$((i + 1)); [ $i -lt 30 ] || { echo "the built-in print server did not start"; rm -f "$jar"; exit 1; }
+  sleep 2
+done
+rm -f "$jar"
+echo "built-in print server: running"
 i=0
 until [ "$(docker inspect -f '{{.State.Health.Status}}' "$name")" = healthy ]; do
   i=$((i + 1)); [ $i -lt 45 ] || { echo "Docker health check did not pass within 90 s"; exit 1; }

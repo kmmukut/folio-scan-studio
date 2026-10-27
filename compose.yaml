@@ -7,13 +7,16 @@
 services:
   scan-studio:
     # FOLIO_EDITION: "full" (default) or "lite" for Raspberry Pi-class hosts.
-    # FOLIO_VERSION: "0.14" follows 0.14.x fixes; pin e.g. "0.14.0" to stay put.
-    image: "ghcr.io/kmmukut/folio-scan-studio:${FOLIO_VERSION:-0.14}-${FOLIO_EDITION:-full}"
+    # FOLIO_VERSION: "0.15" follows 0.15.x fixes; pin e.g. "0.15.0" to stay put.
+    image: "ghcr.io/kmmukut/folio-scan-studio:${FOLIO_VERSION:-0.15}-${FOLIO_EDITION:-full}"
     container_name: scan-studio
     restart: unless-stopped
     stop_grace_period: 45s
     ports:
       - "${FOLIO_PORT:-8870}:8870"
+      # The built-in print server, for phones and computers that print to it
+      # directly (AirPrint, IPP). Not needed when only Folio prints.
+      # - "631:631"
     environment:
       DATA_DIR: /data
       SCAN_STUDIO_ADMIN_USER: "${SCAN_STUDIO_ADMIN_USER:-admin}"
@@ -21,6 +24,8 @@ services:
       TZ: "${TZ:-UTC}"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       FORWARDED_ALLOW_IPS: "${FORWARDED_ALLOW_IPS:-127.0.0.1}"
+      FOLIO_BUILTIN_CUPS: "${FOLIO_BUILTIN_CUPS:-on}"
+      FOLIO_AIRPRINT_PORT: "${FOLIO_AIRPRINT_PORT:-631}"
       CUPS_SERVERS: "${CUPS_SERVERS:-}"
       USER_PRINT_MAX_MB: "${USER_PRINT_MAX_MB:-256}"
       FOLIO_AIRSCAN_DISCOVERY: "${FOLIO_AIRSCAN_DISCOVERY:-off}"
@@ -29,3 +34,9 @@ services:
       SCAN_GRACE_SECONDS: "${SCAN_GRACE_SECONDS:-30}"
     volumes:
       - ./data:/data
+      # Announce the built-in printers to phones and computers (AirPrint) through
+      # the host's Avahi, which Raspberry Pi OS and most Linux desktops run:
+      # - /etc/avahi/services:/etc/avahi/services
+    # USB printers and scanners:
+    # devices:
+    #   - /dev/bus/usb:/dev/bus/usb

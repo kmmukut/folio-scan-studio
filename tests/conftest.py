@@ -10,6 +10,9 @@ os.environ.setdefault('CUPS_SERVERS', 'cups.test:631')
 # Behaviour tests stub CUPS/SANE and change their answers mid-test; caching
 # is exercised explicitly in test_foundations_v096.py.
 os.environ.setdefault('FOLIO_DEVICE_CACHE', 'off')
+# The built-in print server is off in tests unless a test turns it on; the
+# image's own tests start a real one (test_builtin_print_server_v015.py).
+os.environ.setdefault('FOLIO_BUILTIN_CUPS', 'off')
 
 import pytest  # noqa: E402
 

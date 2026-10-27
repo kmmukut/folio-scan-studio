@@ -422,3 +422,19 @@
 .rail-source{display:block;margin:8px 4px 0;font-size:10px;color:#778e7b;text-decoration:none}.rail-source:hover{color:#dce6dc;text-decoration:underline}
 .auth-foot a{color:#b67153;text-decoration:none}.auth-foot a:hover{text-decoration:underline}
 .guest-privacy a{color:inherit}
+
+/* v0.15: built-in print server and printer supplies. Meters use the statistics' single hue; low is clay. */
+.cups-admin-card.builtin{border-color:#b9c9b6;background:#f7faf3}
+.device-add-panel h3 small{font:400 12px Inter,"Avenir Next",-apple-system,sans-serif;color:var(--muted)}
+.printer-supplies:empty{display:none}
+.printer-supplies{border-top:1px solid #e3e6db;margin-top:12px;padding-top:10px}
+.printer-supplies h4{font:700 9px Consolas,monos;letter-spacing:1.1px;color:#56695b;text-transform:uppercase;margin:0 0 6px}
+.printer-supplies details{margin-top:4px}.printer-supplies summary{cursor:pointer;font-size:11px;color:var(--clay);font-weight:700;padding:3px 0}
+.supply{display:grid;grid-template-columns:minmax(0,1fr) 88px 72px;align-items:center;gap:10px;font-size:11.5px;padding:3px 0}
+.supply>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.supply b{font-weight:600;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+.supply-meter{display:block;height:6px;background:var(--sage-light);border-radius:3px;overflow:hidden}
+.supply-meter span{display:block;height:100%;background:var(--sage);border-radius:3px}
+.supply.low .supply-meter span{background:var(--clay)}.supply.low b{color:#98492d}
+.stats-cups-note{margin:-6px 0 14px 32px;max-width:560px}
+@media(max-width:640px){.supply{grid-template-columns:minmax(0,1fr) 56px 64px}.stats-cups-note{margin-left:0}}

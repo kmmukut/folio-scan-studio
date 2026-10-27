@@ -62,7 +62,8 @@ def test_totals_by_person_and_printer(log):
     add(log, at(2026, 10, 5, 9), user='folio-guest', pages=1)
     report = stats.summary(log, 'month', now)
     assert report['totals'] == {'jobs': 3, 'pages': 24, 'sheets': 14, 'sheets_saved': 10,
-                                'colour_pages': 20, 'greyscale_pages': 3, 'auto_pages': 1, 'cancelled': 0}
+                                'colour_pages': 20, 'greyscale_pages': 3, 'auto_pages': 1, 'cancelled': 0,
+                                'direct_jobs': 0, 'direct_pages': 0}
     assert [p['user'] for p in report['people']] == ['alice', 'bob', 'folio-guest']  # Most paper first
     assert report['people'][0]['sheets'] == 10
     assert {(p['queue'], p['jobs']) for p in report['printers']} == {('Office', 2), ('Lab', 1)}
@@ -284,10 +285,10 @@ def test_settings_clearing_and_deleted_accounts(api):
     assert admin.delete('/api/admin/users/alice').status_code == 200
     report = admin.get('/api/admin/stats').json()
     assert [(p['user'], p['pages']) for p in report['people']] == [(stats.REMOVED_ACCOUNT, 2)]
-    assert report['settings'] == {'enabled': True, 'retention_days': 365}
+    assert report['settings'] == {'enabled': True, 'retention_days': 365, 'include_cups_jobs': False}
     assert admin.put('/api/admin/stats/settings', json={'enabled': True, 'retention_days': 7}).status_code == 400
     assert admin.put('/api/admin/stats/settings', json={'enabled': False, 'retention_days': 730}).json() == \
-        {'enabled': False, 'retention_days': 730}
+        {'enabled': False, 'retention_days': 730, 'include_cups_jobs': False}
     upload_and_print(admin, pages=4)
     assert admin.get('/api/admin/stats').json()['totals']['pages'] == 2  # Not recorded while off
     assert admin.delete('/api/admin/stats').json() == {'deleted': 1}

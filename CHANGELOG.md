@@ -4,6 +4,127 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.15.0 — Folio is the print server
+
+Folio now includes its own print server, so printing works without setting
+up CUPS anywhere else.
+
+### Built-in print server
+- **CUPS with the printer drivers Debian ships** for thousands of models
+  (Gutenprint, HPLIP, foo2zjs, SpliX, the OpenPrinting collections and
+  more), in both editions. Folio sets it up, connects to it automatically
+  and restarts it if it stops. **Devices → Add a printer** works right after
+  installing: type the printer's address or search, choose *Driverless* or
+  your model's driver.
+- Its printers, drivers, settings and job history live in `data/cups` and
+  survive upgrades.
+- It is listed under **Devices → Print servers** as *Built-in print server*.
+  It can't be removed there; `FOLIO_BUILTIN_CUPS=off` turns it off. CUPS on
+  other computers works exactly as before, under *Add another print server*.
+- It accepts administration only from inside the container, with a login
+  Folio generates for itself. Other devices can print to it only if you
+  publish its port, 631.
+- **USB printers** (untested; we have none): pass `/dev/bus/usb` to Folio's
+  container, then search for the printer in Add a printer.
+
+### AirPrint for phones and computers
+Mount the host's `/etc/avahi/services` into the container and publish port
+631, and Folio announces every built-in printer through the host's own
+Avahi (Raspberry Pi OS and most Linux desktops run it). Phones and computers
+then find the printers by themselves. Announcements follow printers being
+added and removed, and are refreshed every 10 minutes. If you publish 631 as
+another host port, set `FOLIO_AIRPRINT_PORT`.
+
+Folio deliberately doesn't use the host's D-Bus for this. That would let
+CUPS announce on its own, but it would also give the container root-level
+control of the host.
+
+### Printer supplies
+- Each printer card in Devices shows **toner and ink levels**, with wearing
+  parts (imaging unit, fuser, rollers…) underneath, as the printer reports
+  them. Serial numbers printers add to part names are left out.
+- Print desk shows *Running low: …* for the chosen printer, so everyone sees
+  it before printing. System check lists anything low on any printer.
+
+### Statistics: prints sent straight to the print server (optional)
+New setting under **Statistics → What Folio keeps**: *Also count prints
+sent straight to the print server (from phones and computers)*. It's off
+by default, so statistics stay Folio-only unless you choose otherwise. When
+it's on, Folio checks each print server it can administer every 10 minutes
+and whenever Statistics opens. Counting starts from the moment you switch
+it on, and Folio's own jobs are never counted twice. Pages are as CUPS
+reports them; some printers report none.
+
+### Privacy: Folio's files are now private to Folio
+The print server's document converters run as a separate, unprivileged
+user. To keep them, or anything else on the host, away from accounts and
+documents, Folio now:
+- makes its own files private (accounts, print log, device settings)
+- creates every new file private
+- lets other users pass through the data folder but not list or read it
+
+Existing installations are fixed at the first start of 0.15.
+
+### Also
+- `compose.cups.yaml` is gone. The built-in print server replaces it, and
+  CUPS on other computers is still supported.
+- System check names the built-in print server, says whether its printers
+  are announced on the network, and reports supplies.
+- The CI start-up check now also confirms the built-in print server is
+  running in each image.
+- Images are larger: about 1.3 GB for Full (+81 MB) and 890 MB for Lite
+  (+229 MB) on disk.
+
+### Verified
+- **Tests:** 172 on the host; the real-CUPS test runs only inside the
+  images. Inside the images, on amd64: Full 173, Lite 170 with 3 skipped
+  (the auto-straighten tests).
+- **A real end-to-end test inside each image**, with a real CUPS:
+  - Folio adds a printer to the built-in server through its API, with a
+    stand-in JetDirect printer on a local port.
+  - A PDF is printed through the normal Print desk path, and CUPS's filters
+    deliver PostScript to the stand-in printer.
+  - Statistics count it, the AirPrint announcement is written from the real
+    queue's attributes, and a job sent straight to CUPS "from a phone" is
+    counted once the setting is on.
+- **Access:** administration is refused from outside the container even with
+  the correct password, and refused inside it without Folio's login.
+- **File privacy:** in a running container, the converters' user can't list
+  the data folder or read the account database, print log or Folio's
+  print-server password; it can reach only CUPS's own folder.
+- **Stopping:** the container stops in under a second, CUPS included.
+- **Start-up check:** both images start healthy, with the built-in print
+  server answering.
+- **Supplies:** read from the maintainer's Samsung M2885FW, read-only:
+  black toner, imaging unit, fuser, rollers and document-feeder parts, with
+  serial numbers removed.
+- **In headless Chrome at desktop and phone width (375 px):**
+  - the Devices page and the built-in server card
+  - adding a printer on the built-in server
+  - the supplies panel
+  - the Print desk status and the new Statistics setting
+  - System check
+
+  No errors and no sideways scrolling.
+- **Not verified:**
+  - USB printers (none available)
+  - an iPhone or Mac actually finding a printer through the announcement
+    (its content mirrors what CUPS announces and was generated from a real
+    queue)
+  - the arm64 images, which are built and tested by the release workflow on
+    GitHub's ARM machines
+
+### Upgrading
+Nothing is required.
+- **The built-in print server appears next to your existing print servers;**
+  your printers and default printer stay as they are. If you only want your
+  own CUPS server, set `FOLIO_BUILTIN_CUPS=off`.
+- **If you used `compose.cups.yaml`,** keep it as it is, or move to the
+  built-in server: add your printers again in Folio, then remove the `cups`
+  service.
+- **Backups:** the print server's files belong to root, so make backups
+  with `sudo tar …`.
+
 ## 0.14.0 — Ready for GitHub: published images, CI and community docs
 
 Folio is now set up as a public open-source project. Nothing changes in

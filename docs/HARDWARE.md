@@ -10,13 +10,14 @@ the options the device reports.
 - **Driverless printers** (most network printers from about 2015 onward:
   IPP Everywhere, AirPrint, Mopria) need no driver. In **Add a printer**,
   choose *Driverless*.
-- **Older printers** need a CUPS driver installed on the print server, for
-  example Gutenprint, HPLIP (HP), foo2zjs, SpliX (Samsung, Xerox) or the
-  OpenPrinting PPDs. Folio lists the drivers that server has, best match
-  first.
+- **Older printers** need a driver. Folio's built-in print server includes
+  the drivers Debian ships (Gutenprint, HPLIP for HP, foo2zjs, SpliX for
+  Samsung and Xerox, the OpenPrinting collections and more), and lists the
+  best matches for your model first. With CUPS on another computer, the
+  driver must be installed there.
 - **Connections:** IPP, JetDirect (port 9100) and LPD over the network;
-  USB when the printer is connected to the computer running CUPS (untested,
-  see below).
+  USB when the printer is plugged into the host and passed to Folio
+  (untested, see below).
 - Check a model at the
   [OpenPrinting printer database](https://www.openprinting.org/printers).
 
@@ -38,7 +39,7 @@ including devices that didn't work: knowing what fails is just as useful.
 
 | Device | Type | Connection | Printing | Scanning | Folio | Notes |
 |---|---|---|---|---|---|---|
-| Samsung M2885FW | Mono laser multifunction | Network | ✓ | ✓ (WSD) | 0.9.x–0.14 | Maintainer's device. Scanner offers flatbed and feeder. Driverless setup reads its capabilities (monochrome, duplex, 17 paper sizes). |
+| Samsung M2885FW | Mono laser multifunction | Network | ✓ | ✓ (WSD) | 0.9.x–0.15 | Maintainer's device. Scanner offers flatbed and feeder. Driverless setup reads its capabilities (monochrome, duplex, 17 paper sizes); reports toner, imaging unit, fuser and roller levels. |
 
 ### Not yet tested
 

@@ -14,7 +14,7 @@ released and credit you if you wish.
 ## Supported versions
 
 Fixes go into the newest release. Before 1.0, only the latest minor
-version (currently 0.14.x) receives security fixes, so please keep up to
+version (currently 0.15.x) receives security fixes, so please keep up to
 date: `docker compose pull && docker compose up -d`.
 
 ## How Folio protects your data
@@ -28,6 +28,14 @@ date: `docker compose pull && docker compose up -d`.
 - CUPS administrator logins are stored readable by root only, never sent to
   browsers, and an encrypted connection's certificate is pinned before any
   password is sent.
+- The built-in print server accepts administration only from inside the
+  container, with a login Folio generates for itself. Its document
+  converters run as an unprivileged user that cannot read Folio's accounts
+  or documents. Printing to it from the network is possible only if you
+  publish its port (631).
+- Printers are announced on the network through files in the host's Avahi
+  folder; Folio is never given the host's D-Bus, which would grant it far
+  more control over the host.
 - Print options are passed to CUPS from an allowlist; uploads are validated
   and size-limited; guest printing is off by default and rate-limited.
 

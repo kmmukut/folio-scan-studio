@@ -4,7 +4,8 @@ One row per job Folio hands to CUPS: who, which printer, when, and how many
 pages and sheets. It lives in its own file (data/print-log.sqlite3), apart
 from accounts, so it can be switched off or deleted without touching
 anything else. Document titles and contents are never stored. Jobs printed
-from other computers straight to CUPS are not counted; Folio only reports
+from other computers straight to CUPS are not counted unless the optional
+"include_cups_jobs" setting is on (cupsimport.py); otherwise Folio only reports
 what it sent itself.
 
 Times are grouped by the container's time zone (the TZ setting).
@@ -22,7 +23,7 @@ DEFAULT_RETENTION_DAYS = 365
 RETENTION_CHOICES = (90, 365, 730, 1825, 0)  # 0 keeps everything
 PERIODS = {'30d': 'Last 30 days', 'month': 'This month', 'last-month': 'Last month',
            'year': 'This year', '12m': 'Last 12 months', 'all': 'All time'}
-ORIGINS = ('document', 'upload', 'test-page')
+ORIGINS = ('document', 'upload', 'test-page', 'cups')  # 'cups': sent to CUPS directly
 COLORS = ('colour', 'greyscale', 'auto')
 REMOVED_ACCOUNT = ''  # What a deleted account's name becomes
 
@@ -70,18 +71,48 @@ def settings(data_dir: Path) -> dict:
     with connection(data_dir) as db:
         values = dict(db.execute('SELECT key, value FROM settings'))
     return {'enabled': values.get('enabled', 'on') == 'on',
-            'retention_days': int(values.get('retention_days', DEFAULT_RETENTION_DAYS))}
+            'retention_days': int(values.get('retention_days', DEFAULT_RETENTION_DAYS)),
+            'include_cups_jobs': values.get('include_cups_jobs', 'off') == 'on'}
 
 
-def save_settings(data_dir: Path, *, enabled: bool, retention_days: int) -> dict:
+def _set(db, key: str, value: str) -> None:
+    db.execute('INSERT INTO settings (key, value) VALUES (?, ?) '
+               'ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, value))
+
+
+def save_settings(data_dir: Path, *, enabled: bool, retention_days: int,
+                  include_cups_jobs: bool | None = None) -> dict:
     if retention_days not in RETENTION_CHOICES:
         raise ValueError('Choose how long to keep statistics from the list')
+    switching_on = include_cups_jobs and not settings(data_dir)['include_cups_jobs']
     with connection(data_dir) as db:
-        for key, value in (('enabled', 'on' if enabled else 'off'), ('retention_days', str(retention_days))):
-            db.execute('INSERT INTO settings (key, value) VALUES (?, ?) '
-                       'ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, value))
+        _set(db, 'enabled', 'on' if enabled else 'off')
+        _set(db, 'retention_days', str(retention_days))
+        if include_cups_jobs is not None:
+            _set(db, 'include_cups_jobs', 'on' if include_cups_jobs else 'off')
+        if switching_on:
+            # Count from now on: each server's current jobs become the starting point.
+            db.execute("DELETE FROM settings WHERE key LIKE 'cups_watermark:%'")
     prune(data_dir)
     return settings(data_dir)
+
+
+def watermark(data_dir: Path, server: str) -> int | None:
+    """The newest CUPS job already looked at on ``server`` (None: not started yet)."""
+    with connection(data_dir) as db:
+        row = db.execute('SELECT value FROM settings WHERE key=?', (f'cups_watermark:{server}',)).fetchone()
+    return int(row[0]) if row else None
+
+
+def set_watermark(data_dir: Path, server: str, job_id: int) -> None:
+    with connection(data_dir) as db:
+        _set(db, f'cups_watermark:{server}', str(int(job_id)))
+
+
+def has_job(data_dir: Path, server: str, cups_job: int) -> bool:
+    with connection(data_dir) as db:
+        return db.execute('SELECT 1 FROM print_log WHERE server=? AND cups_job=? LIMIT 1',
+                          (server, cups_job)).fetchone() is not None
 
 
 def sheets_used(pages: int, copies: int, nup: int, sides: str) -> int:
@@ -100,15 +131,19 @@ def color_of(color_mode: str, printer_has_color: bool | None) -> str:
 
 def record(data_dir: Path, *, user: str, server: str, queue: str, origin: str, pages: int,
            copies: int = 1, nup: int = 1, sides: str = 'one-sided', color: str = 'auto',
-           media: str = 'default', cups_job: int | None = None, when: float | None = None) -> bool:
-    """Add one job to the log; returns False when statistics are switched off."""
+           media: str = 'default', cups_job: int | None = None, when: float | None = None,
+           sheets: int | None = None) -> bool:
+    """Add one job to the log; returns False when statistics are switched off.
+
+    ``sheets`` overrides the calculation, for jobs whose count CUPS reported.
+    """
     if not settings(data_dir)['enabled']:
         return False
     with connection(data_dir) as db:
         db.execute('INSERT INTO print_log (printed_at, user, server, queue, origin, pages, copies, nup, '
                    'sides, sheets, color, media, cups_job) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
                    (int(when or time.time()), user, server, queue, origin, pages, copies, nup, sides,
-                    sheets_used(pages, copies, nup, sides), color, media, cups_job))
+                    sheets_used(pages, copies, nup, sides) if sheets is None else sheets, color, media, cups_job))
     prune(data_dir)
     return True
 
@@ -194,7 +229,7 @@ def summary(data_dir: Path, period: str = '12m', now: float | None = None) -> di
     with connection(data_dir) as db:
         oldest = db.execute('SELECT MIN(printed_at) FROM print_log').fetchone()[0]
         start, end = period_range(period, now, oldest)
-        rows = db.execute('SELECT printed_at, user, server, queue, pages, copies, sheets, color, status '
+        rows = db.execute('SELECT printed_at, user, server, queue, pages, copies, sheets, color, status, origin '
                           'FROM print_log WHERE printed_at >= ? AND printed_at < ? ORDER BY printed_at',
                           (int(start.timestamp()), int(end.timestamp()))).fetchall()
     sent = [r for r in rows if r[8] == 'sent']
@@ -216,7 +251,10 @@ def summary(data_dir: Path, period: str = '12m', now: float | None = None) -> di
         'period': period, 'label': PERIODS[period],
         'start': start.isoformat(timespec='seconds'), 'end': end.isoformat(timespec='seconds'),
         'totals': {**_totals([(r[4], r[5], r[6], r[7]) for r in sent]),
-                   'cancelled': len(rows) - len(sent)},
+                   'cancelled': len(rows) - len(sent),
+                   # Jobs sent to CUPS without Folio, when that setting is on
+                   'direct_jobs': sum(1 for r in sent if r[9] == 'cups'),
+                   'direct_pages': sum(r[4] * r[5] for r in sent if r[9] == 'cups')},
         'unit': unit,
         'series': [{'key': key, **_totals(values)} for key, values in sorted(series.items())],
         'people': ranked(people, lambda user: {'user': user}),

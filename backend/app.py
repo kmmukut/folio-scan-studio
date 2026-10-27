@@ -33,7 +33,7 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 from backend import security
 from backend.processing import transform_page, find_deskew_angle
-from backend import printing, devices, diagnostics, tasks, ipp, cupsadmin, features, stats
+from backend import printing, devices, diagnostics, tasks, ipp, cupsadmin, cupsimport, features, stats, printserver, airprint
 from backend.version import __version__
 
 log = logging.getLogger('folio')
@@ -46,6 +46,7 @@ RESOLUTIONS = (75, 100, 150, 200, 300)
 JOB_ID_RE = re.compile(r'^[a-f0-9]{12}$')
 PAGE_ID_RE = re.compile(r'^[a-f0-9]{16}$')
 TASK_ID_RE = re.compile(r'^[a-f0-9]{32}$')
+SUPPLIES_TTL = 300  # Toner levels change slowly; ask the printer at most every 5 minutes
 lock = threading.RLock()
 scanner_lock = threading.Lock()
 ocr_lock = threading.Lock()
@@ -96,10 +97,42 @@ def preview_root() -> Path:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     ensure_directories()
+    stop_background = threading.Event()
+    threading.Thread(target=background_upkeep, args=(stop_background,), daemon=True, name='folio-upkeep').start()
     try:
         yield
     finally:
+        stop_background.set()
         await asyncio.to_thread(gracefully_stop_on_server_shutdown)
+
+
+def background_upkeep(stop: threading.Event, first: float = 20, interval: float = 600) -> None:
+    """Every few minutes: keep the built-in printers announced on the network,
+    and count prints sent straight to CUPS (when that setting is on) before
+    CUPS forgets them. The first run waits for the print server to start."""
+    wait = first
+    while not stop.wait(wait):
+        wait = interval
+        announce_printers()
+        try:
+            cupsimport.import_jobs(DATA_DIR, cups_servers())
+        except Exception:  # noqa: BLE001 - background upkeep must never take Folio down
+            log.warning('Counting prints sent straight to CUPS failed', exc_info=True)
+
+
+def announce_printers() -> list[str]:
+    """Announce the built-in server's shared printers (AirPrint), if the host's
+    Avahi folder is mounted; returns the printers announced."""
+    try:
+        conn = cupsadmin.connection(DATA_DIR, printserver.SERVER, timeout=10) if printserver.enabled() else None
+        return airprint.sync(conn)
+    except (ipp.IPPError, OSError):
+        log.warning('Announcing printers on the network failed', exc_info=True)
+        return []
+
+
+def announce_soon() -> None:
+    threading.Thread(target=announce_printers, daemon=True, name='folio-announce').start()
 
 
 app = FastAPI(title='Folio Scan Studio', version=__version__, docs_url=None, redoc_url=None,
@@ -274,9 +307,22 @@ def persist_registry(state: dict) -> None:
 
 
 def cups_servers(config: dict | None = None) -> list[str]:
-    """Print servers in use: those in CUPS_SERVERS, then any added in Devices."""
+    """Print servers in use: the built-in one, those in CUPS_SERVERS, then any added in Devices."""
     added = (config if config is not None else registry()).get('cups_servers', [])
-    return list(dict.fromkeys([*CUPS_SERVERS, *added]))
+    builtin = [printserver.SERVER] if printserver.enabled() else []
+    return list(dict.fromkeys([*builtin, *CUPS_SERVERS, *added]))
+
+
+def server_source(server: str) -> str:
+    if cupsadmin.is_builtin(server):
+        return 'builtin'
+    # Servers from CUPS_SERVERS come back on every restart, so only the ones
+    # added in Devices can be removed there.
+    return 'settings' if server in CUPS_SERVERS else 'folio'
+
+
+def server_label(server: str) -> str:
+    return 'Built-in' if cupsadmin.is_builtin(server) else server
 
 
 def printer_inventory() -> tuple[dict, list[dict]]:
@@ -284,6 +330,10 @@ def printer_inventory() -> tuple[dict, list[dict]]:
     records=devices.all_cups_queues(cups_servers())
     if devices.migrate_legacy_printers(state,records,CUPS_QUEUE):
         persist_registry(state)
+    for record in records:
+        record['server_label'] = server_label(record['server'])
+        if cupsadmin.is_builtin(record['server']):
+            record['label'] = record['queue']  # "Office", not "Office (localhost:631)"
     return state,records
 
 
@@ -928,9 +978,11 @@ def print_status(request: Request, queue: str | None = None):
         caps=devices.cups_capabilities(chosen['server'],chosen['queue'])
         known=list(caps.get('media_map',{}) or printing.match_media_choices(caps['media']))
         return {'ready':chosen['ready'],'queue':chosen['queue'],'server':chosen['server'],
+                'server_label':server_label(chosen['server']),
                 'message':'CUPS queue is accepting jobs' if chosen['ready'] else chosen['status'],
                 'media':known,'capabilities':caps,
-                'paper_labels':{k:v[1] for k,v in printing.MEDIA.items()}}
+                'paper_labels':{k:v[1] for k,v in printing.MEDIA.items()},
+                'supplies_low':[x for x in quiet_supplies(chosen['server'], chosen['queue']) if x['low']]}
     if not records:
         return {'ready':False,'queue':queue or '', 'message':'No printers found. Check your print servers under Devices.',
                 'available_queues':[]}
@@ -1198,10 +1250,9 @@ class PrintServerBody(BaseModel):
 @app.get('/api/admin/cups/servers')
 def list_print_servers():
     return [{'server': server, 'admin': cupsadmin.admin_status(DATA_DIR, server),
-             'reachable': not devices.cups_backoff(server),
-             # Servers from CUPS_SERVERS come back on every restart, so only
-             # the ones added here can be removed here.
-             'source': 'settings' if server in CUPS_SERVERS else 'folio'} for server in cups_servers()]
+             'reachable': not devices.cups_backoff(server), 'source': server_source(server),
+             'announcing': airprint.available() if cupsadmin.is_builtin(server) else None}
+            for server in cups_servers()]
 
 
 @app.post('/api/admin/cups/servers', status_code=201)
@@ -1232,6 +1283,8 @@ def add_print_server(body: PrintServerBody):
 
 @app.delete('/api/admin/cups/servers/{server}')
 def remove_print_server(server: str):
+    if cupsadmin.is_builtin(server):
+        raise HTTPException(400, 'The built-in print server is part of Folio. Set FOLIO_BUILTIN_CUPS=off to turn it off.')
     if server in CUPS_SERVERS:
         raise HTTPException(400, 'This server is set in CUPS_SERVERS. Remove it there and restart Folio.')
     cfg = registry()
@@ -1252,12 +1305,16 @@ def remove_print_server(server: str):
 @app.put('/api/admin/cups/servers/{server}/login')
 def cups_connect(server: str, body: CupsLoginBody):
     configured_server(server)
+    if cupsadmin.is_builtin(server):
+        raise HTTPException(400, 'The built-in print server is connected automatically.')
     return cups_call(cupsadmin.connect_admin, DATA_DIR, server, body.username, body.password)
 
 
 @app.delete('/api/admin/cups/servers/{server}/login')
 def cups_disconnect(server: str):
     configured_server(server)
+    if cupsadmin.is_builtin(server):
+        raise HTTPException(400, 'The built-in print server is connected automatically.')
     cupsadmin.disconnect_admin(DATA_DIR, server)
     return cupsadmin.admin_status(DATA_DIR, server)
 
@@ -1311,6 +1368,8 @@ def cups_add_printer(server: str, body: AddPrinterBody, request: Request):
             cfg['default_printer'] = key
         persist_registry(cfg)
         task.update('Checking the new printer…', .8)
+        if cupsadmin.is_builtin(server):
+            announce_printers()
         return {'id': key, 'queue': body.name, 'server': server, 'state': cups_call(cupsadmin.printer_state, conn, body.name)}
     return task_response(tasks.runner.submit('printer-setup', 'print', task_owner(request), work))
 
@@ -1325,6 +1384,8 @@ def cups_remove_printer(printer: str):
     if cfg.get('default_printer') == target['id']:
         cfg['default_printer'] = None
     persist_registry(cfg)
+    if cupsadmin.is_builtin(target['server']):
+        announce_soon()
     return {'deleted': target['id']}
 
 
@@ -1354,6 +1415,28 @@ def cups_test_page(printer: str, request: Request):
     return cups_receipt(outcome)
 
 
+def printer_supplies(server: str, queue: str) -> list[dict]:
+    conn = cupsadmin.connection(DATA_DIR, server, timeout=8)
+    return devices.cached(('cups', 'supplies', server, queue), SUPPLIES_TTL,
+                          lambda: cupsadmin.printer_supplies(conn, queue))
+
+
+def quiet_supplies(server: str, queue: str) -> list[dict]:
+    """Supplies for a status line: an unreachable printer just has none."""
+    if devices.cups_backoff(server):
+        return []
+    try:
+        return printer_supplies(server, queue)
+    except (ipp.IPPError, OSError):
+        return []
+
+
+@app.get('/api/admin/printers/{printer}/supplies')
+def cups_printer_supplies(printer: str):
+    target = known_printer(printer)
+    return {'supplies': cups_call(printer_supplies, target['server'], target['queue'])}
+
+
 @app.get('/api/admin/printers/{printer}/jobs')
 def cups_printer_jobs(printer: str, which: Literal['not-completed', 'completed'] = 'not-completed'):
     """Everyone's jobs on one printer; titles and owners need the admin login."""
@@ -1375,6 +1458,7 @@ def cups_admin_cancel_job(body: CancelJobBody, request: Request):
 class StatsSettingsBody(BaseModel):
     enabled: bool
     retention_days: int
+    include_cups_jobs: bool | None = None
 
 
 def stats_period(period: str) -> str:
@@ -1385,7 +1469,8 @@ def stats_period(period: str) -> str:
 
 @app.get('/api/admin/stats')
 def print_statistics(period: str = '12m'):
-    """What Folio has printed, by person and printer (only jobs Folio sent)."""
+    """What Folio has printed, by person and printer (plus jobs sent straight to CUPS, if chosen)."""
+    cupsimport.import_jobs(DATA_DIR, cups_servers(), min_interval=60)
     return {**stats.summary(DATA_DIR, stats_period(period)), 'guest_user': cupsadmin.GUEST_USER}
 
 
@@ -1416,7 +1501,8 @@ def export_print_statistics(period: str = 'all'):
 @app.put('/api/admin/stats/settings')
 def save_statistics_settings(body: StatsSettingsBody):
     try:
-        return stats.save_settings(DATA_DIR, enabled=body.enabled, retention_days=body.retention_days)
+        return stats.save_settings(DATA_DIR, enabled=body.enabled, retention_days=body.retention_days,
+                                   include_cups_jobs=body.include_cups_jobs)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -1539,7 +1625,8 @@ def health():
 
 @app.get('/api/features')
 def available_features():
-    return {'version': __version__, **features.summary()}
+    return {'version': __version__, **features.summary(),
+            'builtin_print_server': printserver.SERVER if printserver.enabled() else None}
 
 
 @app.exception_handler(features.Unavailable)
@@ -1550,10 +1637,12 @@ def feature_unavailable(request: Request, exc: features.Unavailable):
 @app.get('/api/admin/diagnostics')
 def admin_diagnostics(request: Request):
     cfg = registry()
+    servers = cups_servers(cfg)
+    present = [(q['server'], q['queue']) for q in devices.all_cups_queues(servers) if q.get('queue')]
     return diagnostics.run_checks(
-        data_dir=DATA_DIR, jobs_dir=JOBS_DIR, cups_servers=cups_servers(), registry=cfg,
+        data_dir=DATA_DIR, jobs_dir=JOBS_DIR, cups_servers=servers, registry=cfg,
         request=request, cookie_secure=COOKIE_SECURE, version=__version__,
-        default_printer=cfg.get('default_printer'))
+        default_printer=cfg.get('default_printer'), printers=present[:20], supplies_for=quiet_supplies)
 
 
 @app.get('/api/scanner')
@@ -2307,12 +2396,33 @@ def guest_task_status(task_id: str, request: Request):
     return task.public(tasks.runner.position(task))
 
 
+PRIVATE_FILES = ('access.sqlite3', 'print-log.sqlite3', 'devices.json', 'cups-admin.json', 'managed-airscan.conf')
+
+
+def keep_private() -> None:
+    """Folio's files are for Folio alone. Installations before 0.15 created some
+    readable by every user; the print server's helpers run as another user."""
+    for name in PRIVATE_FILES:
+        for path in (DATA_DIR / name, DATA_DIR / f'{name}-wal', DATA_DIR / f'{name}-shm'):
+            try:
+                path.chmod(0o600)
+            except FileNotFoundError:
+                continue
+            except OSError:
+                log.warning('Could not make %s private', path)
+    try:
+        JOBS_DIR.chmod(0o700)
+    except OSError:
+        log.warning('Could not make %s private', JOBS_DIR)
+
+
 def ensure_directories():
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
     tasks.runner.start(DATA_DIR / 'tasks')
     clear_old_previews()
     security.init(DATA_DIR)
     stats.init(DATA_DIR)
+    keep_private()
     cfg=registry()
     devices.write_managed_sane_config(cfg,managed_sane_path())
     # Existing v0.3 job.json files have no owner. Claim them for the original

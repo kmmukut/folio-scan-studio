@@ -178,4 +178,4 @@ jobs:
           cp .env.example env.example
           flags=(--title "$title" --notes-file notes.md --verify-tag)
           [ "$PRERELEASE" = true ] && flags+=(--prerelease)
-          gh release create "$GITHUB_REF_NAME" "${flags[@]}" compose.yaml compose.cups.yaml env.example
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" compose.yaml env.example

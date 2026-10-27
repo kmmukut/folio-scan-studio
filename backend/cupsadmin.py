@@ -1,7 +1,8 @@
 """Printer administration and print-job management on CUPS servers.
 
 Folio uses a CUPS administrator login, entered once per server in Devices,
-to add, remove and pause printer queues. Listing and cancelling one's own
+to add, remove and pause printer queues. The built-in print server
+(printserver.py) needs none: Folio uses the login it created for itself. Listing and cancelling one's own
 print jobs needs no login: CUPS identifies the owner by the user name Folio
 submits jobs under. Stored logins never leave the Folio server.
 """
@@ -16,7 +17,7 @@ import threading
 import time
 from pathlib import Path
 
-from backend import devices, ipp
+from backend import devices, ipp, printserver
 
 PRINTER_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$')  # Same rule as devices.QUEUENAME
 PPD_NAME = re.compile(r'^[\w.:/+@()~ -]{1,240}$')
@@ -72,15 +73,26 @@ def _save(data_dir: Path, logins: dict) -> None:
             os.unlink(tmp)
 
 
+def is_builtin(server: str) -> bool:
+    return server == printserver.SERVER and printserver.enabled()
+
+
+def _login(data_dir: Path, server: str) -> dict | None:
+    if is_builtin(server):
+        login = printserver.credentials(data_dir)
+        return {'username': login[0], 'password': login[1]} if login else None
+    return _load(data_dir).get(server)
+
+
 def admin_status(data_dir: Path, server: str) -> dict:
-    login = _load(data_dir).get(server)
+    login = _login(data_dir, server)
     return ({'connected': True, 'username': login['username'], 'encrypted': bool(login.get('tls'))}
             if login else {'connected': False, 'username': None, 'encrypted': False})
 
 
 def connection(data_dir: Path, server: str, *, admin: bool = False, timeout: float = 15) -> ipp.Connection:
     """A connection to ``server``; with ``admin`` it carries the stored login."""
-    login = _load(data_dir).get(server)
+    login = _login(data_dir, server)
     if admin and not login:
         raise NotConnected(f'Connect an administrator login for {server} in Devices first')
     if not login:
@@ -301,6 +313,43 @@ def printer_state(conn: ipp.Connection, name: str) -> dict:
             'accepting': bool(first('printer-is-accepting-jobs', True)),
             'queued': first('queued-job-count', 0) or 0, 'driver': first('printer-make-and-model', '') or '',
             'device_uri': first('device-uri', '') or ''}
+
+
+# --- Supplies --------------------------------------------------------------------
+
+SUPPLY_ATTRIBUTES = ['marker-names', 'marker-levels', 'marker-types', 'marker-colors', 'marker-low-levels']
+CONSUMABLES = {'toner', 'toner-cartridge', 'ink', 'ink-cartridge', 'ink-ribbon', 'ribbon-wax', 'solid-wax', 'staples'}
+SERIAL_NUMBER = re.compile(r'\s*\bS/N\s*:\s*\S+', re.I)  # Printers often append part serial numbers
+
+
+def printer_supplies(conn: ipp.Connection, name: str) -> list[dict]:
+    """Toner, ink and wearing parts as the printer reports them through CUPS.
+
+    Levels are percentages; ``None`` when the printer gives no number (CUPS
+    uses -1 and -2 for unknown, -3 for "some left").
+    """
+    response = conn.request(ipp.GET_PRINTER_ATTRIBUTES, [
+        (ipp.URI, 'printer-uri', conn.printer_uri(name)),
+        (ipp.KEYWORD, 'requested-attributes', SUPPLY_ATTRIBUTES)], authenticate=False, timeout=8)
+    attrs = response.group(ipp.PRINTER)
+    supplies = []
+    for index, raw_name in enumerate(attrs.get('marker-names') or []):
+        def value(key, default=None):
+            values = attrs.get(key) or []
+            return values[index] if index < len(values) else default
+        level, low = value('marker-levels', -2), value('marker-low-levels', -1)
+        known = isinstance(level, int) and 0 <= level <= 100
+        kind = str(value('marker-types', 'other') or 'other')
+        color = str(value('marker-colors', '') or '')
+        supplies.append({
+            'name': SERIAL_NUMBER.sub('', str(raw_name)).strip() or kind.replace('-', ' ').capitalize(),
+            'kind': kind, 'consumable': kind in CONSUMABLES,
+            'level': level if known else None, 'some_left': level == -3,
+            'color': color if re.fullmatch(r'#[0-9A-Fa-f]{6}', color) else None,
+            # Printers that give no threshold get the common 10 %.
+            'low': known and level <= (low if isinstance(low, int) and 0 < low < 100 else 10)})
+    supplies.sort(key=lambda supply: not supply['consumable'])  # Toner and ink first; order kept otherwise
+    return supplies
 
 
 # --- Print jobs ----------------------------------------------------------------

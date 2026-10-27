@@ -10,6 +10,7 @@ import http.server
 import ssl
 import struct
 import threading
+import time
 from pathlib import Path
 
 from backend import ipp
@@ -92,16 +93,21 @@ class FakeCups:
         uri = (attrs.get('printer-uri') or [''])[0]
         return uri.rsplit('/printers/', 1)[1] if '/printers/' in uri else None
 
-    def add_job(self, queue, user, title, state=3):
+    def add_job(self, queue, user, title, state=3, pages=0, sheets=0):
         job_id = len(self.jobs) + 1
-        self.jobs[job_id] = {'queue': queue, 'user': user, 'title': title, 'state': state}
+        self.jobs[job_id] = {'queue': queue, 'user': user, 'title': title, 'state': state,
+                             'pages': pages, 'sheets': sheets}
         return job_id
 
     def job_group(self, job_id, job, show_private):
         values = [(ipp.INTEGER, 'job-id', job_id), (ipp.ENUM, 'job-state', job['state']),
                   (ipp.KEYWORD, 'job-state-reasons', 'none'),
                   (ipp.URI, 'job-printer-uri', f'ipp://{self.server}/printers/{job["queue"]}'),
-                  (ipp.INTEGER, 'time-at-creation', 1_700_000_000 + job_id)]
+                  (ipp.INTEGER, 'time-at-creation', 1_700_000_000 + job_id),
+                  (ipp.INTEGER, 'job-impressions-completed', job.get('pages', 0)),
+                  (ipp.INTEGER, 'job-media-sheets-completed', job.get('sheets', 0))]
+        if job['state'] >= 7:
+            values.append((ipp.INTEGER, 'time-at-completed', int(time.time())))
         if show_private:  # CUPS hides these from anyone but the owner or an admin
             values += [(ipp.NAME, 'job-name', job['title']), (ipp.NAME, 'job-originating-user-name', job['user'])]
         return (ipp.JOB, values)
@@ -126,6 +132,17 @@ class FakeCups:
                 return 0x0406, [[(ipp.TEXT, 'status-message', 'No PPD files found')]]
             return 0, [[], *[(ipp.PRINTER, [(ipp.NAME, 'ppd-name', name), (ipp.TEXT, 'ppd-make-and-model', model),
                                             (ipp.LANGUAGE, 'ppd-natural-language', 'en')]) for _, name, model in found]]
+        if operation == ipp.CUPS_GET_PRINTERS:
+            return 0, [[], *[(ipp.PRINTER, [
+                (ipp.NAME, 'printer-name', name), (ipp.TEXT, 'printer-info', entry.get('printer-info', name)),
+                (ipp.BOOLEAN, 'printer-is-shared', entry.get('printer-is-shared', True)),
+                (ipp.TEXT, 'printer-make-and-model', 'Fake Laser'), (ipp.TEXT, 'printer-location', entry.get('printer-location', '')),
+                (ipp.MIME_TYPE, 'document-format-supported', ['application/octet-stream', 'image/urf', 'application/pdf']),
+                (ipp.KEYWORD, 'urf-supported', ['V1.4', 'W8', 'RS300']), (ipp.BOOLEAN, 'color-supported', False),
+                (ipp.KEYWORD, 'sides-supported', ['one-sided', 'two-sided-long-edge']),
+                (ipp.URI, 'printer-uuid', f'urn:uuid:00000000-0000-0000-0000-{len(name):012d}'),
+                (ipp.ENUM, 'printer-state', entry['state']), (ipp.ENUM, 'printer-type', 8400972)])
+                for name, entry in self.printers.items()]]
         queue = self.queue_of(attrs)
         if operation == ipp.CUPS_ADD_MODIFY_PRINTER:
             entry = self.printers.setdefault(queue, {'state': 3, 'reasons': []})
@@ -144,7 +161,13 @@ class FakeCups:
             entry = self.printers.get(queue)
             if entry is None:
                 return 0x0406, [[(ipp.TEXT, 'status-message', 'The printer or class does not exist.')]]
-            return 0, [[], (ipp.PRINTER, [(ipp.ENUM, 'printer-state', entry['state']),
+            markers = entry.get('markers', [])  # (name, type, level, colour, low level)
+            supplies = [(ipp.NAME, 'marker-names', [m[0] for m in markers]),
+                        (ipp.KEYWORD, 'marker-types', [m[1] for m in markers]),
+                        (ipp.INTEGER, 'marker-levels', [m[2] for m in markers]),
+                        (ipp.NAME, 'marker-colors', [m[3] for m in markers]),
+                        (ipp.INTEGER, 'marker-low-levels', [m[4] for m in markers])] if markers else []
+            return 0, [[], (ipp.PRINTER, [*supplies, (ipp.ENUM, 'printer-state', entry['state']),
                                           (ipp.KEYWORD, 'printer-state-reasons', entry['reasons'] or ['none']),
                                           (ipp.TEXT, 'printer-state-message', ''),
                                           (ipp.BOOLEAN, 'printer-is-accepting-jobs', True),

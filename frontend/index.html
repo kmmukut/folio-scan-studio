@@ -68,7 +68,7 @@
     <div class="rail-bottom">
       <div class="machine-status"><span class="led" id="device-led"></span><div><span id="rail-scanner-name">Selected scanner</span><small id="device-status">Checking connection…</small></div></div>
       <button class="rail-logout" id="logout-button">SIGN OUT <span>↗</span></button>
-      <div class="rail-license">EDITION <span>0.14.0</span></div>
+      <div class="rail-license">EDITION <span>0.15.0</span></div>
       <a class="rail-source" href="https://github.com/kmmukut/folio-scan-studio" target="_blank" rel="noopener">Source code · AGPL-3.0</a>
     </div>
   </aside>
@@ -223,7 +223,7 @@
           <div class="device-add-panel" id="add-printer-panel"><h3>Add a printer</h3><p id="add-printer-intro">Folio creates the printer in CUPS for you. First connect an administrator login for a print server under <strong>Print servers</strong> below.</p>
             <form id="add-printer-form" class="device-form setup-steps hidden">
               <section class="setup-step"><h4><span>1</span> Print server</h4>
-                <p class="inline-note">The computer running CUPS that will send jobs to this printer. A USB printer must be plugged into this computer.</p>
+                <p class="inline-note">Where the printer is set up. <strong>Built-in</strong> is Folio’s own; a USB printer must be plugged into the computer running the print server you choose.</p>
                 <label class="visually-hidden" for="add-printer-server">Print server</label><select id="add-printer-server"></select>
               </section>
               <section class="setup-step"><h4><span>2</span> The printer</h4>
@@ -246,9 +246,9 @@
               <div id="add-printer-feedback" class="print-feedback hidden" role="status" aria-live="polite"></div>
             </form></div>
           <div class="print-servers">
-            <div class="device-heading"><h3>Print servers</h3><p>The computers running CUPS that Folio sends print jobs to. Connect an administrator login to add, pause or remove printers on one.</p></div>
+            <div class="device-heading"><h3>Print servers</h3><p>Where Folio’s printers are set up. Folio has its own built-in print server; you can also use CUPS on another computer by adding it below and connecting its administrator login.</p></div>
             <div id="cups-admin-list" class="device-list"></div>
-            <div class="device-add-panel"><h3>Add a print server</h3>
+            <div class="device-add-panel"><h3>Add another print server <small>(optional)</small></h3>
               <form id="add-server-form" class="device-form"><label>Address of the computer running CUPS <input id="add-server-address" placeholder="192.168.1.10 or cups:631" required autocomplete="off"></label><button class="button outline-button" type="submit" id="add-server-submit">Add print server</button></form>
               <p class="inline-note">Port 631 is used if you leave it out. On that computer, CUPS must accept connections from the network (in CUPS: “Share printers connected to this system”, or <code>Listen 0.0.0.0:631</code>).</p>
             </div>
@@ -286,6 +286,8 @@
       <section class="stats-panel stats-settings"><span class="overline">RECORD KEEPING</span><h2>What Folio keeps.</h2>
         <p>For each job: when, who, which printer, pages, copies, sheets, colour and paper size. Never the document's name or contents. Deleting an account removes its name from these records.</p>
         <label class="switch-line"><input id="stats-enabled" type="checkbox"> <span>Keep print statistics</span></label>
+        <label class="switch-line"><input id="stats-include-cups" type="checkbox"> <span>Also count prints sent straight to the print server (from phones and computers)</span></label>
+        <p class="inline-note stats-cups-note">Counts start when you switch this on. Pages are as CUPS reports them; some printers report none. Needs the print server’s administrator login (the built-in one has it).</p>
         <label class="stats-retention">Keep records for <select id="stats-retention">
           <option value="90">3 months</option><option value="365">1 year</option><option value="730">2 years</option><option value="1825">5 years</option><option value="0">Until I delete them</option>
         </select></label>

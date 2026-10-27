@@ -95,7 +95,10 @@ async function loadFeatures(){
   $('.ocr-choice').classList.toggle('hidden',!available.ocr);
   if(!available.ocr)$('#pdf-ocr').checked=false;
   $('.rail-license').firstChild.textContent=`${state.features.edition.toUpperCase()} EDITION `;
+  state.builtinServer=state.features.builtin_print_server||null;
 }
+// "Built-in" for Folio's own print server, the address for any other.
+function serverName(server){return server&&server===state.builtinServer?'Built-in':server;}
 async function boot(){
   try {const saved=JSON.parse(localStorage.getItem('folio.scanSettings')||'null');if(saved)state.settings={...state.settings,...saved};}catch{}
   await loadFeatures();
@@ -623,8 +626,9 @@ async function loadPrinterStatus(){
   $('#print-status-text').textContent='Checking CUPS queue…';$('#print-status-led').classList.remove('on');
   try{
     const selected=$('#member-printer').value;
-    const r=await api(`/api/print/status${selected?'?queue='+encodeURIComponent(selected):''}`);$('#print-queue-name').textContent=`${r.queue||'No default printer'}${r.server?' · '+r.server:''}`;
-    $('#print-status-text').textContent=r.ready?r.message:`${r.message}${r.available_queues?.length?' · Available: '+r.available_queues.join(', '):''}`;
+    const r=await api(`/api/print/status${selected?'?queue='+encodeURIComponent(selected):''}`);$('#print-queue-name').textContent=`${r.queue||'No default printer'}${r.server?' · '+(r.server_label||r.server):''}`;
+    const low=(r.supplies_low||[]).map(s=>`${s.name} ${s.level} %`).join(', ');
+    $('#print-status-text').textContent=(r.ready?r.message:`${r.message}${r.available_queues?.length?' · Available: '+r.available_queues.join(', '):''}`)+(low?` · Running low: ${low}`:'');
     $('#print-status-led').classList.toggle('on',!!r.ready);
     // If CUPS supplied concrete PPD PageSize values, mark unsupported choices.
     // Refresh capabilities consistently for all three print flows; the
@@ -900,13 +904,15 @@ function renderStats(report){
   if(t.greyscale_pages)parts.push(`${count(t.greyscale_pages)} in greyscale`);
   if(t.auto_pages)parts.push(`${count(t.auto_pages)} with colour left to the printer`);
   if(t.cancelled)parts.push(`${count(t.cancelled)} cancelled ${t.cancelled===1?'job':'jobs'} not counted`);
+  if(t.direct_jobs)parts.push(`${count(t.direct_pages)} ${t.direct_pages===1?'page':'pages'} from ${count(t.direct_jobs)} ${t.direct_jobs===1?'job':'jobs'} sent straight to the print server`);
   $('#stats-breakdown').textContent=parts.join(' · ');
   renderStatsChart(report);
   renderStatsTable('#stats-people','Person',report.people.map(p=>({...p,name:statsName(p.user,report.guest_user)})),'Nobody printed in this period.');
   const servers=new Set(report.printers.map(p=>p.server));
-  renderStatsTable('#stats-printers','Printer',report.printers.map(p=>({...p,name:p.queue,detail:servers.size>1?p.server:''})),'No printer was used in this period.');
+  renderStatsTable('#stats-printers','Printer',report.printers.map(p=>({...p,name:p.queue,detail:servers.size>1?serverName(p.server):''})),'No printer was used in this period.');
   $('#stats-enabled').checked=report.settings.enabled;
   $('#stats-retention').value=String(report.settings.retention_days);
+  $('#stats-include-cups').checked=!!report.settings.include_cups_jobs;
   $('#stats-oldest').textContent=report.oldest?`The oldest record is from ${today(report.oldest)}.`:'Nothing has been recorded yet.';
 }
 function renderStatsChart(report){
@@ -954,7 +960,7 @@ function renderStatsTable(target,heading,rows,empty){
 async function saveStatsSettings(){
   const enabled=$('#stats-enabled').checked, retention=Number($('#stats-retention').value), before=state.statsSettings?.retention_days;
   if(retention && (!before || retention<before) && !confirm(`Records older than ${$('#stats-retention').selectedOptions[0].textContent.toLowerCase()} will be deleted now. Continue?`))return;
-  const saved=await api('/api/admin/stats/settings',{method:'PUT',body:{enabled,retention_days:retention}});
+  const saved=await api('/api/admin/stats/settings',{method:'PUT',body:{enabled,retention_days:retention,include_cups_jobs:$('#stats-include-cups').checked}});
   toast(saved.enabled?`Print statistics are kept ${STATS_KEPT[saved.retention_days]}.`:'Print statistics are switched off. Existing records stay until you delete them.');
   await loadStats();
 }
@@ -1219,7 +1225,7 @@ async function refreshDeviceManager(refresh=false){
   const [result,servers]=await Promise.all([api(`/api/admin/devices${refresh?'?refresh=true':''}`),api('/api/admin/cups/servers')]);
   state.cupsServers=servers;renderCupsAdmin(servers);
   const managed=new Set(servers.filter(s=>s.admin.connected).map(s=>s.server));
-  $('#device-cups-server').textContent=`CUPS · ${(result.cups_servers||[]).join(', ')||'Not configured'} · ${result.printers.filter(x=>x.ready).length} ready`;
+  $('#device-cups-server').textContent=`Print servers · ${(result.cups_servers||[]).map(serverName).join(', ')||'None'} · ${result.printers.filter(x=>x.ready).length} printers ready`;
   const attach=$('#attach-scanner-select');
   attach.innerHTML=(result.unregistered||[]).map(d=>`<option value="${html(d.sane_name)}">${html(d.description||d.sane_name)}</option>`).join('')||'<option value="">No unregistered SANE devices detected</option>';
   $('#attach-scanner-form button[type=submit]').disabled=!(result.unregistered||[]).length;
@@ -1234,15 +1240,29 @@ async function refreshDeviceManager(refresh=false){
     const settings=q.settings||{},caps=q.capabilities||{};
     const tags=[caps.color===true?'Color':caps.color===false?'Monochrome':'Color unknown',caps.duplex===true?'Duplex':caps.duplex===false?'Simplex':'Duplex unknown',caps.media?.length?caps.media.length+' paper sizes':'Sizes unknown',caps.trays?.length?caps.trays.length+' trays':null].filter(Boolean);
     return `<article class="device-card ${result.default_printer===q.id?'current':''}" data-printer="${html(q.id)}">
-       <header><div><strong>${html(q.queue)}</strong><small>${html(q.server)} · ${html(q.status||'')}</small></div><span class="device-state ${q.ready?'':'off'}">${q.ready?'Ready':/disabled/i.test(q.status||'')?'Paused':'Offline'}</span></header>
+       <header><div><strong>${html(q.queue)}</strong><small>${html(q.server_label||q.server)} · ${html(q.status||'')}</small></div><span class="device-state ${q.ready?'':'off'}">${q.ready?'Ready':/disabled/i.test(q.status||'')?'Paused':'Offline'}</span></header>
        <div class="device-tags">${tags.map(x=>`<span>${html(x)}</span>`).join('')}</div>
        <div class="device-access">${[['enabled','Enabled'],['guest','Guest printing'],['member','Members'],['printer','Printer-only accounts']].map(([flag,label])=>`<label><input type="checkbox" data-printer-flag="${flag}" ${settings[flag]?'checked':''}> ${label}</label>`).join('')}</div>
        <div class="device-actions"><button data-printer-action="save" ${q.status==='Not found in CUPS'?'disabled':''}>Save permissions</button>${result.default_printer!==q.id?`<button data-printer-action="default" ${q.status==='Not found in CUPS'?'disabled':''}>Make default</button>`:''}${q.status!=='Not found in CUPS'?'<button data-queue-action="jobs">Jobs</button><button data-queue-action="test">Test page</button>':''}${managed.has(q.server)&&q.status!=='Not found in CUPS'?`<button data-queue-action="pause">${q.ready?'Pause':'Resume'}</button><button data-queue-action="remove" class="danger-action">Remove</button>`:''}</div>
+       <div class="printer-supplies" aria-live="polite"></div>
        <div class="printer-jobs hidden"></div></article>`;
   }).join('')||'<p class="muted">No printers yet. Add one below.</p>';
   $('#device-scanner-list').querySelectorAll('[data-scanner-action]').forEach(btn=>btn.onclick=()=>handleScannerAction(btn).catch(problem));
   $('#device-printer-list').querySelectorAll('[data-printer-action]').forEach(btn=>btn.onclick=()=>handlePrinterAction(btn).catch(problem));
   $('#device-printer-list').querySelectorAll('[data-queue-action]').forEach(btn=>btn.onclick=()=>handleQueueAction(btn).catch(problem));
+  for(const q of result.printers)if(q.status!=='Not found in CUPS')loadSupplies(q.id);
+}
+// Toner, ink and wearing parts, as the printer reports them; nothing if it doesn't.
+async function loadSupplies(id){
+  const card=document.querySelector(`[data-printer="${CSS.escape(id)}"] .printer-supplies`);
+  if(!card)return;
+  try{
+    const {supplies}=await api(`${printerPath(id)}/supplies`);
+    if(!supplies.length){card.innerHTML='';return;}
+    const row=s=>`<div class="supply ${s.low?'low':''}"><span>${html(s.name)}</span><span class="supply-meter" role="img" aria-label="${html(s.name)}: ${s.level===null?(s.some_left?'some left':'level unknown'):s.level+' %'}"><span style="width:${s.level??0}%"></span></span><b>${s.level===null?(s.some_left?'Some left':'—'):s.level+' %'}${s.low?' · Low':''}</b></div>`;
+    const consumables=supplies.filter(s=>s.consumable),parts=supplies.filter(s=>!s.consumable);
+    card.innerHTML=`<h4>Supplies</h4>${consumables.map(row).join('')}${parts.length?`<details${parts.some(s=>s.low)?' open':''}><summary>Parts (${parts.length})</summary>${parts.map(row).join('')}</details>`:''}`;
+  }catch{card.innerHTML='';}
 }
 async function handleScannerAction(btn){
   const card=btn.closest('[data-scanner]'),id=card.dataset.scanner,act=btn.dataset.scannerAction;
@@ -1320,10 +1340,13 @@ async function handlePrinterAction(btn){
 const printerPath=id=>`/api/admin/printers/${encodeURIComponent(id)}`;
 const serverPath=server=>`/api/admin/cups/servers/${encodeURIComponent(server)}`;
 function renderCupsAdmin(servers){
-  $('#cups-admin-list').innerHTML=servers.map(s=>`<article class="device-card cups-admin-card" data-cups-server="${html(s.server)}">
+  const builtinCard=s=>`<article class="device-card cups-admin-card builtin" data-cups-server="${html(s.server)}">
+    <header><div><strong>Built-in print server</strong><small>Part of Folio · set up and connected automatically</small></div><span class="device-state ${s.reachable?'':'off'}">${s.reachable?'Running':'Starting…'}</span></header>
+    <p class="inline-note">${s.announcing?'Its printers are announced on your network (AirPrint/Bonjour), so phones and computers can find them.':'Its printers are not announced on your network. To let phones find them (AirPrint), see “Printing” in the deployment guide.'}</p></article>`;
+  $('#cups-admin-list').innerHTML=servers.map(s=>s.source==='builtin'?builtinCard(s):`<article class="device-card cups-admin-card" data-cups-server="${html(s.server)}">
     <header><div><strong>${html(s.server)}</strong><small>${s.source==='settings'?'From the CUPS_SERVERS setting':'Added in Folio'} · ${s.admin.connected?`administrator login: ${html(s.admin.username)}${s.admin.encrypted?' (encrypted)':''}`:'no administrator login'}</small></div><span class="device-state ${s.reachable?'':'off'}">${s.reachable?'Reachable':'Not responding'}</span></header>
     ${s.admin.connected?'':`<form class="device-form cups-login-form"><p class="inline-note">To add, pause or remove printers on this server, enter a CUPS administrator login (a user in CUPS’s lpadmin group). It stays on this Folio server and is never shown again.</p><div class="device-form-row"><label>CUPS username <input name="username" autocomplete="off" required maxlength="64"></label><label>Password <input name="password" type="password" autocomplete="new-password" required maxlength="256"></label></div><button class="button outline-button" type="submit">Connect login</button></form>`}
-    <div class="device-actions">${s.admin.connected?'<button data-cups-action="disconnect">Disconnect login</button>':''}${s.source==='folio'?'<button data-cups-action="remove" class="danger-action">Remove server</button>':''}</div></article>`).join('')||'<p class="muted">No print server yet. Add the computer that runs CUPS below.</p>';
+    <div class="device-actions">${s.admin.connected?'<button data-cups-action="disconnect">Disconnect login</button>':''}${s.source==='folio'?'<button data-cups-action="remove" class="danger-action">Remove server</button>':''}</div></article>`).join('')||'<p class="muted">No print server yet. The built-in one is switched off (FOLIO_BUILTIN_CUPS); add the computer that runs CUPS below.</p>';
   $$('.cups-login-form').forEach(form=>form.onsubmit=async event=>{
     event.preventDefault();const server=form.closest('[data-cups-server]').dataset.cupsServer,button=form.querySelector('button');
     button.disabled=true;button.textContent='Checking…';
@@ -1338,10 +1361,10 @@ function renderCupsAdmin(servers){
   });
   const connected=servers.filter(s=>s.admin.connected),select=$('#add-printer-server'),previous=select.value;
   $('#add-printer-form').classList.toggle('hidden',!connected.length);
-  $('#add-printer-intro').innerHTML=connected.length?'Folio creates the printer in CUPS for you, in four steps.':
+  $('#add-printer-intro').innerHTML=connected.length?'Folio sets the printer up for you, in four steps.':
     (servers.length?'Folio creates the printer in CUPS for you. First connect an administrator login for a print server under <strong>Print servers</strong> below.':
     'Folio creates the printer in CUPS for you. First add the computer that runs CUPS under <strong>Print servers</strong> below, and connect its administrator login.');
-  select.innerHTML=connected.map(s=>`<option value="${html(s.server)}">${html(s.server)}</option>`).join('');
+  select.innerHTML=connected.map(s=>`<option value="${html(s.server)}">${s.source==='builtin'?'Built-in print server':html(s.server)}</option>`).join('');
   if(connected.some(s=>s.server===previous))select.value=previous;
 }
 $('#add-server-form').onsubmit=async event=>{

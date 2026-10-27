@@ -455,3 +455,13 @@
 .backup-panel{margin-top:22px}.backup-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px}
 .backup-restore{border-top:1px solid #e3e6db;margin-top:20px;padding-top:16px}.backup-restore h3{font:normal 20px Georgia,serif;margin:0 0 6px}
 .file-button{position:relative;overflow:hidden}.file-button input{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+/* v0.17: destinations and sending */
+.destinations-panel{margin-top:22px}.destination-form{margin-top:16px;border-top:1px solid #e3e6db;padding-top:14px}
+.destination-form h3{font:normal 20px Georgia,serif;margin:0 0 8px}.destination-tags{display:flex;flex-wrap:wrap;gap:4px 16px;margin:8px 0}
+.destination-tags p{flex-basis:100%;margin:0}
+.send-control{display:inline-flex;gap:6px;align-items:center}.send-control select{max-width:150px;border:1px solid #c7cbbb;background:transparent;padding:10px 6px;font-size:12px;min-height:42px}
+.doc-sent{color:#6b8a70}
+@media(max-width:640px){.send-control{width:100%}.send-control select{flex:1;max-width:none}}
+.destination-form label.checkline,.destination-tags label.checkline{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:8px;text-align:left;width:auto;margin:6px 0}
+.destination-form label.checkline input,.destination-tags label.checkline input{width:auto;min-height:0;margin:0}

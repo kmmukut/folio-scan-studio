@@ -65,7 +65,11 @@ and privacy-conscious design.
 - **Edit without losing the original:** crop, rotate, straighten,
   brightness and contrast, reorder, delete, undo.
 - **Export** PDFs, optionally searchable (OCR), as background jobs with
-  progress.
+  progress, or **send** them straight to **Paperless-ngx** or a folder on
+  your NAS.
+- **Leave out blank pages** while scanning (the empty backs of one-sided
+  sheets), or remove them later; dust and show-through don't fool it, and a
+  signature or a single line always keeps a page.
 - **A print server built in:** CUPS with drivers for thousands of printer
   models, set up from the browser (driverless or with a driver chosen by
   model); test, pause and remove printers, and let phones print to them

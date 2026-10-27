@@ -75,7 +75,7 @@
     <div class="rail-bottom">
       <div class="machine-status"><span class="led" id="device-led"></span><div><span id="rail-scanner-name">Selected scanner</span><small id="device-status">Checking connection…</small></div></div>
       <button class="rail-logout" id="logout-button">SIGN OUT <span>↗</span></button>
-      <div class="rail-license">EDITION <span>0.16.0</span></div>
+      <div class="rail-license">EDITION <span>0.17.0</span></div>
       <a class="rail-source" href="https://github.com/kmmukut/folio-scan-studio" target="_blank" rel="noopener">Source code · AGPL-3.0</a>
     </div>
   </aside>
@@ -94,8 +94,8 @@
         <ol id="checklist-steps" class="checklist-steps"></ol>
       </section>
       <div class="doc-bar">
-        <div class="doc-title-block"><div class="overline">CURRENT / DOCUMENT</div><input id="document-title" aria-label="Document name" value="Untitled document" maxlength="100"><div class="doc-subline"><span id="doc-count">0 pages</span><span class="dot">•</span><span id="doc-date">New draft</span></div></div>
-        <div class="doc-actions"><button id="new-job" class="button ghost-button"><svg class="svg-icon"><use href="#ico-plus"/></svg> New</button><button id="delete-current-job" class="button ghost-button delete-document-control" title="Delete this document"><svg class="svg-icon"><use href="#ico-trash"/></svg> Delete</button><label class="quality-select">PDF <select id="pdf-quality"><option value="balanced">Balanced</option><option value="small">Compact</option><option value="best">Best quality</option></select></label><label class="ocr-choice" title="Add a searchable text layer during export"><input type="checkbox" id="pdf-ocr"> Searchable PDF</label><a class="button dark-button" id="export-button" href="#"><svg class="svg-icon"><use href="#ico-download"/></svg> Export</a></div>
+        <div class="doc-title-block"><div class="overline">CURRENT / DOCUMENT</div><input id="document-title" aria-label="Document name" value="Untitled document" maxlength="100"><div class="doc-subline"><span id="doc-count">0 pages</span><span class="dot">•</span><span id="doc-date">New draft</span><span id="doc-sent" class="doc-sent"></span></div></div>
+        <div class="doc-actions"><button id="new-job" class="button ghost-button"><svg class="svg-icon"><use href="#ico-plus"/></svg> New</button><button id="delete-current-job" class="button ghost-button delete-document-control" title="Delete this document"><svg class="svg-icon"><use href="#ico-trash"/></svg> Delete</button><label class="quality-select">PDF <select id="pdf-quality"><option value="balanced">Balanced</option><option value="small">Compact</option><option value="best">Best quality</option></select></label><label class="ocr-choice" title="Add a searchable text layer during export"><input type="checkbox" id="pdf-ocr"> Searchable PDF</label><a class="button dark-button" id="export-button" href="#"><svg class="svg-icon"><use href="#ico-download"/></svg> Export</a><span class="send-control hidden" id="send-control"><label class="visually-hidden" for="send-destination">Send to</label><select id="send-destination"></select><button type="button" class="button ghost-button" id="send-button"><svg class="svg-icon"><use href="#ico-arrow"/></svg> Send</button></span></div>
       </div>
       <div id="scan-alert" class="notice hidden" role="status"></div>
       <div class="workbench">
@@ -107,13 +107,14 @@
           <div class="form-section"><div class="field-caption">COLOR PROFILE</div><div class="toggle-row" id="mode-picker"><button class="selected" data-value="Color">Color</button><button data-value="Gray">Gray</button></div></div>
           <div class="form-section"><label class="field-caption" for="resolution">RESOLUTION</label><select id="resolution"><option>75</option><option>100</option><option>150</option><option>200</option><option selected>300</option></select></div>
           <div class="form-section" id="batch-count-row"><div class="field-caption">PAPER COUNT</div><label class="checkline"><input type="checkbox" id="auto-count" checked> Until feeder is empty</label><label class="count-line">Fixed number <input id="batch-count" type="number" min="1" max="100" value="5" disabled></label><p class="inline-note">Tip: use a fixed count to avoid feeder-end errors.</p></div>
-          <div class="form-section"><label class="field-caption" for="batch-role">BATCH TYPE</label><select id="batch-role"><option value="normal">Regular pages</option><option value="fronts">Duplex / fronts</option><option value="backs">Duplex / backs</option></select></div>
+          <div class="form-section"><label class="field-caption" for="batch-role">BATCH TYPE</label><select id="batch-role"><option value="normal">Regular pages</option><option value="fronts">Duplex / fronts</option><option value="backs">Duplex / backs</option></select>
+            <label class="checkline skip-blank-line" id="skip-blank-line"><input type="checkbox" id="skip-blank"> Leave out blank pages</label></div>
           <button id="scan-now" class="button scan-button"><svg class="svg-icon"><use href="#ico-scanner"/></svg> Start scan <span>↗</span></button>
           <button id="cancel-scan" class="button cancel-button" hidden disabled>Cancel current scan</button>
           <p class="capture-foot">No cloud involved. Just your scanner and this desk.</p>
         </section>
         <section class="organize-pane">
-          <div class="pane-heading horizontal"><div><span class="overline">02 / ORGANIZE</span><h2>On the table <span class="counter" id="pages-count-pill">0</span></h2></div></div>
+          <div class="pane-heading horizontal"><div><span class="overline">02 / ORGANIZE</span><h2>On the table <span class="counter" id="pages-count-pill">0</span></h2></div><button type="button" class="plain-action" id="remove-blank" title="Move pages with nothing on them to the deleted pages; Undo restores them">Remove blank pages</button></div>
           <p class="drag-instructions">Select a page to edit. Drag its grip to reorder; arrow buttons also work on touch and keyboard.</p>
           <div id="page-grid" class="page-grid" role="list" aria-label="Document pages in export order"></div>
           <div class="duplex-editor"><div class="duplex-heading"><div><span class="overline">A HANDY EXTRA</span><h3>Two sides, one document.</h3></div><div class="duplex-symbol">↺</div></div><p>Scan fronts and backs as separate batches; we'll interleave them for you.</p><div class="duplex-selectors"><select id="front-batch" aria-label="Front-side batch"></select><select id="back-batch" aria-label="Back-side batch"></select></div><label class="checkline"><input id="reverse-backs" type="checkbox" checked> Reverse the second stack</label><button id="interleave-button" class="button outline-button">Collate both sides <svg class="svg-icon"><use href="#ico-arrow"/></svg></button></div>
@@ -266,13 +267,27 @@
           </div>
         </div>
       </div>
+      <div class="diagnostics-panel destinations-panel" id="destinations-panel">
+        <div class="device-heading"><span class="overline">03 / DESTINATIONS</span><h2>Send documents onward.</h2><p>Where finished documents can be sent from the workbench: Paperless-ngx, or a folder (a NAS share, or Paperless’s consume folder) mounted into Folio under <code>/destinations</code>.</p></div>
+        <div id="destination-list" class="device-list"></div>
+        <form id="destination-form" class="device-form destination-form">
+          <h3>Add a destination</h3>
+          <div class="device-form-row"><label>Type <select id="destination-kind"><option value="paperless">Paperless-ngx</option><option value="folder">Folder</option></select></label><label>Name <input id="destination-name" maxlength="40" required placeholder="Paperless"></label></div>
+          <div class="device-form-row destination-paperless"><label>Paperless address <input id="destination-url" placeholder="http://192.168.1.20:8000" autocomplete="off"></label><label>API token <input id="destination-token" type="password" autocomplete="off" placeholder="Paperless: your profile → API token"></label></div>
+          <label class="checkline destination-paperless"><input type="checkbox" id="destination-verify" checked> Check Paperless’s certificate (untick for a self-signed one)</label>
+          <div class="device-form-row destination-folder hidden"><label>Folder inside /destinations <input id="destination-folder" placeholder="nas" autocomplete="off"></label></div>
+          <p class="inline-note destination-folder hidden">Mount the host folder in compose.yaml, e.g. <code>- /srv/scans:/destinations/nas</code>, and let the user Folio runs as (PUID) write to it.</p>
+          <div id="destination-tags" class="destination-tags hidden"></div>
+          <div class="print-admin-actions"><button class="button outline-button" type="button" id="destination-check">Check</button><button class="button dark-button" type="submit">Add destination</button></div>
+        </form>
+      </div>
       <div class="diagnostics-panel">
-        <div class="device-heading"><span class="overline">03 / DIAGNOSTICS</span><h2>System check.</h2><p id="diagnostics-summary">Checks storage, memory, proxy settings, every CUPS server and every scanner. Nothing is changed.</p></div>
+        <div class="device-heading"><span class="overline">04 / DIAGNOSTICS</span><h2>System check.</h2><p id="diagnostics-summary">Checks storage, memory, proxy settings, every CUPS server and every scanner. Nothing is changed.</p></div>
         <button class="button outline-button" type="button" id="diagnostics-run">Run checks</button>
         <div id="diagnostics-results" class="diagnostics-results" aria-live="polite"></div>
       </div>
       <div class="diagnostics-panel backup-panel" id="backup-panel">
-        <div class="device-heading"><span class="overline">04 / BACKUP</span><h2>Keep a copy.</h2><p>One file with your documents, accounts, settings, print statistics, and the built-in printers with their drivers. It holds your accounts and print-server logins, so keep it somewhere safe.</p></div>
+        <div class="device-heading"><span class="overline">05 / BACKUP</span><h2>Keep a copy.</h2><p>One file with your documents, accounts, settings, print statistics, and the built-in printers with their drivers. It holds your accounts and print-server logins, so keep it somewhere safe.</p></div>
         <div class="backup-row"><button class="button outline-button" type="button" id="backup-run">Download a backup</button><span id="backup-status" class="inline-note" aria-live="polite"></span></div>
         <div class="backup-restore">
           <h3>Restore from a backup</h3>

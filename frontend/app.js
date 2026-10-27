@@ -4,7 +4,7 @@ const $$ = selector => [...document.querySelectorAll(selector)];
 const icon = name => `<svg class="svg-icon"><use href="#ico-${name}"/></svg>`;
 const html = input => String(input??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const state = {job:null,jobs:[],selected:null,scanning:false,csrf:null,user:null,role:null,autoSuggestion:null,guestEnabled:false,guestCsrf:null,guestPreview:false,dragId:null,guestFile:null,memberFile:null,scanners:[],printQueues:[],
-  settings:{scanner_id:'',source:'ADF',mode:'Color',resolution:300,auto:true,count:5,role:'normal'}};
+  settings:{scanner_id:'',source:'ADF',mode:'Color',resolution:300,auto:true,count:5,role:'normal',skipBlank:false}};
 let pollTimer, toastTimer, cropGesture=null, cropRect=null, previewSerial=0;
 let suppressPageClickUntil=0;
 const largeView={zoom:1,grid:true,pan:true};
@@ -82,6 +82,7 @@ async function setupAdmin(){
   catch(e){problem(e);}
   updateSettings();
   if(state.role==='admin')loadChecklist().catch(()=>{});
+  loadSendTargets().catch(()=>{});
   api('/api/scanner').then(r=>{$('#device-led').classList.toggle('on',r.connected);$('#device-status').textContent=r.connected?`Connected via ${r.protocol||'SANE'}`:'Scanner unavailable';}).catch(()=>{$('#device-status').textContent='Detection unavailable';});
   pollScan();
   refreshScannerChoices().catch(problem);
@@ -141,6 +142,7 @@ function renderDocument(){
   if(document.activeElement!==$('#document-title'))$('#document-title').value=j.title;
   $('#doc-count').textContent=`${j.pages.length} page${j.pages.length===1?'':'s'}`;
   $('#doc-date').textContent=today(j.updated);
+  const sent=(j.sent||[]).at(-1);$('#doc-sent').textContent=sent?` · Sent to ${sent.destination} ${today(sent.at)}`:'';
   $('#pages-count-pill').textContent=j.pages.length;
   const deletedCount=j.deleted_pages?.length||0;
   $('#undo-delete').disabled=deletedCount===0;
@@ -383,6 +385,8 @@ function updateSettings(){
   for(const group of ['source','mode'])$$(`#${group}-picker button`).forEach(b=>b.classList.toggle('selected',b.dataset.value===s[group]));
   $('#resolution').value=s.resolution;$('#auto-count').checked=s.auto;$('#batch-count').value=s.count;
   $('#batch-count').disabled=s.auto;$('#batch-count-row').classList.toggle('hidden',!s.source.includes('ADF'));$('#batch-role').value=s.role;
+  // Duplex fronts and backs must stay paired, so blank pages are only left out of regular batches.
+  $('#skip-blank').checked=s.skipBlank;$('#skip-blank-line').classList.toggle('hidden',s.role!=='normal');
   localStorage.setItem('folio.scanSettings',JSON.stringify(s));
 }
 async function patchPage(patch){let p=currentPage();if(!p)return;const pageId=p.id;resetSuggestion(true);try{state.job=await api(`/api/jobs/${state.job.id}/pages/${pageId}`,{method:'PATCH',body:patch});renderDocument();}catch(e){problem(e);}}
@@ -435,7 +439,7 @@ async function pollScan(){
 }
 async function scanNow(){
   if(state.scanning)return;if(!state.job)await newJob();const s=state.settings;
-  const body={scanner_id:s.scanner_id,source:s.source,mode:s.mode,resolution:s.resolution,role:s.role,count:s.source.includes('ADF')?(s.auto?null:s.count):1};
+  const body={scanner_id:s.scanner_id,source:s.source,mode:s.mode,resolution:s.resolution,role:s.role,count:s.source.includes('ADF')?(s.auto?null:s.count):1,skip_blank:s.skipBlank&&s.role==='normal'};
   try{let status=await api(`/api/jobs/${state.job.id}/scan`,{method:'POST',body});renderScanStatus(status);pollTimer=setTimeout(pollScan,700);}catch(e){problem(e);}
 }
 async function interleave(){try{state.job=await api(`/api/jobs/${state.job.id}/interleave`,{method:'POST',body:{front_batch_id:$('#front-batch').value,back_batch_id:$('#back-batch').value,reverse_backs:$('#reverse-backs').checked}});renderDocument();toast('Both sides collated. Review before exporting.');}catch(e){problem(e);}}
@@ -1023,6 +1027,67 @@ $('#stats-save').onclick=()=>saveStatsSettings().catch(problem);
 $('#stats-clear').onclick=()=>clearStats().catch(problem);
 $('#devices-refresh').onclick=()=>refreshDeviceManager(true).catch(problem);
 $('#diagnostics-run').onclick=()=>runDiagnostics().catch(problem);
+// Destinations: where finished documents can be sent (Paperless-ngx, folders).
+async function loadSendTargets(){
+  const list=await api('/api/destinations');
+  $('#send-control').classList.toggle('hidden',!list.length);
+  $('#send-destination').innerHTML=list.map(d=>`<option value="${html(d.id)}">${html(d.name)}</option>`).join('');
+}
+$('#send-button').onclick=async()=>{
+  if(!state.job?.pages.length){toast('Scan at least one page to send.');return;}
+  const button=$('#send-button'),label=button.innerHTML,select=$('#send-destination'),name=select.selectedOptions[0]?.textContent;
+  button.disabled=true;
+  try{
+    const title=$('#document-title').value.trim()||state.job.title;
+    const started=await api(`/api/jobs/${state.job.id}/send`,{method:'POST',body:{destination:select.value,title,ocr:$('#pdf-ocr').checked}});
+    const done=await followTask(started.task,{onUpdate:task=>{button.innerHTML=`${icon('arrow')} ${task.status==='queued'?'Waiting…':'Sending…'}`;}});
+    toast(`Sent to ${name}. ${done.result.detail}.`);
+    state.job=await api(`/api/jobs/${state.job.id}`);renderDocument();
+  }catch(error){problem(error);}
+  finally{button.disabled=false;button.innerHTML=label;}
+};
+function destinationKind(){return $('#destination-kind').value;}
+function destinationBody(){
+  const kind=destinationKind();
+  return {kind,name:$('#destination-name').value.trim(),url:$('#destination-url').value.trim(),token:$('#destination-token').value,
+    verify_tls:$('#destination-verify').checked,folder:$('#destination-folder').value.trim(),
+    tags:$$('#destination-tags input:checked').map(i=>Number(i.value))};
+}
+$('#destination-kind').onchange=()=>{
+  const paperless=destinationKind()==='paperless';
+  $$('.destination-paperless').forEach(e=>e.classList.toggle('hidden',!paperless));
+  $$('.destination-folder').forEach(e=>e.classList.toggle('hidden',paperless));
+  $('#destination-tags').classList.add('hidden');
+  if(!$('#destination-name').value||['Paperless','NAS'].includes($('#destination-name').value))$('#destination-name').value=paperless?'Paperless':'NAS';
+};
+$('#destination-check').onclick=async()=>{
+  try{
+    const result=await api('/api/admin/destinations/check',{method:'POST',body:destinationBody()});
+    if(destinationKind()==='paperless'){
+      $('#destination-tags').innerHTML=result.tags.length?`<p class="inline-note">Tag every document sent here with:</p>${result.tags.map(t=>`<label class="checkline"><input type="checkbox" value="${t.id}"> ${html(t.name)}</label>`).join('')}`:'<p class="inline-note">Paperless has no tags yet.</p>';
+      $('#destination-tags').classList.remove('hidden');
+      toast('Paperless answered and accepted the token.');
+    }else toast('Folio can write to that folder.');
+  }catch(e){problem(e);}
+};
+$('#destination-form').onsubmit=async event=>{
+  event.preventDefault();
+  try{
+    const saved=await api('/api/admin/destinations',{method:'POST',body:destinationBody()});
+    toast(`${saved.name} added. Documents can be sent there from the workbench.`);
+    $('#destination-form').reset();$('#destination-tags').classList.add('hidden');$('#destination-kind').onchange();
+    await loadDestinations();await loadSendTargets();
+  }catch(e){problem(e);}
+};
+async function loadDestinations(){
+  const list=await api('/api/admin/destinations');
+  $('#destination-list').innerHTML=list.map(d=>`<article class="device-card" data-destination="${html(d.id)}"><header><div><strong>${html(d.name)}</strong><small>${html(d.kind_label)} · ${html(d.kind==='paperless'?d.url:'/destinations/'+d.folder)}${d.tags.length?` · ${d.tags.length} default ${d.tags.length===1?'tag':'tags'}`:''}</small></div></header><div class="device-actions"><button class="danger-action" data-remove-destination>Remove</button></div></article>`).join('')||'<p class="muted">No destinations yet.</p>';
+  $$('[data-remove-destination]').forEach(b=>b.onclick=async()=>{
+    const id=b.closest('[data-destination]').dataset.destination;
+    if(!confirm('Remove this destination? Documents already sent stay where they are.'))return;
+    try{await api(`/api/admin/destinations/${id}`,{method:'DELETE'});await loadDestinations();await loadSendTargets();}catch(e){problem(e);}
+  });
+}
 // Backup and restore (administrators, Devices page).
 async function showLastBackup(){
   try{const list=await api('/api/admin/checklist');
@@ -1082,6 +1147,18 @@ $('#resolution').onchange=e=>{state.settings.resolution=Number(e.target.value);u
 $('#auto-count').onchange=e=>{state.settings.auto=e.target.checked;updateSettings();};
 $('#batch-count').onchange=e=>{state.settings.count=Math.max(1,Math.min(100,Number(e.target.value)||1));updateSettings();};
 $('#batch-role').onchange=e=>{state.settings.role=e.target.value;updateSettings();};
+$('#skip-blank').onchange=e=>{state.settings.skipBlank=e.target.checked;updateSettings();};
+$('#remove-blank').onclick=async()=>{
+  if(!state.job?.pages.length){toast('There are no pages yet.');return;}
+  const button=$('#remove-blank');button.disabled=true;button.textContent='Looking for blank pages…';
+  try{
+    const result=await api(`/api/jobs/${state.job.id}/remove-blank-pages`,{method:'POST'});
+    state.job=result.job;if(!state.job.pages.some(p=>p.id===state.selected))state.selected=state.job.pages[0]?.id||null;
+    renderDocument();await refreshJobs();
+    const n=result.removed.length;toast(n?`Removed ${n} blank ${n===1?'page':'pages'}. Undo restores them one by one.`:'No blank pages found.');
+  }catch(e){problem(e);}
+  finally{button.disabled=false;button.textContent='Remove blank pages';}
+};
 $$('.preset').forEach(b=>b.onclick=()=>{const preset={documents:{source:'ADF',mode:'Color',resolution:300},grayscale:{source:'ADF',mode:'Gray',resolution:200},photos:{source:'Flatbed',mode:'Color',resolution:300}}[b.dataset.preset];state.settings={...state.settings,...preset};updateSettings();$$('.preset').forEach(el=>el.classList.remove('selected'));b.classList.add('selected');});
 $('#scan-now').onclick=scanNow;$('#cancel-scan').onclick=async()=>{try{renderScanStatus(await api('/api/scan/cancel',{method:'POST'}));}catch(e){problem(e);}};
 $('#rotate-right').onclick=()=>{let p=currentPage();if(p)patchPage({rotation:((p.rotation||0)+90)%360});};
@@ -1289,7 +1366,7 @@ function refreshPrintOptions(prefix){
 async function openDeviceManager(){
   if(state.role!=='admin')return;
   workspace(false,false,true);
-  showLastBackup();
+  showLastBackup();loadDestinations().catch(problem);
   await refreshDeviceManager();
 }
 async function refreshDeviceManager(refresh=false){

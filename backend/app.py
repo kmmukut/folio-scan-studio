@@ -32,8 +32,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 from backend import security
-from backend.processing import transform_page, find_deskew_angle
-from backend import printing, devices, diagnostics, tasks, ipp, cupsadmin, cupsimport, features, stats, printserver, airprint, backup
+from backend.processing import transform_page, find_deskew_angle, is_blank
+from backend import printing, devices, diagnostics, tasks, ipp, cupsadmin, cupsimport, features, stats, printserver, airprint, backup, destinations
 from backend.version import __version__
 
 log = logging.getLogger('folio')
@@ -193,6 +193,9 @@ class ScanRequest(BaseModel):
     # None = keep scanning until feeder reports empty (backend-dependent).
     count: int | None = Field(default=None, ge=1, le=100)
     role: Literal['normal', 'fronts', 'backs'] = 'normal'
+    # Put blank pages straight into the deleted pages (Undo brings them back).
+    # Only for regular batches: duplex fronts and backs must stay paired.
+    skip_blank: bool = False
 
 
 class PagePatch(BaseModel):
@@ -1495,7 +1498,7 @@ def start_backup(request: Request):
         try:
             printers = backup.builtin_printers(builtin_admin()) if printserver.enabled() else []
         except (ipp.IPPError, OSError) as exc:
-            raise RuntimeError(f'The built-in print server did not answer ({exc}). Try again in a minute.') from exc
+            raise HTTPException(503, f'The built-in print server did not answer ({exc}). Try again in a minute.') from exc
         name = f"folio-backup-{datetime.now().strftime('%Y-%m-%d')}.tar.gz"
         target = task.directory / name
         manifest = backup.create(DATA_DIR, target, version=__version__, edition=features.edition(),
@@ -1950,7 +1953,8 @@ def execute_scan(job_id: str, req: ScanRequest, sane_device: str) -> None:
             cancelled = scan_cancel_event.is_set() or (problem is not None and 'timed out' in problem.lower())
 
             files = sorted(scratch.glob('page-*.png'))
-            imported = []
+            imported, left_out = [], 0
+            skip_blank = req.skip_blank and req.role == 'normal'
             with lock:
                 job = load_job(job_id)
                 path = job_path(job_id)
@@ -1962,14 +1966,19 @@ def execute_scan(job_id: str, req: ScanRequest, sane_device: str) -> None:
                             im.load()
                             thumb = ImageOps.contain(im.convert('RGB'), (340, 440))
                             thumb.save(path / 'thumbs' / f'{page_id}.jpg', 'JPEG', quality=78)
+                            blank = skip_blank and is_blank(im)
                         shutil.copyfile(f, output)
                     except (OSError, ValueError):
                         continue
                     page = {'id': page_id, 'file': f'{page_id}.png', 'rotation': 0,
                             'export_mode': 'Original', 'crop': None, 'scale': 100, 'deskew': 0.0, 'scanned_mode': req.mode,
                             'dpi': req.resolution, 'batch_id': batch_id, 'created': now()}
-                    job['pages'].append(page)
                     imported.append(page_id)
+                    if blank:  # Kept, but as a deleted page that Undo restores to its place
+                        job['deleted_pages'].append({'page': page, 'index': len(job['pages'])})
+                        left_out += 1
+                        continue
+                    job['pages'].append(page)
                 if imported:
                     job['batches'].append({'id': batch_id, 'created': now(),
                                            'label': f"{req.source} · {req.mode} · {len(imported)} page(s)",
@@ -1981,7 +1990,10 @@ def execute_scan(job_id: str, req: ScanRequest, sane_device: str) -> None:
                 if problem and not cancelled:
                     # The device may have gone away; re-probe instead of trusting the cache.
                     devices.invalidate('sane')
-                message = f'Added {len(imported)} page(s)' if imported else 'No scanned pages received'
+                added = len(imported) - left_out
+                message = f'Added {added} page(s)' if imported else 'No scanned pages received'
+                if left_out:
+                    message += f" · {left_out} blank {'page' if left_out == 1 else 'pages'} left out (Undo brings them back)"
                 if problem:
                     message += f' · {problem}' if cancelled else ' · Feeder stopped; completed pages were kept'
                 scan_state.update(active=False, message=message, pages_added=len(imported),
@@ -2151,6 +2163,36 @@ def delete_page(job_id: str, page_id: str):
         j['pages'] = [x for x in j['pages'] if x['id'] != page_id]
         save_job(j)
         return j
+
+
+@app.post('/api/jobs/{job_id}/remove-blank-pages')
+def remove_blank_pages(job_id: str):
+    """Move pages with nothing written on them to the deleted pages, last one
+    first, so Undo restores each to its place."""
+    with lock:
+        j = load_job(job_id)
+        pages = list(j['pages'])
+    blank = set()
+    for page in pages:
+        try:
+            proxy = page_proxy(job_id, page)  # Built before taking a render slot, like previews
+            with RENDER_SLOTS, Image.open(proxy) as image:
+                if is_blank(image):
+                    blank.add(page['id'])
+        except (OSError, ValueError):
+            continue  # An unreadable page is never treated as blank
+    with lock:
+        j = load_job(job_id)
+        removed = []
+        for index in range(len(j['pages']) - 1, -1, -1):
+            page = j['pages'][index]
+            if page['id'] in blank:
+                j['deleted_pages'].append({'page': page, 'index': index})
+                removed.append(page['id'])
+        j['pages'] = [p for p in j['pages'] if p['id'] not in blank]
+        if removed:
+            save_job(j)
+        return {'removed': removed[::-1], 'job': j}
 
 
 @app.post('/api/jobs/{job_id}/undo-delete')
@@ -2453,6 +2495,107 @@ def start_export(job_id: str, body: ExportRequest, request: Request):
         task.file, task.filename = target, export_filename(j, body.ocr)
         return {'pages': len(j['pages']), 'bytes': target.stat().st_size}
     return task_response(tasks.runner.submit('export', 'export', task_owner(request), work))
+
+
+class DestinationBody(BaseModel):
+    kind: Literal['paperless', 'folder']
+    name: str = Field(min_length=1, max_length=40)
+    url: str | None = Field(default=None, max_length=300)
+    token: str | None = Field(default=None, max_length=200)
+    verify_tls: bool = True
+    folder: str | None = Field(default=None, max_length=120)
+    tags: list[int] = Field(default_factory=list, max_length=50)
+
+
+class SendBody(BaseModel):
+    destination: str = Field(pattern=r'^[a-f0-9]{12}$')
+    title: str | None = Field(default=None, max_length=128)
+    ocr: bool = False
+
+
+def configured_destinations() -> list[dict]:
+    return registry().get('destinations', [])
+
+
+def destination_call(fn, *args):
+    try:
+        return fn(*args)
+    except destinations.DestinationError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.get('/api/destinations')
+def list_destinations():
+    """Where documents can be sent, for the workbench (no settings, no tokens)."""
+    return [{key: d[key] for key in ('id', 'name', 'kind')} for d in configured_destinations()]
+
+
+@app.get('/api/admin/destinations')
+def admin_destinations():
+    return [destinations.public(d) for d in configured_destinations()]
+
+
+@app.post('/api/admin/destinations/check')
+def check_destination(body: DestinationBody):
+    """Try the details without saving; for Paperless, also lists its tags to choose from."""
+    destination, tags = destination_call(destinations.prepare, body.model_dump())
+    return {'ok': True, 'tags': tags}
+
+
+@app.post('/api/admin/destinations', status_code=201)
+def add_destination(body: DestinationBody):
+    cfg = registry()
+    if len(cfg.get('destinations', [])) >= 20:
+        raise HTTPException(400, 'Folio supports up to 20 destinations')
+    destination, _ = destination_call(destinations.prepare, body.model_dump())
+    cfg.setdefault('destinations', []).append(destination)
+    persist_registry(cfg)
+    return destinations.public(destination)
+
+
+@app.delete('/api/admin/destinations/{destination_id}')
+def remove_destination(destination_id: str):
+    cfg = registry()
+    kept = [d for d in cfg.get('destinations', []) if d['id'] != destination_id]
+    if len(kept) == len(cfg.get('destinations', [])):
+        raise HTTPException(404, 'Unknown destination')
+    cfg['destinations'] = kept
+    persist_registry(cfg)
+    return {'removed': destination_id}
+
+
+@app.post('/api/jobs/{job_id}/send', status_code=202)
+def send_document(job_id: str, body: SendBody, request: Request):
+    """Build the PDF and deliver it to a destination, in the background."""
+    destination = next((d for d in configured_destinations() if d['id'] == body.destination), None)
+    if not destination:
+        raise HTTPException(404, 'That destination no longer exists')
+    if body.ocr:
+        features.require('ocr')
+    with lock:
+        j = load_job(job_id)  # Snapshot: later edits don't change what is sent
+    if not j['pages']:
+        raise HTTPException(400, 'There are no pages to send')
+    title = (body.title or j['title']).strip() or 'Folio document'
+
+    def work(task: tasks.Task) -> dict:
+        document = task.directory / 'document.pdf'
+        build_job_pdf(job_id, j, document, 'balanced', body.ocr, task, progress=(0.0, .8))
+        task.update(f"Sending to {destination['name']}…", .85)
+        try:
+            if destination['kind'] == 'paperless':
+                destinations.send_paperless(destination, document, title, destination.get('tags', []))
+                detail = 'Paperless is reading and filing it now'
+            else:
+                detail = f"Saved as {destinations.send_folder(destination, document, title).name}"
+        except destinations.DestinationError as exc:
+            raise HTTPException(502, str(exc)) from exc  # Shown to the person sending
+        with lock:
+            current = load_job(job_id)
+            current.setdefault('sent', []).append({'destination': destination['name'], 'at': now()})
+            save_job(current)
+        return {'destination': destination['name'], 'detail': detail}
+    return task_response(tasks.runner.submit('send', 'export', task_owner(request), work))
 
 
 @app.post('/api/jobs/{job_id}/print')

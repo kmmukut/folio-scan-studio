@@ -4,6 +4,71 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.17.0 — Scans go where you keep documents
+
+Finished documents can be sent straight to Paperless-ngx or a folder, and
+blank pages no longer clutter feeder scans.
+
+### Send to Paperless-ngx or a folder
+- An administrator adds destinations under **Devices → Destinations**:
+  - **Paperless-ngx:** its address and an API token. **Check** proves both
+    work and lists Paperless's tags, so every document sent there can be
+    tagged.
+  - **A folder:** any host folder mounted into the container under
+    `/destinations`, such as a NAS share or Paperless's consume folder.
+- On the workbench, **Send** (next to Export) builds the PDF in the
+  background and delivers it:
+  - Paperless gets it with its title and tags, then reads and files it.
+  - A folder gets `2026-10-27 Title.pdf`, written so that folder watchers
+    never see half a file.
+- The document then shows *Sent to … (date)*. Anyone working on documents
+  can send their own; print-only accounts can't.
+- Paperless's API token never reaches a browser. Paperless problems (a
+  renewed token, an unreachable server) are explained in plain words.
+
+### Blank pages
+- **Leave out blank pages** (capture pane): when scanning through the
+  feeder, empty pages, such as the backs of one-sided sheets, go straight to
+  the deleted pages, and **Undo** brings each back to its place. Duplex
+  front and back batches keep theirs, because they must stay paired.
+- **Remove blank pages** (organize pane) does the same for a document
+  already scanned.
+- **What counts as blank:**
+  - **Blank:** dust, show-through from the other side, grey or cream paper,
+    scanner-edge shadows, and a lone page number.
+  - **Never blank:** a signature, initials, or a single small line of text.
+  - It works in both editions, without OpenCV.
+
+### Verified
+- **Tests:** 202 on the host. Inside the images, on amd64: Full 203, Lite
+  200 with 3 skipped.
+- **Blank detection** on test pages at 300 DPI: empty paper, grey paper,
+  300 dust specks, blurred show-through, an edge shadow and a page number
+  count as blank; initials, a thin signature, one small line and full text
+  don't. Scanning with the option on, removing pages later, the order Undo
+  restores them in, and duplex batches are covered by tests.
+- **Against a real Paperless-ngx** (a throwaway one, latest image):
+  - Folio's Check listed its tags.
+  - A document sent from Folio arrived with its title, file name and the
+    chosen tag, and Paperless read its text.
+- **With a fake Paperless:** a wrong token, an unreachable server, a token
+  renewed after setup, and tags spread over several pages are handled.
+- **In headless Chrome:**
+  - removing a blank page
+  - adding a folder destination
+  - sending through Send: the PDF appeared in the mounted folder, and the
+    document shows "Sent to NAS"
+- **Start-up check:** both images start healthy, with Folio as the
+  ordinary user.
+- **Not verified:** blank detection on real scanner output (only test pages
+  so far, so compare with your scans), and the arm64 images (built and
+  tested by the release workflow).
+
+### Upgrading
+Nothing is required. To send to a folder, mount it under `/destinations`
+(see [Deployment](docs/DEPLOYMENT.md#sending-documents-to-paperless-ngx-or-a-folder))
+and let the user Folio runs as write to it.
+
 ## 0.16.0 — The first minutes
 
 Installing Folio no longer needs a password in a settings file, Folio no

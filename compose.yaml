@@ -7,8 +7,8 @@
 services:
   scan-studio:
     # FOLIO_EDITION: "full" (default) or "lite" for Raspberry Pi-class hosts.
-    # FOLIO_VERSION: "0.16" follows 0.16.x fixes; pin e.g. "0.16.0" to stay put.
-    image: "ghcr.io/kmmukut/folio-scan-studio:${FOLIO_VERSION:-0.16}-${FOLIO_EDITION:-full}"
+    # FOLIO_VERSION: "0.17" follows 0.17.x fixes; pin e.g. "0.17.0" to stay put.
+    image: "ghcr.io/kmmukut/folio-scan-studio:${FOLIO_VERSION:-0.17}-${FOLIO_EDITION:-full}"
     container_name: scan-studio
     restart: unless-stopped
     stop_grace_period: 45s
@@ -39,6 +39,9 @@ services:
       # Announce the built-in printers to phones and computers (AirPrint) through
       # the host's Avahi, which Raspberry Pi OS and most Linux desktops run:
       # - /etc/avahi/services:/etc/avahi/services
+      # Folders documents can be sent to (Devices → Destinations), e.g. a NAS
+      # share mounted on the host, or Paperless-ngx's consume folder:
+      # - /srv/scans:/destinations/nas
     # USB printers and scanners:
     # devices:
     #   - /dev/bus/usb:/dev/bus/usb

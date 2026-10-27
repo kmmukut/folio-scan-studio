@@ -16,7 +16,7 @@ Most of what makes an old printer feel modern comes from the sharing layer.
 Folio's job is to make the device and sharing layers easy to set up and keep
 healthy, and to make the workflow layer excellent.
 
-## Current structure (0.16)
+## Current structure (0.17)
 
 - `backend/app.py`: FastAPI routes, auth middleware, scan and print flows.
 - `backend/devices.py`: scanner registry (`data/devices.json`), generated
@@ -43,6 +43,8 @@ healthy, and to make the workflow layer excellent.
   Avahi services folder (D14).
 - `backend/backup.py`: backups of everything Folio keeps, and restoring one,
   including the built-in printers with their drivers (D15).
+- `backend/destinations.py`: sending finished documents to Paperless-ngx or
+  a mounted folder (D16).
 - `docker-entrypoint.sh`: starts the print-server supervisor as root, then
   Folio as the `PUID` user (D15).
 - `frontend/`: framework-free HTML/CSS/JS, served as static files.
@@ -195,6 +197,22 @@ needs to read CUPS's root-owned files to do it. A restore keeps what it
 replaces in data/.before-restore, swaps item by item, and keeps the person
 restoring signed in if their account is in the backup.
 
+### D16 — Documents go where you keep them (0.17)
+Folio stays a capture-and-print desk, not an archive: finished documents
+are sent onward. Paperless-ngx is reached through its upload API with a
+token (Python's standard library only, no new dependency); a folder is any
+host folder mounted under /destinations, written atomically so folder
+watchers never see a partial file. Sending reuses the export job: the PDF
+is built in the background, then delivered.
+
+Blank pages are found without OpenCV, so Lite has it too: at 1200 px wide,
+ink is whatever is clearly darker than the paper's median shade, and a page
+is blank only if no 40 px patch holds 3 % ink or more. Measured on test
+pages, dust (up to 2 %) and show-through (0 %) stay below that, while a
+signature (8 %), initials (5 %) or one small line (9 %) never do. Blank
+pages are moved to the deleted pages, never discarded, so Undo restores
+them; duplex batches keep theirs, because fronts and backs must stay paired.
+
 ### D6 — Capabilities come from the device, never from model names
 Sizes, trays, duplex, colour, scan modes and resolutions are what CUPS/SANE
 report. Folio does not fabricate options, and no device, address or network
@@ -214,8 +232,8 @@ may change with real use.
    AirPrint announcements, printer supplies; see D14.
 7. ~~**0.16 — The first minutes.**~~ Administrator created in the browser,
    setup checklist, no root, backup and restore; see D15.
-8. **0.17 — Scans go where you keep documents:** Paperless-ngx and folder
-   destinations, blank-page removal.
+8. ~~**0.17 — Scans go where you keep documents.**~~ Paperless-ngx and folder
+   destinations, blank pages; see D16.
 9. **0.18 — Print quotas** per person, built on the print log.
 USB-specific work waits for community testers (D11).
 

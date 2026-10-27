@@ -116,3 +116,49 @@ def transform_page(image: Image.Image, page: dict, *, uncropped: bool=False) -> 
     if page.get('export_mode','Original')=='Gray':
         image=image.convert('L')
     return image
+
+
+BLANK_WIDTH = 1200         # Pages are judged at this width: thin pen strokes survive, specks stay small
+BLANK_MARGIN = 0.04        # Scanner edges and shadows are ignored
+BLANK_CONTRAST = 60        # Ink is at least this much darker than the paper (show-through is fainter)
+BLANK_CELL = 40            # Size of the patches ink is counted in
+BLANK_DENSEST = 0.03       # Writing fills some patch at least this much; dust doesn't
+BLANK_COVERAGE = 0.005     # Above 0.5 % ink overall, a page is never blank
+
+
+def ink_measures(image: Image.Image) -> tuple[float, float]:
+    """(share of the page that is ink, share of ink in its inkiest patch).
+
+    Ink is anything clearly darker than the paper's own shade (the median
+    brightness), so cream or grey paper and faint show-through don't count.
+    The inkiest patch tells writing from dust: a signature, initials or one
+    line of small text fill some patch with 5 % ink or more, while scattered
+    specks stay around 1-2 % even when there are hundreds.
+    """
+    mono = ImageOps.grayscale(image)
+    mono.thumbnail((BLANK_WIDTH, BLANK_WIDTH * 2), Image.Resampling.BILINEAR)
+    dx, dy = int(mono.width * BLANK_MARGIN), int(mono.height * BLANK_MARGIN)
+    inner = mono.crop((dx, dy, mono.width - dx, mono.height - dy))
+    histogram = inner.histogram()
+    total = sum(histogram)
+    if not total:
+        return 0.0, 0.0
+    seen, paper = 0, 255
+    for level, amount in enumerate(histogram):
+        seen += amount
+        if seen * 2 >= total:
+            paper = level
+            break
+    cut = max(0, paper - BLANK_CONTRAST)
+    ink = inner.point(lambda value: 255 if value < cut else 0)
+    coverage = sum(histogram[:cut]) / total
+    patches = ink.resize((max(1, inner.width // BLANK_CELL), max(1, inner.height // BLANK_CELL)), Image.Resampling.BOX)
+    return coverage, patches.getextrema()[1] / 255
+
+
+def is_blank(image: Image.Image) -> bool:
+    """A page with nothing written on it, like the empty back of a one-sided
+    sheet. Dust, show-through and a lone page number count as blank; any
+    writing, however small, does not."""
+    coverage, densest = ink_measures(image)
+    return coverage < BLANK_COVERAGE and densest < BLANK_DENSEST

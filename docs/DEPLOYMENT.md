@@ -15,6 +15,7 @@ Folio runs as one Docker container. It needs:
 - [Portainer](#portainer)
 - [Raspberry Pi](#raspberry-pi)
 - [Printing](#printing)
+- [Sending documents to Paperless-ngx or a folder](#sending-documents-to-paperless-ngx-or-a-folder)
 - [USB printers and scanners](#usb-printers-and-scanners)
 - [Behind a reverse proxy](#behind-a-reverse-proxy)
 - [Backups and upgrades](#backups-and-upgrades)
@@ -141,6 +142,31 @@ encrypted connection when CUPS asks for one. Printers Folio creates are
 always shared, because CUPS only accepts jobs from other computers for
 shared printers.
 
+## Sending documents to Paperless-ngx or a folder
+
+Finished documents can be sent from the workbench (**Send**, next to
+Export) to destinations an administrator sets up under **Devices →
+Destinations**.
+
+**Paperless-ngx:** enter its address (e.g. `http://192.168.1.20:8000`) and an
+API token (in Paperless: your profile → API token), press **Check**, and
+choose tags every document sent there should get. Folio uploads the PDF with
+its title; Paperless reads the text and files it as usual. For a
+self-signed HTTPS certificate, untick certificate checking.
+
+**A folder:** mount the host folder into the container under
+`/destinations`, then add it by name:
+
+```yaml
+    volumes:
+      - ./data:/data
+      - /srv/scans:/destinations/nas        # e.g. a NAS share mounted on the host
+```
+
+The user Folio runs as (`PUID`) must be allowed to write to it. Files are
+named `2026-10-27 Title.pdf` and appear complete at once, so a folder
+watcher (such as Paperless's consume folder) never sees half a file.
+
 ## USB printers and scanners
 
 USB support is a goal, but the maintainers have no USB devices to test
@@ -209,8 +235,8 @@ docker compose pull
 docker compose up -d
 ```
 
-With `FOLIO_VERSION=0.16` this picks up 0.16.x fixes. To move to a new
-minor version, change `FOLIO_VERSION` (e.g. to `0.17`). To go back, restore
+With `FOLIO_VERSION=0.17` this picks up 0.17.x fixes. To move to a new
+minor version, change `FOLIO_VERSION` (e.g. to `0.18`). To go back, restore
 the backup and set the previous version; newer versions may change the
 data folder in ways older ones don't understand.
 

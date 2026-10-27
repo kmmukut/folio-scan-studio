@@ -259,7 +259,7 @@ def test_diagnostics_reports_printing_scanning_and_storage(client, monkeypatch):
                         lambda server: [{'queue': 'Office', 'ready': True, 'status': 'idle'}])
     report = client.get('/api/admin/diagnostics').json()
     by_id = {c['id']: c for group in report['sections'].values() for c in group}
-    assert by_id['cups:cups-a:631']['status'] == 'ok' and '1 queues, 1 ready' in by_id['cups:cups-a:631']['detail']
+    assert by_id['cups:cups-a:631']['status'] == 'ok' and '1 printer, 1 ready' in by_id['cups:cups-a:631']['detail']
     assert by_id['default-printer']['status'] == 'warn'
     assert by_id['sane']['detail'] == 'sane-backends 1.1.1-debian'
     assert by_id['scanners']['status'] == 'warn'  # None registered yet

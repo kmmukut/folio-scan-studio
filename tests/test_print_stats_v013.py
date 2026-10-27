@@ -323,6 +323,6 @@ def test_months_follow_the_container_time_zone(log, monkeypatch):
 def test_diagnostics_report_the_print_log(log):
     from backend import diagnostics
     add(log, time.time())
-    assert diagnostics.check_print_log(log)['detail'].startswith('1 jobs on record, kept for 365 days')
+    assert diagnostics.check_print_log(log)['detail'].startswith('1 job on record, kept for 365 days')
     stats.save_settings(log, enabled=False, retention_days=0)
-    assert diagnostics.check_print_log(log)['detail'] == 'Switched off; 1 jobs on record'
+    assert diagnostics.check_print_log(log)['detail'] == 'Switched off; 1 job on record'

@@ -49,6 +49,9 @@ over a network; the license is also in the image at `/app/LICENSE`.
 
 ### Also
 - The sidebar no longer says "Private edition"; it shows Full or Lite.
+- System check explains an untrusted reverse proxy in plain words (what
+  goes wrong and the exact setting to add), and counts properly ("1
+  document", "1 printer, 1 ready", "1 job on record").
 - Personal network addresses in tests and old changelog entries were
   replaced with documentation addresses; a test now rejects any address in
   shipped files that isn't loopback, a documentation range or an obvious

@@ -31,7 +31,7 @@ def admin(tmp_path, monkeypatch):
     reachable = {'office-pc:631', '192.168.1.10:631', 'cups.lan:8631'}
     monkeypatch.setattr(diagnostics, 'probe_cups_server', lambda server: diagnostics.check(
         f'cups:{server}', server, 'ok' if server in reachable else 'fail',
-        'Reachable in 3 ms; 1 queues, 1 ready' if server in reachable else 'did not answer within 6 s'))
+        'Reachable in 3 ms; 1 printer, 1 ready' if server in reachable else 'did not answer within 6 s'))
     security._guest_submissions.clear()
     with TestClient(web.app) as client:
         signed = client.post('/api/auth/login', json={'username': 'admin', 'password': PASSWORD})

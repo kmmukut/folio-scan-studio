@@ -28,6 +28,11 @@ def check(id: str, label: str, status: str, detail: str) -> dict:
     return {'id': id, 'label': label, 'status': status, 'detail': detail}
 
 
+def count(number: int, word: str) -> str:
+    """'1 document', '2 documents'."""
+    return f'{number} {word}' if number == 1 else f'{number} {word}s'
+
+
 def human_bytes(value: float) -> str:
     for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
         if value < 1024 or unit == 'TB':
@@ -119,7 +124,7 @@ def check_storage(data_dir: Path, jobs_dir: Path) -> list[dict]:
     library = folder_size(jobs_dir) if jobs_dir.is_dir() else 0
     previews = sum(folder_size(p) for p in jobs_dir.glob('*/cache')) if jobs_dir.is_dir() else 0
     results.append(check('library', 'Document library', 'info',
-                         f'{len(documents)} documents, {human_bytes(library)} on disk '
+                         f'{count(len(documents), "document")}, {human_bytes(library)} on disk '
                          f'(of which {human_bytes(previews)} is regenerable preview cache)'))
     results.append(check_print_log(data_dir))
     return results
@@ -137,11 +142,11 @@ def check_print_log(data_dir: Path) -> dict:
     except sqlite3.Error:
         return check('print-log', 'Print statistics', 'warn', 'The print log cannot be read; printing is not affected')
     if not kept['enabled']:
-        return check('print-log', 'Print statistics', 'info', f'Switched off; {jobs} jobs on record')
+        return check('print-log', 'Print statistics', 'info', f'Switched off; {count(jobs, "job")} on record')
     days = kept['retention_days']
     period = 'until deleted' if not days else f'for {days} days'
     return check('print-log', 'Print statistics', 'info',
-                 f'{jobs} jobs on record, kept {period}; days and months follow time zone {zone}')
+                 f'{count(jobs, "job")} on record, kept {period}; days and months follow time zone {zone}')
 
 
 def check_memory() -> dict:
@@ -164,9 +169,11 @@ def check_proxy(request, cookie_secure: bool) -> list[dict]:
     forwarded = [part.strip() for part in request.headers.get('x-forwarded-for', '').split(',') if part.strip()]
     if forwarded and client not in forwarded:
         results.append(check('proxy', 'Reverse proxy', 'warn',
-            f'Requests arrive through a proxy at {client}, but Folio does not trust it, so every '
-            'visitor shares that address for sign-in and guest-print limits. Set '
-            f'FORWARDED_ALLOW_IPS to the proxy address or its network (for example {client}).'))
+            f'Visitors reach Folio through a proxy at {client}, which Folio does not trust to pass on '
+            'their real addresses, so everyone looks like one visitor: eight wrong passwords from '
+            'anyone block all sign-ins for 15 minutes, and all guests share one print limit. '
+            f'Fix: add FORWARDED_ALLOW_IPS={client} (or the proxy\'s Docker network) to Folio\'s '
+            'settings and restart it.'))
     elif forwarded:
         results.append(check('proxy', 'Reverse proxy', 'ok',
                              f'Trusted proxy detected; your browser appears as {client}'))
@@ -198,7 +205,7 @@ def probe_cups_server(server: str) -> dict:
         queues = devices.list_cups_queues(server)
         ready = sum(1 for q in queues if q['ready'])
         status = 'ok' if queues else 'warn'
-        detail = f'Reachable in {elapsed:.0f} ms; {len(queues)} queues, {ready} ready'
+        detail = f'Reachable in {elapsed:.0f} ms; {count(len(queues), "printer")}, {ready} ready'
         if not queues:
             detail += '. Add a printer under Devices → Add a printer.'
         return check(f'cups:{server}', f'CUPS {server}', status, detail)

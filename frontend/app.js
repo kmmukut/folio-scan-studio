@@ -1521,11 +1521,26 @@ const serverPath=server=>`/api/admin/cups/servers/${encodeURIComponent(server)}`
 function renderCupsAdmin(servers){
   const builtinCard=s=>`<article class="device-card cups-admin-card builtin" data-cups-server="${html(s.server)}">
     <header><div><strong>Built-in print server</strong><small>Part of Folio · set up and connected automatically</small></div><span class="device-state ${s.reachable?'':'off'}">${s.reachable?'Running':'Starting…'}</span></header>
-    <p class="inline-note">${s.announcing?'Its printers are announced on your network (AirPrint/Bonjour), so phones and computers can find them.':'Its printers are not announced on your network. To let phones find them (AirPrint), see “Printing” in the deployment guide.'}</p></article>`;
+    <p class="inline-note">${s.announcing?'Its printers are announced on your network (AirPrint/Bonjour), so phones and computers can find them.':'Its printers are not announced on your network. To let phones find them (AirPrint), see “Printing” in the deployment guide.'}</p>${webAdminPanel(s.web_admin||{})}</article>`;
   $('#cups-admin-list').innerHTML=servers.map(s=>s.source==='builtin'?builtinCard(s):`<article class="device-card cups-admin-card" data-cups-server="${html(s.server)}">
     <header><div><strong>${html(s.server)}</strong><small>${s.source==='settings'?'From the CUPS_SERVERS setting':'Added in Folio'} · ${s.admin.connected?`administrator login: ${html(s.admin.username)}${s.admin.encrypted?' (encrypted)':''}`:'no administrator login'}</small></div><span class="device-state ${s.reachable?'':'off'}">${s.reachable?'Reachable':'Not responding'}</span></header>
     ${s.admin.connected?'':`<form class="device-form cups-login-form"><p class="inline-note">To add, pause or remove printers on this server, enter a CUPS administrator login (a user in CUPS’s lpadmin group). It stays on this Folio server and is never shown again.</p><div class="device-form-row"><label>CUPS username <input name="username" autocomplete="off" required maxlength="64"></label><label>Password <input name="password" type="password" autocomplete="new-password" required maxlength="256"></label></div><button class="button outline-button" type="submit">Connect login</button></form>`}
     <div class="device-actions">${s.admin.connected?'<button data-cups-action="disconnect">Disconnect login</button>':''}${s.source==='folio'?'<button data-cups-action="remove" class="danger-action">Remove server</button>':''}</div></article>`).join('')||'<p class="muted">No print server yet. The built-in one is switched off (FOLIO_BUILTIN_CUPS); add the computer that runs CUPS below.</p>';
+  $$('.web-admin-form').forEach(form=>form.onsubmit=async event=>{
+    event.preventDefault();
+    if(form.password.value!==form.repeat.value){toast('The two passwords are not the same.',true);form.repeat.focus();return;}
+    const button=form.querySelector('[type=submit]');button.disabled=true;button.textContent='Applying…';
+    try{
+      const state=await api('/api/admin/cups/builtin/web-admin',{method:'PUT',body:{username:form.username.value.trim(),password:form.password.value}});
+      toast(state.pending?'Handed to the print server; it applies the change as soon as it runs.':`CUPS administration is on. Sign in there as ${state.username}.`);
+      await refreshDeviceManager();
+    }catch(error){problem(error);button.disabled=false;button.textContent=form.dataset.label;}
+  });
+  $$('[data-web-admin=off]').forEach(button=>button.onclick=async()=>{
+    if(!confirm('Turn off CUPS administration? Its login is removed; Folio keeps managing the print server as before.'))return;
+    try{await api('/api/admin/cups/builtin/web-admin',{method:'DELETE'});toast('CUPS administration is off.');await refreshDeviceManager();}
+    catch(error){problem(error);}
+  });
   $$('.cups-login-form').forEach(form=>form.onsubmit=async event=>{
     event.preventDefault();const server=form.closest('[data-cups-server]').dataset.cupsServer,button=form.querySelector('button');
     button.disabled=true;button.textContent='Checking…';
@@ -1545,6 +1560,17 @@ function renderCupsAdmin(servers){
     'Folio creates the printer in CUPS for you. First add the computer that runs CUPS under <strong>Print servers</strong> below, and connect its administrator login.');
   select.innerHTML=connected.map(s=>`<option value="${html(s.server)}">${s.source==='builtin'?'Built-in print server':html(s.server)}</option>`).join('');
   if(connected.some(s=>s.server===previous))select.value=previous;
+}
+// CUPS's own web pages for the built-in server: off until an administrator chooses a login.
+function webAdminPanel(w){
+  const port=w.port||631,link=`https://${location.hostname}:${port}/admin`,label=w.enabled?'Change login':'Turn on';
+  const state=w.pending?'waiting for the print server…':w.enabled?`on · sign in as ${html(w.username)}`:'off';
+  return `<details class="web-admin"${w.error||w.pending?' open':''}><summary>CUPS administration · ${state}</summary>
+    <p class="inline-note">${w.enabled?`Open <a href="${html(link)}" target="_blank" rel="noopener">CUPS’s own pages</a> for what Folio doesn’t cover, such as default options, classes and job limits. They work over HTTPS only: the first time, your browser warns that the print server’s certificate is its own (self-signed). Port ${port} must be published to reach them.`
+      :'CUPS has its own administration pages, for what Folio doesn’t cover (default options, classes, job limits). They are off. Choose a login to turn them on: it works only over HTTPS, and Folio does not keep the password.'}</p>
+    ${w.error?`<p class="print-feedback error">${html(w.error)}</p>`:''}
+    <form class="device-form web-admin-form" data-label="${label}"><div class="device-form-row"><label>Username <input name="username" value="${html(w.username||'')}" required minlength="3" maxlength="32" pattern="[a-z][a-z0-9_\\-]{2,31}" title="3–32 lowercase letters, digits, - or _, starting with a letter" autocomplete="off"></label><label>${w.enabled?'New password':'Password'} <input name="password" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></label><label>Repeat it <input name="repeat" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></label></div>
+    <div class="device-actions"><button type="submit">${label}</button>${w.enabled?'<button type="button" data-web-admin="off" class="danger-action">Turn off</button>':''}</div></form></details>`;
 }
 $('#add-server-form').onsubmit=async event=>{
   event.preventDefault();const button=$('#add-server-submit');button.disabled=true;button.textContent='Checking…';
@@ -1616,8 +1642,13 @@ $('#add-printer-form').onsubmit=async event=>{
   const feedback=$('#add-printer-feedback'),button=$('#add-printer-submit'),source=selectedSource();
   if(!source){setPrintFeedback(feedback,'Search for the printer and choose it, or type its address.','error');return;}
   if(source==='manual'&&!$('#add-printer-address').value.trim()){setPrintFeedback(feedback,'Type the printer’s IP address or host name (step 2).','error');$('#add-printer-address').focus();return;}
-  const driver=driverKind()==='everywhere'?'everywhere':$('#driver-choice').value;
+  let driver=driverKind()==='everywhere'?'everywhere':$('#driver-choice').value;
   if(!driver){setPrintFeedback(feedback,'Choose a driver, or use Driverless.','error');return;}
+  if(driver==='everywhere'){
+    button.disabled=true;
+    try{driver=await checkDriverless(source,feedback);}finally{button.disabled=false;}
+    if(!driver)return;
+  }
   const body={name:$('#add-printer-name').value.trim(),driver,location:$('#add-printer-location').value.trim(),
     make_default:$('#add-printer-default').checked,guest:$('#add-printer-guest').checked,
     ...(source==='manual'?{connection:$('#add-printer-connection').value,address:$('#add-printer-address').value.trim()}:{device_uri:source})};
@@ -1631,6 +1662,28 @@ $('#add-printer-form').onsubmit=async event=>{
   }catch(error){setPrintFeedback(feedback,error.message,'error');}
   finally{button.disabled=false;}
 };
+// Driverless printing needs PDF or PWG raster; some printers that offer only
+// AirPrint's raster print it as garbage. Ask the printer first, and offer a driver.
+async function checkDriverless(source,feedback){
+  const target=source==='manual'?($('#add-printer-connection').value==='ipp'?{connection:'ipp',address:$('#add-printer-address').value.trim()}:null)
+    :(/^ipps?:\/\//i.test(source)?{device_uri:source}:null);
+  if(!target)return 'everywhere';
+  setPrintFeedback(feedback,'Asking the printer which formats it accepts…','info');
+  let check;
+  try{check=await api(`${serverPath($('#add-printer-server').value)}/driverless-check`,{method:'POST',body:target});}
+  catch{return 'everywhere';}  // Can't tell; CUPS will try
+  if(!check.checked||check.full)return 'everywhere';
+  const printer=check.make_model||'This printer';
+  const why=check.formats.includes('image/urf')?'offers driverless printing only in Apple’s AirPrint format (no PDF or PWG raster), and some printers print that as garbled pages':
+    'doesn’t accept PDF or PWG raster, which driverless printing needs';
+  if(check.suggested){
+    if(confirm(`${printer} ${why}.\n\nUse the driver “${check.suggested.name}” instead?\n\nOK uses the driver; Cancel keeps driverless.`))return check.suggested.ppd;
+    return 'everywhere';
+  }
+  if(confirm(`${printer} ${why}.\n\nAdd it as driverless anyway? If its pages come out garbled, remove it and choose a driver in step 3, or connect it as JetDirect.`))return 'everywhere';
+  setPrintFeedback(feedback,'Not added. Choose a driver in step 3, or connect it as JetDirect.','info');
+  return null;
+}
 const reasonText={'media-empty':'Out of paper','media-needed':'Load paper','media-jam':'Paper jam','toner-empty':'Out of toner','marker-supply-empty':'Out of toner or ink','door-open':'A cover is open','paused':'Printer paused','offline':'Printer offline','connecting-to-device':'Connecting to the printer','job-printing':'','none':''};
 function jobRows(jobs,{showUser=false,cancel='mine'}={}){
   if(!jobs.length)return '<p class="muted">No print jobs.</p>';

@@ -16,7 +16,7 @@ Most of what makes an old printer feel modern comes from the sharing layer.
 Folio's job is to make the device and sharing layers easy to set up and keep
 healthy, and to make the workflow layer excellent.
 
-## Current structure (0.18)
+## Current structure (0.19)
 
 - `backend/app.py`: FastAPI routes, auth middleware, scan and print flows.
 - `backend/devices.py`: scanner registry (`data/devices.json`), generated
@@ -33,12 +33,13 @@ healthy, and to make the workflow layer excellent.
   (Lite/Full editions, D10).
 - `backend/ipp.py`: minimal IPP client (CUPS administration and job queries).
 - `backend/cupsadmin.py`: stored CUPS admin logins, discovery, drivers,
-  queue management and per-user print jobs.
+  queue management, per-user print jobs, and the driverless check (D17).
 - `backend/stats.py`: Folio's print log and the statistics built from it
   (D12); `backend/cupsimport.py` optionally adds jobs sent straight to CUPS.
 - `backend/printserver.py`: the built-in print server: writes CUPS's
   configuration into `data/cups`, creates Folio's own administrator login,
-  and keeps `cupsd` running (D14).
+  keeps `cupsd` running (D14), and applies the CUPS administration login
+  requested in Folio (D17).
 - `backend/airprint.py`: announces the built-in printers through the host's
   Avahi services folder (D14).
 - `backend/backup.py`: backups of everything Folio keeps, and restoring one,
@@ -213,6 +214,34 @@ signature (8 %), initials (5 %) or one small line (9 %) never do. Blank
 pages are moved to the deleted pages, never discarded, so Undo restores
 them; duplex batches keep theirs, because fronts and backs must stay paired.
 
+### D17 — CUPS's own pages, managed from Folio; HTTPS only (0.19)
+Folio deliberately covers only the common printer tasks, so CUPS's web
+administration is available for the rest, but off until an administrator
+chooses a login in Folio. Folio runs as an ordinary user and can't create
+accounts. It hands the request to the print server's root supervisor as a
+file in its own folder. The supervisor opens it without following links,
+deletes it at once, checks the name (no system accounts) and the password,
+creates the account in CUPS's lpadmin group, and keeps only the password
+hash in data/cups to restore the account after restarts. A request the
+supervisor doesn't pick up within 8 s is deleted by Folio, so no password
+is left on disk. With the pages on, administration from other computers
+needs both the login and TLS (Encryption Required on the /admin locations
+and on the administrative IPP operations). Folio's own local connection is
+exempt, as CUPS exempts localhost.
+
+This also closed a gap left by D15: Folio owned the data folder, so it
+could have renamed data/cups and put its own folder in its place, feeding
+the root supervisor and cupsd a configuration it wrote. The data folder
+now belongs to root, with Folio's group allowed to add files and the sticky
+bit set. At start the supervisor takes back anything in data/cups it
+doesn't own and removes links there.
+
+Driverless printing needs PDF or PWG raster. Printers that offer only
+AirPrint's URF raster print garbage in some cases (seen with a Samsung
+M2885FW), so before adding a driverless IPP printer Folio asks it for
+`document-format-supported`, and if neither is there, it offers the best
+local driver for its `printer-make-and-model`.
+
 ### D6 — Capabilities come from the device, never from model names
 Sizes, trays, duplex, colour, scan modes and resolutions are what CUPS/SANE
 report. Folio does not fabricate options, and no device, address or network
@@ -238,7 +267,9 @@ may change with real use.
    from the print log (so they need statistics kept); checked after the
    page range is applied and before anything reaches CUPS. Administrators
    have none; guests keep their own limits.
-10. **Next candidates:** a Raspberry Pi check and community hardware reports
+10. ~~**0.19 — CUPS administration from Folio.**~~ HTTPS-only CUPS pages
+   with a login chosen in Folio, a driverless check; see D17.
+11. **Next candidates:** a Raspberry Pi check and community hardware reports
    toward 1.0; translations; saved scan presets.
 USB-specific work waits for community testers (D11).
 

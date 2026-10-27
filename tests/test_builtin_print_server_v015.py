@@ -350,8 +350,9 @@ def test_a_real_print_through_the_built_in_server(monkeypatch):
     cupsd = subprocess.Popen(printserver.cupsd_command(root))
     server = f'127.0.0.1:{port}'
     try:
-        for _ in range(100):
-            if subprocess.run(['lpstat', '-h', server, '-r'], capture_output=True).returncode == 0:
+        for _ in range(100):  # (lpstat -r exits 0 either way; only its words tell)
+            answer = subprocess.run(['lpstat', '-h', server, '-r'], capture_output=True, text=True).stdout
+            if answer.strip() == 'scheduler is running':
                 break
             time.sleep(.2)
         monkeypatch.setenv('FOLIO_BUILTIN_CUPS', 'on')

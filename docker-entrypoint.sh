@@ -19,13 +19,25 @@ if [ "$PUID" != 0 ]; then
   mkdir -p "$DATA_DIR"
   # Hand Folio its files: everything except the print server's own folder.
   # Later starts find nothing left to change, so this is quick.
-  find "$DATA_DIR" -xdev -path "$DATA_DIR/cups" -prune -o ! -user "$PUID" -exec chown -h "$PUID:$PGID" {} +
+  find "$DATA_DIR" -xdev -mindepth 1 -path "$DATA_DIR/cups" -prune -o ! -user "$PUID" -exec chown -h "$PUID:$PGID" {} +
 fi
 export FOLIO_GID="$PGID"  # The print server lets this group read Folio's login to it
 
 case "$(echo "${FOLIO_BUILTIN_CUPS:-on}" | tr '[:upper:]' '[:lower:]')" in
-  off|false|no|0) rm -f /etc/avahi/services/folio-*.service 2>/dev/null || true ;;
-  *) python -m backend.printserver & ;;
+  off|false|no|0)
+    rm -f /etc/avahi/services/folio-*.service 2>/dev/null || true
+    [ "$PUID" = 0 ] || chown "$PUID:$PGID" "$DATA_DIR"
+    ;;
+  *)
+    if [ "$PUID" != 0 ]; then
+      # The data folder itself belongs to root; Folio's group may add files, and
+      # the sticky bit lets each owner alone rename or remove theirs. So Folio
+      # keeps its files but cannot swap the print server's (cups/) for its own.
+      chown "root:$PGID" "$DATA_DIR" && chmod 1771 "$DATA_DIR" ||
+        echo "folio: could not give $DATA_DIR to root; the print server's settings are not protected from Folio" >&2
+    fi
+    python -m backend.printserver &
+    ;;
 esac
 
 # Everything Folio creates is private to it (the print server's helpers run

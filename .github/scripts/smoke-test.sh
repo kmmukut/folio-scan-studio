@@ -6,7 +6,7 @@ set -eu
 image="$1" edition="$2"
 version=$(sed -n "s/^__version__ = '\(.*\)'$/\1/p" backend/version.py)
 name="folio-smoke-$$"
-docker run -d --name "$name" -p 127.0.0.1::8870 \
+docker run -d --name "$name" -p 127.0.0.1::8870 -p 127.0.0.1::631 \
   -e SCAN_STUDIO_ADMIN_PASSWORD="smoke-test-password-$$" "$image" >/dev/null
 cleanup() { status=$?; [ $status -eq 0 ] || docker logs "$name" 2>&1 | tail -40; docker rm -f "$name" >/dev/null; exit $status; }
 trap cleanup EXIT
@@ -33,8 +33,9 @@ docker exec -u folio "$name" timeout 60 scanimage -L >/dev/null 2>&1 || { echo "
 echo "scanner listing: works"
 # The built-in print server: signed in, System check must find it answering.
 jar=$(mktemp)
-curl -fsS -c "$jar" -H 'Content-Type: application/json' \
-  -d "{\"username\":\"admin\",\"password\":\"smoke-test-password-$$\"}" "$url/api/auth/login" >/dev/null
+csrf=$(curl -fsS -c "$jar" -H 'Content-Type: application/json' \
+  -d "{\"username\":\"admin\",\"password\":\"smoke-test-password-$$\"}" "$url/api/auth/login" |
+  sed -n 's/.*"csrf":"\([^"]*\)".*/\1/p')
 i=0
 # A new installation has no printers yet, which System check reports as "warn".
 until curl -fsS -b "$jar" "$url/api/admin/diagnostics" |
@@ -42,8 +43,23 @@ until curl -fsS -b "$jar" "$url/api/admin/diagnostics" |
   i=$((i + 1)); [ $i -lt 30 ] || { echo "the built-in print server did not start"; rm -f "$jar"; exit 1; }
   sleep 2
 done
-rm -f "$jar"
 echo "built-in print server: running"
+# Folio may not swap the print server's folder for one of its own.
+[ "$(docker exec "$name" stat -c %U:%a /data)" = root:1771 ] || { echo "/data is not protected"; exit 1; }
+if docker exec -u folio "$name" mv /data/cups /data/cups-moved 2>/dev/null; then echo "Folio could move cups/"; exit 1; fi
+docker exec -u folio "$name" sh -c 'touch /data/.smoke && rm /data/.smoke' || { echo "Folio cannot write /data"; exit 1; }
+echo "print server's folder: protected"
+# CUPS administration, turned on from Folio: HTTPS only, from outside the container.
+curl -fsS -b "$jar" -X PUT -H 'Content-Type: application/json' -H "x-csrf-token: $csrf" \
+  -d "{\"username\":\"smokeadmin\",\"password\":\"smoke-cups-password-$$\"}" \
+  "$url/api/admin/cups/builtin/web-admin" | grep -q '"enabled":true' || { echo "could not turn on CUPS administration"; exit 1; }
+rm -f "$jar"
+cups="127.0.0.1:$(docker port "$name" 631/tcp | head -n 1 | sed 's/.*://')"
+sleep 2  # cupsd reloads its configuration
+plain=$(curl -s -o /dev/null -w '%{http_code}' -u "smokeadmin:smoke-cups-password-$$" "http://$cups/admin")
+secure=$(curl -sk -o /dev/null -w '%{http_code}' -u "smokeadmin:smoke-cups-password-$$" "https://$cups/admin")
+[ "$plain:$secure" = 426:200 ] || { echo "CUPS administration answered $plain over HTTP and $secure over HTTPS"; exit 1; }
+echo "CUPS administration: HTTPS only"
 i=0
 until [ "$(docker inspect -f '{{.State.Health.Status}}' "$name")" = healthy ]; do
   i=$((i + 1)); [ $i -lt 45 ] || { echo "Docker health check did not pass within 90 s"; exit 1; }

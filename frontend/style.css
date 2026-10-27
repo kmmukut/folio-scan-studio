@@ -425,6 +425,9 @@
 
 /* v0.15: built-in print server and printer supplies. Meters use the statistics' single hue; low is clay. */
 .cups-admin-card.builtin{border-color:#b9c9b6;background:#f7faf3}
+.web-admin{border-top:1px solid #dfe5d9;margin-top:12px;padding-top:9px}.web-admin summary{cursor:pointer;font-size:11px;color:var(--clay);font-weight:700;padding:3px 0}
+.web-admin .print-feedback{margin-top:9px}.web-admin a{color:var(--clay);font-weight:700}
+.web-admin .device-form-row{flex-wrap:wrap}.web-admin .device-form-row>*{flex:1 1 150px}
 .device-add-panel h3 small{font:400 12px Inter,"Avenir Next",-apple-system,sans-serif;color:var(--muted)}
 .printer-supplies:empty{display:none}
 .printer-supplies{border-top:1px solid #e3e6db;margin-top:12px;padding-top:10px}

@@ -185,7 +185,9 @@ class FakeCups:
                                           (ipp.TEXT, 'printer-state-message', ''),
                                           (ipp.BOOLEAN, 'printer-is-accepting-jobs', True),
                                           (ipp.INTEGER, 'queued-job-count', 0),
-                                          (ipp.TEXT, 'printer-make-and-model', entry.get('ppd-name', '')),
+                                          (ipp.TEXT, 'printer-make-and-model', entry.get('make-and-model', entry.get('ppd-name', ''))),
+                                          *([(ipp.MIME_TYPE, 'document-format-supported', entry['formats'])]
+                                            if entry.get('formats') else []),
                                           (ipp.URI, 'device-uri', entry.get('device-uri', ''))])]
         if operation == ipp.GET_JOBS:
             which = (attrs.get('which-jobs') or ['not-completed'])[0]

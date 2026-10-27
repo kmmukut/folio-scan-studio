@@ -15,6 +15,7 @@ import re
 import tempfile
 import threading
 import time
+import urllib.parse
 from pathlib import Path
 
 from backend import devices, ipp, printserver
@@ -195,6 +196,28 @@ def manual_uri(kind: str, address: str, port: int | None = None, path: str | Non
     return template.format(address=address, port=port_text, path=path)
 
 
+def driverless_support(device_uri: str) -> dict | None:
+    """Ask a network printer what it accepts, to judge whether driverless
+    printing (IPP Everywhere) will work. That needs PDF or PWG raster; a
+    printer offering only Apple's AirPrint raster may print garbage. None when
+    the printer can't be asked (not an IPP address, or no answer)."""
+    parts = urllib.parse.urlsplit(device_uri)
+    if parts.scheme not in ('ipp', 'ipps') or not parts.hostname or ':' in parts.hostname:
+        return None
+    conn = ipp.Connection(f'{parts.hostname}:{parts.port or 631}', tls=parts.scheme == 'ipps', timeout=8)
+    try:
+        response = conn.request(ipp.GET_PRINTER_ATTRIBUTES, [
+            (ipp.URI, 'printer-uri', device_uri),
+            (ipp.KEYWORD, 'requested-attributes', ['document-format-supported', 'printer-make-and-model'])],
+            resource=parts.path or '/', authenticate=False, timeout=8)
+    except ipp.IPPError:
+        return None
+    attrs = response.group(ipp.PRINTER)
+    formats = [str(f) for f in attrs.get('document-format-supported') or []]
+    return {'formats': formats, 'make_model': str((attrs.get('printer-make-and-model') or [''])[0] or ''),
+            'full': 'application/pdf' in formats or 'image/pwg-raster' in formats}
+
+
 def makes(conn: ipp.Connection) -> list[str]:
     """Manufacturers that have drivers on this server (one CUPS-Get-PPDs call)."""
     def fetch():
@@ -229,8 +252,10 @@ def rank_drivers(candidates: list[dict], query: str, limit: int = 40) -> list[di
     """Order drivers by how well they match a model name such as "M2885FW".
 
     Driver families are often named with an x ("M288x"), so "m2885fw" also
-    matches "m288x". English drivers and ones marked "(recommended)" come first
-    among equals.
+    matches "m288x". Among equals, a driver named after exactly what the printer
+    calls itself ("Samsung M288x Series" → "Samsung M288x Series PXL", usually
+    the manufacturer's own) comes first, then ones marked "(recommended)", then
+    English ones.
     """
     wanted = [t for t in _tokens(query) if t not in ('series', 'printer')]
 
@@ -248,6 +273,7 @@ def rank_drivers(candidates: list[dict], query: str, limit: int = 40) -> list[di
 
     # Model numbers ("m2885fw") identify a driver; the maker's name matches them all.
     model_words = [t for t in wanted if any(c.isdigit() for c in t)]
+    whole = ' '.join(query.lower().split())
     scored = []
     for driver in candidates:
         offered = _tokens(driver['name'])
@@ -256,10 +282,11 @@ def rank_drivers(candidates: list[dict], query: str, limit: int = 40) -> list[di
             continue
         if wanted and score == 0:
             continue
+        named = bool(whole) and whole in ' '.join(driver['name'].lower().split())
         bonus = (2 if 'recommended' in driver['name'].lower() else 0) + (1 if driver['language'] == 'en' else 0)
-        scored.append((score, bonus, driver['name'].lower(), driver))
-    scored.sort(key=lambda item: (-item[0], -item[1], item[2]))
-    return [item[3] for item in scored[:limit]]
+        scored.append((score, named, bonus, driver['name'].lower(), driver))
+    scored.sort(key=lambda item: (-item[0], -item[1], -item[2], item[3]))
+    return [item[4] for item in scored[:limit]]
 
 
 # --- Queues --------------------------------------------------------------------

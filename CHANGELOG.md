@@ -4,6 +4,94 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.19.0 — CUPS administration from Folio
+
+**CUPS's own administration pages, with a login you choose in Folio.**
+Folio covers adding, pausing and removing printers. For everything else
+CUPS can do (default options, classes, job limits), go to **Devices → Print
+servers → Built-in print server → CUPS administration**:
+- Choose a username and a password of at least 12 characters, and the
+  pages open at `https://<host>:631/admin`.
+- **HTTPS only:** CUPS refuses administration over plain HTTP before any
+  password is checked. The first time, your browser warns about the print
+  server's own (self-signed) certificate.
+- **Folio doesn't keep the password.** The print server keeps only its
+  hash, in `data/cups`, so the login survives upgrades.
+- **Change login** and **Turn off** are in the same place.
+- **Off by default.** Port 631 must be published, as for AirPrint.
+
+**A check before adding a printer as driverless.** Driverless printing
+needs the printer to accept PDF or PWG raster. Some printers offer only
+Apple's AirPrint raster, which can come out as garbled pages (seen with a
+Samsung M2885FW). Folio now asks an IPP printer what it accepts before
+adding it. If PDF and PWG raster are both missing, Folio says so and offers
+the best-matching driver instead.
+
+**Better first choice of driver.** When several drivers match a printer
+equally, the one named after the printer's own model now comes first. That
+is usually the manufacturer's own driver: "Samsung M288x Series PXL" for an
+M288x, rather than Foomatic's "lj5gray".
+
+### Security
+**Folio could have replaced the print server's settings (since 0.16).**
+Folio's web process runs as an ordinary user, but it owned the data folder.
+It could therefore have renamed `data/cups` and put a folder of its own in
+its place, which the print server's supervisor and CUPS, both running as
+root, would then have used. Nothing suggests this was ever exploited; it
+needed Folio's web process to be compromised first.
+
+The data folder itself now belongs to root:
+- Folio's group (`PGID`) may add files, and the sticky bit is set, so each
+  owner may rename or remove only their own files.
+- Folio keeps full use of its files but can't touch `cups/`.
+- At start, the print server takes back anything in `cups/` that isn't
+  root's and removes links there.
+
+### Fixed
+The real-CUPS tests waited for CUPS with `lpstat -r`, which reports success
+even when CUPS isn't running. They now check what it prints. The earlier
+test passed only because of timing.
+
+### Verified
+- **Tests:** 224 on the host. Inside the images, on amd64: Full 226, Lite 223 with 3 skipped.
+  They cover:
+  - turning the login on, changing it, a restart and turning it off
+  - refusing system accounts, short passwords, links and altered stored
+    logins
+  - deleting a password request the print server doesn't pick up
+  - administrators only
+  - the driverless check and driver suggestion
+- **With a real CUPS, inside the image:**
+  - other computers can't administer while it's off
+  - plain HTTP is refused both through `/admin` and through IPP directly
+  - over HTTPS the login works and a wrong password doesn't
+  - Folio's own local access keeps working
+  - the login comes back after a restart, and turning it off removes it
+- **The start-up check (both images):**
+  - `/data` is root's with mode 1771
+  - Folio can't move `cups/` but can write its own files
+  - CUPS administration turned on through Folio's API answers 426 over HTTP
+    and 200 over HTTPS
+- **In headless Chrome:** the whole flow (a mismatched password, turning on,
+  the link, changing, turning off), also at phone width (375 px).
+- **The driverless check against the maintainer's Samsung M2885FW:** only
+  asked what it accepts, nothing was printed. The check flagged it, and Folio
+  offered Samsung's own PXL driver.
+- **Upgrading from 0.18:** a data volume with a printer, plus a file in
+  `cups/` belonging to the host user, started on 0.19. The printer was kept,
+  the file taken back by root, and Folio still runs as its own user.
+- **Not verified:** the arm64 images (built and tested by the release
+  workflow).
+
+### Upgrading
+Nothing is required. On the first start, the data folder itself becomes
+root's (`root:<PGID>`, `drwxrwx--t`). Everything in it stays yours.
+Host scripts that change the folder itself (not its contents) now need
+`sudo`. With `PUID=0`, or the built-in print server off, nothing changes.
+
+If a printer you added as driverless prints garbled pages, remove it and
+add it again: Folio now offers a driver.
+
 ## 0.18.1 — Scanning works again
 
 **Fixed: scanners showed as offline from 0.15 on.** The HP printer drivers

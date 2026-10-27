@@ -40,7 +40,10 @@ in [Configuration](CONFIGURATION.md).
 
 Folio runs as an ordinary user, `PUID`/`PGID` (1000 by default), so the
 files in `./data` belong to that user on the host. Set them to your own ids
-(`id -u`, `id -g`) if they differ.
+(`id -u`, `id -g`) if they differ. The folder itself, and the print server's
+`cups/` inside it, belong to root (see
+[Configuration](CONFIGURATION.md#the-data-folder)); your user can still
+read and add files through the `PGID` group.
 
 ## Portainer
 
@@ -91,9 +94,32 @@ thousands of models. Folio sets it up and connects to it by itself, so
 1. Choose the *Built-in* print server.
 2. Type the printer's IP address, or search for it.
 3. Choose *Driverless* for most network printers made since about 2015, or
-   pick the driver for your model.
+   pick the driver for your model. For a driverless IPP printer, Folio first
+   asks the printer which formats it accepts. Driverless printing needs PDF
+   or PWG raster; if the printer offers only Apple's AirPrint raster (some
+   Samsung and older HP models), its pages can come out garbled. In that
+   case Folio names the best-matching driver and offers to use it instead.
 
 Its printers, drivers and settings are kept in `data/cups`.
+
+### CUPS's own administration pages
+
+Folio covers adding, pausing and removing printers. For anything else CUPS
+can do, such as a printer's default options, classes or job limits, you can
+turn on CUPS's own web pages: **Devices → Print servers → Built-in print
+server → CUPS administration**. Choose a username and a password (at least
+12 characters). Folio passes them to the print server, which creates the
+login. Folio doesn't keep the password; the print server keeps only its
+hash, in `data/cups`, so the login survives upgrades.
+
+The pages are at `https://<host>:631/admin` (port 631 must be published, as
+for AirPrint) and work over **HTTPS only**. The first time, the browser
+warns about the print server's certificate, because CUPS makes its own
+(self-signed). Plain HTTP is refused for administration before any password
+is checked. **Turn off** removes the login.
+
+Folio keeps working while CUPS's pages are on; it administers the print
+server inside the container, with its own login.
 
 ### AirPrint: phones and computers
 
@@ -235,7 +261,7 @@ docker compose pull
 docker compose up -d
 ```
 
-With `FOLIO_VERSION=0.18` this picks up 0.18.x fixes. To move to a new
+With `FOLIO_VERSION=0.19` this picks up 0.19.x fixes. To move to a new
 minor version, change `FOLIO_VERSION` (e.g. to `0.19`). To go back, restore
 the backup and set the previous version; newer versions may change the
 data folder in ways older ones don't understand.

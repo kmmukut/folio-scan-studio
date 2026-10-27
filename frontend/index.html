@@ -75,7 +75,7 @@
     <div class="rail-bottom">
       <div class="machine-status"><span class="led" id="device-led"></span><div><span id="rail-scanner-name">Selected scanner</span><small id="device-status">Checking connection…</small></div></div>
       <button class="rail-logout" id="logout-button">SIGN OUT <span>↗</span></button>
-      <div class="rail-license">EDITION <span>0.18.1</span></div>
+      <div class="rail-license">EDITION <span>0.19.0</span></div>
       <a class="rail-source" href="https://github.com/kmmukut/folio-scan-studio" target="_blank" rel="noopener">Source code · AGPL-3.0</a>
     </div>
   </aside>
@@ -250,7 +250,7 @@
                 <div id="printer-search" class="step-indent hidden"><div class="device-form-row find-row"><button type="button" class="button outline-button" id="find-printers">Search now</button><span id="find-printers-status" class="inline-note"></span></div><div id="found-printers" class="found-printers"></div></div>
               </section>
               <section class="setup-step"><h4><span>3</span> Driver</h4>
-                <label class="device-checkbox"><input type="radio" name="driver-kind" value="everywhere" checked> <span><strong>Driverless</strong> · for printers that support AirPrint or IPP Everywhere (most made since about 2015)</span></label>
+                <label class="device-checkbox"><input type="radio" name="driver-kind" value="everywhere" checked> <span><strong>Driverless</strong> · for printers that support IPP Everywhere or AirPrint (most made since about 2015); Folio checks with the printer first</span></label>
                 <label class="device-checkbox"><input type="radio" name="driver-kind" value="ppd"> <span><strong>Choose a driver</strong> · for older printers, USB printers and JetDirect or LPD connections</span></label>
                 <div id="driver-picker" class="step-indent hidden"><div class="device-form-row"><label>Manufacturer <select id="driver-make"><option value="">Loading…</option></select></label><label>Model <input id="driver-model" placeholder="e.g. M2885FW" autocomplete="off"></label></div><label>Driver <select id="driver-choice" size="6"></select></label><p id="driver-count" class="inline-note"></p></div>
               </section>

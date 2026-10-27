@@ -1325,7 +1325,8 @@ class PrintServerBody(BaseModel):
 def list_print_servers():
     return [{'server': server, 'admin': cupsadmin.admin_status(DATA_DIR, server),
              'reachable': not devices.cups_backoff(server), 'source': server_source(server),
-             'announcing': bool(airprint.status().get('mounted')) if cupsadmin.is_builtin(server) else None}
+             'announcing': bool(airprint.status().get('mounted')) if cupsadmin.is_builtin(server) else None,
+             'web_admin': web_admin_status() if cupsadmin.is_builtin(server) else None}
             for server in cups_servers()]
 
 
@@ -1412,6 +1413,94 @@ def cups_drivers(server: str, make: str, model: str = ''):
     conn = cupsadmin.connection(DATA_DIR, configured_server(server))
     drivers = cups_call(cupsadmin.models, conn, make)
     return {'drivers': cupsadmin.rank_drivers(drivers, model, limit=60), 'total': len(drivers)}
+
+
+class DriverlessCheckBody(BaseModel):
+    device_uri: str | None = Field(default=None, max_length=512)
+    connection: Literal['ipp', 'socket', 'lpd'] | None = None
+    address: str | None = Field(default=None, max_length=253)
+    port: int | None = Field(default=None, ge=1, le=65535)
+    path: str | None = Field(default=None, max_length=120)
+
+
+@app.post('/api/admin/cups/servers/{server}/driverless-check')
+def check_driverless(server: str, body: DriverlessCheckBody):
+    """Before adding a printer as driverless: will it really work, and if not,
+    which of this server's drivers fits it best?"""
+    configured_server(server)
+    if body.device_uri:
+        uri = body.device_uri
+    elif body.address:
+        uri = cups_call(cupsadmin.manual_uri, body.connection or 'ipp', body.address, body.port, body.path)
+    else:
+        raise HTTPException(400, 'Give the printer’s address')
+    support = cupsadmin.driverless_support(uri)
+    if support is None:
+        return {'checked': False}
+    suggested = None
+    if not support['full'] and support['make_model']:
+        try:
+            candidates = cupsadmin.models(cupsadmin.connection(DATA_DIR, server), support['make_model'].split()[0])
+            ranked = cupsadmin.rank_drivers(candidates, support['make_model'], limit=1)
+            suggested = ranked[0] if ranked else None
+        except ipp.IPPError:
+            suggested = None
+    return {'checked': True, **support, 'suggested': suggested}
+
+
+class WebAdminBody(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=12, max_length=256)
+
+
+def web_admin_status() -> dict:
+    state = printserver.status().get('web_admin') or {'enabled': False, 'username': None, 'error': None}
+    return {'enabled': bool(state.get('enabled')), 'username': state.get('username'), 'error': state.get('error'),
+            'pending': (printserver.requests_dir(DATA_DIR) / 'web-admin.json').exists(), 'port': airprint.port()}
+
+
+def request_web_admin(request: dict) -> dict:
+    """Hand a request to the print server's supervisor (it runs as root and
+    owns the accounts) and wait briefly for its answer."""
+    if not printserver.enabled():
+        raise HTTPException(409, 'The built-in print server is switched off (FOLIO_BUILTIN_CUPS)')
+    folder = printserver.requests_dir(DATA_DIR)
+    folder.mkdir(mode=0o700, exist_ok=True)
+    before = (printserver.status().get('web_admin') or {}).get('changed_at', 0)
+    fd, temporary = tempfile.mkstemp(prefix='.request-', dir=folder)
+    with os.fdopen(fd, 'w', encoding='utf-8') as handle:  # mkstemp: readable by Folio (and root) only
+        json.dump(request, handle)
+    request_file = folder / 'web-admin.json'
+    os.replace(temporary, request_file)
+    deadline = time.monotonic() + 8
+    while time.monotonic() < deadline:
+        state = printserver.status().get('web_admin') or {}
+        if state.get('changed_at', 0) > before and not request_file.exists():
+            if state.get('error'):
+                raise HTTPException(400, state['error'])
+            return web_admin_status()
+        time.sleep(.2)
+    try:  # Not picked up: don't leave a password lying around
+        request_file.unlink()
+    except FileNotFoundError:
+        return web_admin_status()  # Picked up just now
+    raise HTTPException(503, 'The built-in print server did not answer. See Diagnostics, then try again.')
+
+
+@app.get('/api/admin/cups/builtin/web-admin')
+def get_web_admin():
+    return web_admin_status()
+
+
+@app.put('/api/admin/cups/builtin/web-admin')
+def set_web_admin(body: WebAdminBody):
+    """Turn on CUPS's own web administration with this login (or change it)."""
+    return request_web_admin({'enabled': True, 'username': body.username.strip(), 'password': body.password})
+
+
+@app.delete('/api/admin/cups/builtin/web-admin')
+def remove_web_admin():
+    return request_web_admin({'enabled': False})
 
 
 @app.post('/api/admin/cups/servers/{server}/printers', status_code=202)

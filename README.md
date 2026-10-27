@@ -72,8 +72,9 @@ and privacy-conscious design.
   signature or a single line always keeps a page.
 - **A print server built in:** CUPS with drivers for thousands of printer
   models, set up from the browser (driverless or with a driver chosen by
-  model); test, pause and remove printers, and let phones print to them
-  (AirPrint).
+  model, checked with the printer first); test, pause and remove printers,
+  and let phones print to them (AirPrint). CUPS's own administration pages
+  are there too, over HTTPS, with a login you choose in Folio.
 - **Printer care:** toner, ink and parts levels, with a warning when
   something runs low.
 - **Print** uploads or saved documents with page ranges, paper size and tray,

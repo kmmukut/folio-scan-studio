@@ -24,6 +24,8 @@ echo "features: $features"
 echo "$features" | grep -q "\"edition\":\"$edition\"" || { echo "expected edition $edition"; exit 1; }
 curl -fsS "$url/" | grep -q 'Source code' || { echo "page lacks the source-code link"; exit 1; }
 docker exec "$name" test -f /app/LICENSE || { echo "LICENSE missing from the image"; exit 1; }
+# pip is only for building the image; it must not ship (its known flaws would come along).
+if docker exec "$name" python -c 'import pip' 2>/dev/null; then echo "pip is still in the image"; exit 1; fi
 # Folio itself runs as an ordinary user; only the print server's supervisor is root.
 user=$(docker exec "$name" sh -c 'ps -eo user=,args= | grep "bin/[u]vicorn" | head -n 1 | cut -d" " -f1')
 [ "$user" = folio ] || { echo "Folio runs as '$user', not as the folio user"; exit 1; }

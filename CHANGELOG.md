@@ -4,18 +4,62 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
-## Unreleased
+## 0.20.2 — Security updates; tested on a Raspberry Pi
 
-- **Updated libraries:** Pillow 13.0 (images), PyMuPDF 2.0 (PDFs) and, in
-  the Full edition, OpenCV 5.0 (auto-straighten). Their licences are
-  unchanged. The full test suite passes on the host and inside both images.
-- **Documentation:** Folio is now tested on a real Raspberry Pi: a Pi 4
-  Model B (2 GB) with Raspberry Pi OS 64-bit (Debian 13) runs the Lite
-  edition, scanning and printing to the maintainer's Samsung M2885FW, with
-  the whole Pi using about 380 MB of memory. AirPrint from an iPhone works
-  through the Pi's own Avahi; the deployment guide now warns that desktop
-  systems may run their own CUPS on port 631. The hardware list also explains
-  why that printer scans at most 300 dpi over the network.
+### Security
+Image scanners (Docker Scout on Docker Hub, Trivy) reported known flaws in
+0.20.1's image. Every one with a fix available is fixed here:
+- **Pillow 13.0**, the image library Folio uses for scans, fixes five
+  critical and twenty-three high-rated flaws in Pillow 12.3 (malformed
+  JPEG, FlashPix and multi-frame images, among others).
+- **pip no longer ships in the image.** It's needed only while the image
+  is built. The base image's pip 25.0.1 had six known flaws (medium and
+  low), and the helpers bundled in newer pips (urllib3, msgpack,
+  setuptools) have their own. Folio never ran pip; now it isn't there. The
+  libraries are installed with a current pip (26.2.2), which is then
+  removed. The start-up check confirms it's gone.
+
+Also updated: **PyMuPDF 2.0** (PDFs) and, in the Full edition, **OpenCV 5.0**
+(auto-straighten). Their licences are unchanged. Old tests that imported
+PyMuPDF under its deprecated name now use the current one.
+
+**What remains.** The scanners still list flaws in Debian 12's own packages.
+Debian has not released fixes for those yet, or rates them as not worth
+fixing. Each release rebuilds the image, which picks up Debian's fixes as
+they come. The most serious remaining ones are in **HPLIP**, HP's printer
+drivers (ten critical flaws, no fix in Debian 12 yet). It runs only when
+printing to a printer set up with an HP driver, inside the print server's
+unprivileged `lp` account in the container. Debian's own older copy of
+Pillow, which only its OCR tool uses (Full edition, for searchable PDFs),
+also keeps the Pillow flaws until Debian fixes it. Moving to Debian 13 is
+planned for a following release.
+
+### Documentation
+- **Tested on a real Raspberry Pi.** A Pi 4 Model B (2 GB) with Raspberry Pi
+  OS 64-bit (Debian 13) runs the Lite edition:
+  - scanning and printing to the maintainer's Samsung M2885FW work, and so
+    does AirPrint from an iPhone through the Pi's own Avahi
+  - the whole Pi uses about 380 MB of memory
+- The deployment guide warns that desktop systems may run their own CUPS on
+  port 631.
+- The hardware list explains why that printer scans at most 300 dpi over
+  the network.
+
+### Verified
+- **Tests:** 246 on the host. Inside the images, on amd64: Full 248, Lite
+  245 with 3 skipped. A new test keeps Pillow, PyMuPDF and OpenCV from
+  falling back to the flawed versions, and checks that pip is removed.
+- **Image scan (Trivy, Full image, before → after):**
+  - flaws with a fix available: 47 → **0**
+  - critical and high findings: 282 → 254
+  - no Python package is flagged any more; what remains is in Debian's
+    packages, which have no fix yet
+- **Start-up check:** both images start healthy, and pip is not in them.
+- **Not verified:** the arm64 images (built and tested by the release
+  workflow).
+
+### Upgrading
+Nothing is required. Re-pull the image (`0.20` receives this release).
 
 ## 0.20.1 — Install it like an app; documentation brought up to date
 

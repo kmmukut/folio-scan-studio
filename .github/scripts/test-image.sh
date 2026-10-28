@@ -7,6 +7,7 @@ image="$1"
 tools=$(grep -E '^(pytest|httpx|pypdf)==' requirements-dev.txt | tr '\n' ' ')
 docker run --rm --entrypoint sh -v "$PWD:/src:ro" "$image" -c "
   set -e
-  pip install --quiet --disable-pip-version-check --root-user-action=ignore $tools
+  python -m ensurepip --default-pip >/dev/null 2>&1   # The image ships without pip
+  python -m pip install --quiet --disable-pip-version-check --root-user-action=ignore $tools
   mkdir /tmp/w && tar -C /src --exclude=./.git --exclude=./.venv --exclude=./data -cf - . | tar -C /tmp/w -xf -
   cd /tmp/w && python -m pytest -q -p no:cacheprovider"

@@ -4,6 +4,28 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## Unreleased
+
+### Fixed
+- **Some driverless printers couldn't be added.** Adding an Epson L3250
+  as a driverless (IPP Everywhere) printer failed with "Unable to create
+  PPD: Printer does not support required IPP attributes or document
+  formats", although the printer reports all it needs and prints
+  driverless. CUPS's own setup turns it down, but the one from cups-filters
+  (already in both images) handles it. So Folio now:
+  - tries CUPS's own setup first, as before
+  - if that fails, tries cups-filters' setup
+  - if both fail, removes the half-made printer again and shows CUPS's
+    original answer
+
+  Printers that could be set up before are set up exactly as before.
+- **The driverless check now reaches printers that answer only over
+  HTTPS.** Before adding a printer as driverless, Folio asks it which
+  formats it accepts, and suggests a driver if it can't print driverless.
+  Some printers (the Epson too) answer only over an encrypted connection,
+  so the check couldn't run and Folio went ahead without it. Folio now asks
+  again over an encrypted connection.
+
 ## 0.21.0 — Fair turns, Debian 13, easier to read
 
 This release follows an outside review of the project: it fixes the two

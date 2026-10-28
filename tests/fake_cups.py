@@ -30,6 +30,9 @@ class FakeCups:
                  cancel_needs_auth=False):
         self.username, self.password = username, password
         self.require_tls = require_tls
+        self.encrypted_only = False      # Like some printers: every request needs TLS
+        self.everywhere_fails = False    # CUPS's own driverless generator gives up, like it does for an Epson L3250
+        self.driverless_generator = True # cups-filters' "driverless:<address>" models are installed
         self.cancel_needs_auth = cancel_needs_auth
         self.printers: dict[str, dict] = {}
         self.jobs: dict[int, dict] = {}
@@ -58,6 +61,8 @@ class FakeCups:
                 printer_attrs = request.group(ipp.PRINTER)
                 fake.requests.append((operation, attrs, printer_attrs))
                 if fake.require_tls and not isinstance(self.connection, ssl.SSLSocket) and operation in ADMIN_OPERATIONS:
+                    return self.reply(426, b'')
+                if fake.encrypted_only and not isinstance(self.connection, ssl.SSLSocket):
                     return self.reply(426, b'')
                 authed = self.headers.get('Authorization') == 'Basic ' + base64.b64encode(
                     f'{fake.username}:{fake.password}'.encode()).decode()
@@ -151,9 +156,16 @@ class FakeCups:
                 for name, entry in self.printers.items()]]
         queue = self.queue_of(attrs)
         if operation == ipp.CUPS_ADD_MODIFY_PRINTER:
+            model = (attrs.get('ppd-name') or [None])[0]
+            if model and model.startswith('driverless:') and not self.driverless_generator:
+                return 0x0406, [[(ipp.TEXT, 'status-message', 'Unable to copy PPD file.')]]
             entry = self.printers.setdefault(queue, {'state': 3, 'reasons': []})
             entry.update({k: v[0] for k, v in printer_attrs.items()})
-            entry['ppd-name'] = (attrs.get('ppd-name') or [entry.get('ppd-name')])[0]
+            if model == 'everywhere' and self.everywhere_fails:
+                # Real cupsd keeps the new queue, without a driver, and reports:
+                return 0x0500, [[(ipp.TEXT, 'status-message', 'Unable to create PPD: Printer does not support '
+                                  'required IPP attributes or document formats.')]]
+            entry['ppd-name'] = model or entry.get('ppd-name')
             if self.documents[-1]:
                 entry['ppd-file'] = self.documents[-1]  # A driver sent along, like lpadmin -P
             return 0, [[]]

@@ -204,13 +204,19 @@ def driverless_support(device_uri: str) -> dict | None:
     parts = urllib.parse.urlsplit(device_uri)
     if parts.scheme not in ('ipp', 'ipps') or not parts.hostname or ':' in parts.hostname:
         return None
-    conn = ipp.Connection(f'{parts.hostname}:{parts.port or 631}', tls=parts.scheme == 'ipps', timeout=8)
-    try:
-        response = conn.request(ipp.GET_PRINTER_ATTRIBUTES, [
-            (ipp.URI, 'printer-uri', device_uri),
-            (ipp.KEYWORD, 'requested-attributes', ['document-format-supported', 'printer-make-and-model'])],
-            resource=parts.path or '/', authenticate=False, timeout=8)
-    except ipp.IPPError:
+    for tls in dict.fromkeys((parts.scheme == 'ipps', True)):  # Some printers answer only over TLS
+        conn = ipp.Connection(f'{parts.hostname}:{parts.port or 631}', tls=tls, timeout=8)
+        try:
+            response = conn.request(ipp.GET_PRINTER_ATTRIBUTES, [
+                (ipp.URI, 'printer-uri', device_uri),
+                (ipp.KEYWORD, 'requested-attributes', ['document-format-supported', 'printer-make-and-model'])],
+                resource=parts.path or '/', authenticate=False, timeout=8)
+            break
+        except ipp.EncryptionRequired:
+            continue
+        except ipp.IPPError:
+            return None
+    else:
         return None
     attrs = response.group(ipp.PRINTER)
     formats = [str(f) for f in attrs.get('document-format-supported') or []]
@@ -297,21 +303,59 @@ def add_printer(conn: ipp.Connection, name: str, device_uri: str, ppd: str,
 
     Queues are always shared: CUPS refuses jobs from other computers for
     unshared queues, and Folio is such a computer.
+
+    Driverless setup asks CUPS's own generator first. Some printers trip it
+    up although they print driverless fine (an Epson L3250 reports all it
+    needs, yet CUPS answers "Unable to create PPD"), so cups-filters'
+    generator (model "driverless:<printer's address>") is tried next. If
+    neither works, a queue the failed attempts left behind is removed again.
     """
     if not PRINTER_NAME.fullmatch(name):
         raise ValueError('Printer names use letters, numbers, dot, dash and underscore (no spaces)')
     if ppd != DRIVERLESS and not PPD_NAME.fullmatch(ppd):
         raise ValueError('Unknown driver')
-    conn.request(ipp.CUPS_ADD_MODIFY_PRINTER, [(ipp.URI, 'printer-uri', conn.printer_uri(name)),
-                                               (ipp.NAME, 'ppd-name', ppd)],
-                 resource='/admin/', timeout=120, printer_attributes=[
-                     (ipp.URI, 'device-uri', device_uri),
-                     (ipp.TEXT, 'printer-info', info[:127] or name),
-                     (ipp.TEXT, 'printer-location', location[:127]),
-                     (ipp.BOOLEAN, 'printer-is-shared', True),
-                     (ipp.BOOLEAN, 'printer-is-accepting-jobs', True),
-                     (ipp.ENUM, 'printer-state', 3)])
-    devices.invalidate('cups')
+
+    def create(model: str) -> None:
+        conn.request(ipp.CUPS_ADD_MODIFY_PRINTER, [(ipp.URI, 'printer-uri', conn.printer_uri(name)),
+                                                   (ipp.NAME, 'ppd-name', model)],
+                     resource='/admin/', timeout=120, printer_attributes=[
+                         (ipp.URI, 'device-uri', device_uri),
+                         (ipp.TEXT, 'printer-info', info[:127] or name),
+                         (ipp.TEXT, 'printer-location', location[:127]),
+                         (ipp.BOOLEAN, 'printer-is-shared', True),
+                         (ipp.BOOLEAN, 'printer-is-accepting-jobs', True),
+                         (ipp.ENUM, 'printer-state', 3)])
+    existed = ppd == DRIVERLESS and queue_exists(conn, name)
+    try:
+        create(ppd)
+    except (ipp.AuthRequired, ipp.EncryptionRequired):
+        raise
+    except ipp.IPPError as first:
+        if ppd != DRIVERLESS:
+            raise
+        try:
+            create(f'driverless:{device_uri}')
+        except ipp.IPPError:
+            if not existed:
+                try:
+                    conn.request(ipp.CUPS_DELETE_PRINTER, [(ipp.URI, 'printer-uri', conn.printer_uri(name))],
+                                 resource='/admin/')
+                except ipp.IPPError:
+                    pass
+            raise first from None
+    finally:
+        devices.invalidate('cups')
+
+
+def queue_exists(conn: ipp.Connection, name: str) -> bool:
+    """Whether the server has this queue; True when it can't tell (so it's left alone)."""
+    try:
+        conn.request(ipp.GET_PRINTER_ATTRIBUTES, [(ipp.URI, 'printer-uri', conn.printer_uri(name)),
+                                                  (ipp.KEYWORD, 'requested-attributes', ['printer-name'])],
+                     authenticate=False, timeout=15)
+    except ipp.IPPError as exc:
+        return exc.status != 0x0406  # not-found
+    return True
 
 
 def delete_printer(conn: ipp.Connection, name: str) -> None:

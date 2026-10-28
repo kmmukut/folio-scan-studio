@@ -160,7 +160,8 @@ release. The images are also mirrored to Docker Hub as
 
 Folio is in **public beta** (0.x) and is used daily on an x86-64 Docker
 host with a network multifunction printer. It also runs on a Raspberry Pi 4
-(2 GB) with the Lite edition, using about 380 MB of memory for the whole Pi.
+(2 GB) with the Lite edition, using about 380 MB of memory for the whole Pi,
+with iPhones printing to it over AirPrint.
 Each release runs the full test suite inside both editions on both
 architectures before it is published. Not yet verified by the maintainers:
 USB printers or scanners (we have none to test with). Reports from your

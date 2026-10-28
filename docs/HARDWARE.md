@@ -52,7 +52,7 @@ including devices that didn't work: knowing what fails is just as useful.
 | Computer | System | Folio | Notes |
 |---|---|---|---|
 | x86-64 server (Proxmox container, Docker) | Debian | 0.9.x–0.20, Full | Maintainer's daily installation. About 180 MB of memory at rest, including the built-in print server. |
-| Raspberry Pi 4 Model B (2 GB) | Raspberry Pi OS 64-bit (Debian 13), Docker 29 | 0.20.1, Lite | Installed with Docker's install script and the Quick start; scanning (WSD) and printing to the Samsung M2885FW work. With Folio running, the whole Pi uses about 380 MB of memory. Lite image: 912 MB on disk. The scanner was added by its address (it didn't announce itself to the Pi), as Folio does by default. |
+| Raspberry Pi 4 Model B (2 GB) | Raspberry Pi OS 64-bit (Debian 13), Docker 29 | 0.20.1, Lite | Installed with Docker's install script and the Quick start; scanning (WSD) and printing to the Samsung M2885FW work, and so does AirPrint from an iPhone (port 631 published and the Pi's Avahi folder mounted, see [AirPrint](DEPLOYMENT.md#airprint-phones-and-computers)). With Folio running, the whole Pi uses about 380 MB of memory. Lite image: 912 MB on disk. The scanner was added by its address (it didn't announce itself to the Pi), as Folio does by default. |
 
 ### Not yet tested
 

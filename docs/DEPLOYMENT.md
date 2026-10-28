@@ -84,8 +84,9 @@ Raspberry Pi OS runs Avahi, so you can let phones find your printers; see
 [AirPrint](#airprint-phones-and-computers).
 
 Tested on a **Raspberry Pi 4 Model B (2 GB)** with Raspberry Pi OS 64-bit
-(Debian 13) and the Lite edition: scanning and printing work, and with
-Folio running the whole Pi uses about 380 MB of memory. Other models
+(Debian 13) and the Lite edition: scanning, printing and AirPrint from an
+iPhone work, and with Folio running the whole Pi uses about 380 MB of
+memory. Other models
 haven't been tried yet; if you run one, please share how it went in a
 [hardware report](https://github.com/kmmukut/folio-scan-studio/issues/new?template=hardware_report.yml).
 
@@ -149,7 +150,12 @@ let the host announce the printers. In `compose.yaml`:
 Folio then writes an announcement for each printer into the host's Avahi
 folder, and the host's Avahi advertises it with the host's own address.
 Raspberry Pi OS and most Linux desktops run Avahi already; on a server,
-install it with `sudo apt install avahi-daemon`. If you publish a different
+install it with `sudo apt install avahi-daemon`. Desktop systems (Raspberry
+Pi OS with desktop, Ubuntu Desktop) may also run their own CUPS on port 631;
+if `sudo ss -ltnp | grep ':631 '` shows `cupsd`, switch it off with
+`sudo systemctl disable --now cups cups-browsed` so Folio's can take the port.
+Within 30 seconds a `folio-<printer>.service` file appears in
+`/etc/avahi/services`, and the printers show up on phones. If you publish a different
 host port (e.g. `"6310:631"`), set `FOLIO_AIRPRINT_PORT=6310`.
 
 Announcements only reach the network the host is on. If your phones are on

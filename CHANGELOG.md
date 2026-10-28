@@ -9,7 +9,9 @@ Sections for 0.9.5 and earlier are carried over from the release READMEs.
 - **Documentation:** Folio is now tested on a real Raspberry Pi: a Pi 4
   Model B (2 GB) with Raspberry Pi OS 64-bit (Debian 13) runs the Lite
   edition, scanning and printing to the maintainer's Samsung M2885FW, with
-  the whole Pi using about 380 MB of memory. The hardware list also explains
+  the whole Pi using about 380 MB of memory. AirPrint from an iPhone works
+  through the Pi's own Avahi; the deployment guide now warns that desktop
+  systems may run their own CUPS on port 631. The hardware list also explains
   why that printer scans at most 300 dpi over the network.
 
 ## 0.20.1 — Install it like an app; documentation brought up to date

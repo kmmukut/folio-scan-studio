@@ -4,6 +4,117 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.21.0 — Fair turns, Debian 13, easier to read
+
+This release follows an outside review of the project: it fixes the two
+issues it found in the code, and acts on its advice about readability and
+code size.
+
+**Job limits per person.** Administrators can now limit how many background
+jobs each person may have waiting or running at once: exports, prints,
+sends and backups.
+- A default for everyone (5), under **People & access → Jobs at once**.
+- For any person: their own number, the default, or no limit.
+- Administrators have no limit; guests may have two at a time.
+- Someone at their limit is told why ("You already have 5 jobs waiting or
+  running…") and can cancel one.
+- All together there are at most 50, so the disk can't fill up.
+- Finished downloads are kept per person, so one busy account can't push
+  out someone else's export before they've downloaded it.
+
+**Easier to read.**
+- Seventy-nine text colours were too faint on Folio's light backgrounds:
+  captions, notes, labels and footers, some as low as 2:1 contrast. They
+  now all meet WCAG AA (4.5:1). Each keeps its hue, so Folio looks the same,
+  only clearer.
+- The smallest text is a size larger: nothing below 10 px, where some was
+  8 px before.
+
+**The crop tool works with a keyboard.**
+- Tab to the page, then use the arrow keys to move the frame.
+- Shift and the arrow keys change its size; hold Ctrl for bigger steps.
+- Enter applies the crop.
+- Screen readers hear the frame's size and position as it changes.
+
+**Debian 13.** The image now builds on Debian 13 ("trixie") instead of 12:
+newer CUPS (2.4.10), scanner support (sane-airscan 0.99.35), OCRmyPDF (16.7)
+and system libraries, the same system as current Raspberry Pi OS. Searchable
+PDFs are now tested for real: a new test inside the Full image runs OCR on an
+image-only page and checks that the text is found.
+
+### Security
+- **Password links now work exactly once.** Using an invitation or reset
+  link is now one locked step (check the link, set the password, remove the
+  link), so a link sent twice at the same moment works once. Before, both
+  could succeed. Only someone holding the link could do that, so it gave
+  nobody new access, but a link should be exactly single-use. A test sends
+  the same link twice at once.
+- **Fewer known flaws in the image.** Debian 13 and the OCR change remove
+  many of the flaws image scanners report (see Verified).
+- **What remains:**
+  - HPLIP, HP's printer drivers, still has its known flaws (no fix in
+    Debian 13 either). It runs only when printing with an HP driver.
+    HPLIP also needs Debian's own older copy of Pillow, which keeps that
+    copy's flaws listed.
+  - Installing OCRmyPDF from Folio's own Python, so that Debian's Pillow
+    copy could go, was tried. Because HPLIP needs that copy anyway, it
+    removed only a few lower-rated flaws while adding 54 MB, so it isn't
+    part of this release.
+  - Debian's own packages without a fix yet, which each release picks up as
+    Debian fixes them.
+
+### For contributors
+The code is split into smaller files, without changing behaviour:
+- **`backend/app.py`** went from 3,191 lines to about 950. Its 119 route
+  handlers now live in `backend/routes/`, one module per area: accounts,
+  devices, printing, documents, admin and tasks.
+- **`frontend/app.js`** (1,961 lines) is now nine files in `frontend/js/`,
+  one per area, loaded in order.
+- **How it was moved:** by scripts that used real parsers (Python's own,
+  and acorn for JavaScript). All 300 browser-code statements are unchanged,
+  and nothing that runs while the page loads uses a file that loads later.
+  The unchanged test suite passes. `docs/ARCHITECTURE.md` (D8) explains the
+  layout.
+
+### Verified
+- **Tests:** 258 on the host. Inside the images, on amd64: Full 261 (including
+  real OCR on Debian 13), Lite 257 with 4 skipped. New tests cover:
+  - a link used twice at once
+  - job limits through the real API, with two requests racing for the last
+    place
+  - the total limit, and freeing a place when a job fails to start
+  - downloads kept per person
+  - contrast and minimum text size across the whole stylesheet
+  - names for icon buttons, and the keyboard crop
+  - real OCR in the Full image
+- **Image scan (Trivy, Full image, 0.20.2 → 0.21.0), distinct flaws:**
+  - critical 21 → 17, high 97 → 72, medium 176 → 133, low 180 → 156
+  - with a fix available: 0 → 0
+- **Sizes:**
+  - Lite: 826 MB of files (834 MB before)
+  - Full: 1,082 MB (1,034 MB before), as Debian 13's OCR tools are a
+    little larger
+- **In headless Chrome:**
+  - every view opens with the nine script files, with no JavaScript error
+  - the job limit settings save
+  - the crop by keyboard alone: the frame was made, moved and resized with
+    the arrow keys, the screen-reader text matched, and Enter saved exactly
+    that crop
+  - at phone width (375 px), no view is wider than the screen
+- **Start-up check:** both images start healthy on Debian 13 and pass the
+  usual checks: Folio runs as its own user, scanners list, the print
+  server answers, and CUPS administration is HTTPS only.
+- **Not verified:**
+  - the arm64 images (built and tested by the release workflow)
+  - real scanning and printing on Debian 13 with the maintainer's printer;
+    please re-check a scan and a test page after upgrading
+
+### Upgrading
+Nothing is required; your data and settings carry over. After upgrading,
+scan a page and print a test page once, since the system underneath is
+new. Job limits apply straight away with the default of 5 per person;
+change it under **People & access → Jobs at once**.
+
 ## 0.20.2 — Security updates; tested on a Raspberry Pi
 
 ### Security

@@ -8,7 +8,7 @@ Folio is configured in two places:
   them all with comments.
 - **In Folio itself**, by an administrator: print servers, printers,
   scanners, destinations (Paperless-ngx, folders), email, accounts and
-  invitations, guest printing, page quotas and statistics. These are stored
+  invitations, guest printing, page quotas, job limits and statistics. These are stored
   in the data folder and survive upgrades.
 
 ## Environment variables
@@ -19,7 +19,7 @@ Folio is configured in two places:
 | `SCAN_STUDIO_ADMIN_USER` | `admin` | Username of that first administrator, when created from the setting. |
 | `PUID` / `PGID` | `1000` / `1000` | The user and group Folio runs as, and who owns its files on the host. `PUID=0` runs it as root (some USB scanners need that). |
 | `FOLIO_EDITION` | `full` | `full` or `lite`. Picks the image (`…-full` / `…-lite`), or what is built from source. See [Editions](../README.md#images-and-editions). |
-| `FOLIO_VERSION` | `0.20` | Image version. `0.20` receives 0.20.x fixes on `docker compose pull`; `0.20.0` stays exactly there. |
+| `FOLIO_VERSION` | `0.21` | Image version. `0.21` receives 0.21.x fixes on `docker compose pull`; `0.21.0` stays exactly there. |
 | `FOLIO_PORT` | `8870` | Port on the host that Folio is reachable on. |
 | `TZ` | `UTC` | Time zone, e.g. `Europe/Berlin`. Decides which day and month a print counts in for statistics. |
 | `COOKIE_SECURE` | `false` | Set `true` when Folio is served over HTTPS (behind a reverse proxy). Sign-in cookies are then only sent over HTTPS. |

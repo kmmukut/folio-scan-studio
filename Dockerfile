@@ -1,6 +1,6 @@
 # Pinned by digest for reproducible builds; Dependabot proposes updates
 # (Debian and Python security fixes) as pull requests that CI tests.
-FROM python:3.12-slim-bookworm@sha256:fc169880a4d941f3142c0e2e623f05f246150add19dc36fc9224df20fb19e5fd
+FROM python:3.12-slim-trixie@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159
 # One codebase, two editions:
 #   full (default): everything, including searchable PDFs and auto-straighten
 #   lite:           for Raspberry Pi-class hosts; leaves out the OCR stack
@@ -8,7 +8,7 @@ FROM python:3.12-slim-bookworm@sha256:fc169880a4d941f3142c0e2e623f05f246150add19
 # Both include the built-in print server: CUPS with every printer driver
 # Debian packages, because old printers on small hosts need them most.
 ARG FOLIO_EDITION=full
-ARG FOLIO_VERSION=0.20.2
+ARG FOLIO_VERSION=0.21.0
 LABEL org.opencontainers.image.title="Folio Scan Studio" \
       org.opencontainers.image.version="${FOLIO_VERSION}-${FOLIO_EDITION}" \
       org.opencontainers.image.description="Self-hosted scanning, printing and document workbench for CUPS/SANE devices" \

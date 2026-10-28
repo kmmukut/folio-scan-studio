@@ -384,6 +384,25 @@ async function startCrop(){
   image.src=pageUrl(page,false,true,true);
   if(image.complete&&image.naturalWidth)setCropZoom(1,false);
 }
+// The crop frame by keyboard: arrows move it, Shift + arrows resize it from
+// its right and bottom edges, Ctrl makes bigger steps, Enter applies. With no
+// frame yet, the first arrow press makes one just inside the page.
+const CROP_KEYS={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
+function nudgeCrop(e){
+  if(e.key==='Enter'){e.preventDefault();finishCrop();return;}
+  const direction=CROP_KEYS[e.key];if(!direction)return;
+  e.preventDefault();
+  const step=(e.ctrlKey||e.metaKey)?.05:.01,[dx,dy]=direction;
+  let [x,y,w,h]=cropRect||[.05,.05,.9,.9];
+  if(cropRect&&e.shiftKey){
+    w=Math.max(cropMinimum,Math.min(1-x,w+dx*step));h=Math.max(cropMinimum,Math.min(1-y,h+dy*step));
+  }else if(cropRect){
+    x=Math.max(0,Math.min(1-w,x+dx*step));y=Math.max(0,Math.min(1-h,y+dy*step));
+  }
+  cropDraw([x,y,w,h]);
+  const pct=v=>Math.round(v*100);
+  $('#crop-status').textContent=`Crop ${pct(w)}% wide and ${pct(h)}% high, ${pct(x)}% from the left and ${pct(y)}% from the top.`;
+}
 function finishCrop(){
   const rect=cropRect;
   if(!rect){toast('Draw a rectangle over the page before applying the crop.');return;}
@@ -563,6 +582,7 @@ $('#crop-zoom-fit').onclick=()=>setCropZoom(1,false);
 $('#crop-pan-toggle').onclick=()=>setCropPanMode(!cropView.pan);
 wirePanViewport($('#crop-canvas'),()=>cropView.pan);
 $('#crop-image-wrap').addEventListener('pointerdown',beginCropSelection);
+$('#crop-image-wrap').addEventListener('keydown',nudgeCrop);
 $('#crop-image-wrap').addEventListener('pointermove',moveCropSelection);
 $('#crop-image-wrap').addEventListener('pointerup',endCropSelection);
 $('#crop-image-wrap').addEventListener('pointercancel',endCropSelection);

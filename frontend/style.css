@@ -512,3 +512,7 @@
 .manual-details summary{cursor:pointer;font-size:11px;color:var(--clay);font-weight:700;padding:3px 0}
 .manual-details .device-form-row{margin-top:8px}
 @media(max-width:640px){.address-check-grid{grid-template-columns:1fr}.address-check .device-form-row{flex-wrap:wrap}.address-check .device-form-row>.button{width:100%}}
+/* v0.22: scanners shared as AirScan. */
+.airscan-list{display:grid;gap:8px;margin-top:10px}
+.airscan-row{border:1px solid #dfe4d8;background:#fff;padding:10px 12px;font-size:12px;line-height:1.5;color:#344939;min-width:0}
+.airscan-row pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;line-height:1.45;background:#f6f7f1;border:1px solid #e3e6dc;padding:8px;max-height:260px;overflow:auto;margin:8px 0 4px}

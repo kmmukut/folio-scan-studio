@@ -67,6 +67,9 @@ and privacy-conscious design.
 - **Export** PDFs, optionally searchable (OCR), as background jobs with
   progress, or **send** them straight to **Paperless-ngx** or a folder on
   your NAS.
+- **Share scanners as AirScan:** Macs, Windows and Android scan from them
+  without Folio and without a driver, even from scanners that speak only
+  WSD.
 - **Leave out blank pages** while scanning (the empty backs of one-sided
   sheets), or remove them later; dust and show-through don't fool it, and a
   signature or a single line always keeps a page.
@@ -195,5 +198,7 @@ source code.
 The images also contain third-party software under its own licenses,
 including PyMuPDF and Ghostscript (AGPL-3.0), OCRmyPDF (MPL-2.0), Tesseract
 and OpenCV (Apache-2.0), FastAPI (MIT), CUPS (Apache-2.0) with cups-filters
-and the printer drivers Debian ships (mostly GPL), and SANE with
-sane-airscan (GPL), on a Debian base.
+and the printer drivers Debian ships (mostly GPL), SANE with sane-airscan
+(GPL), and AirSane (GPL-3.0, built from
+[its source](https://github.com/SimulPiscator/AirSane) at a fixed commit),
+on a Debian base.

@@ -4,10 +4,12 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
-## 0.22.0 — Check a network address
+## 0.22.0 — Check a network address; share scanners as AirScan
 
 Printers and scanners don't all use the same ports and paths, and Folio
-used to expect you to know them. Now it asks the device.
+used to expect you to know them. Now it asks the device. And a scanner in
+Folio can now be shared with Macs, Windows and Android as an AirScan
+scanner.
 
 **Check a network address.** At the top of **Devices**, type a printer's or
 scanner's IP address or host name. Folio asks the device what it offers:
@@ -44,6 +46,28 @@ Scanners you have already added keep their settings.
 ports, open *Port and path (optional)* under the printer's address. The
 fields show each connection's usual values.
 
+**Share scanners as AirScan.** A scanner in Folio can be shared with other
+computers as an AirScan (eSCL) scanner, even one that speaks only WSD, like
+the Samsung M2885FW. Then, without a driver and without opening Folio:
+- Macs scan from it in Image Capture and Preview
+- Windows 10 and 11 add it as a scanner
+- Android scans from it with the Mopria Scan app
+- Linux scans from it with sane-airscan
+
+How it works:
+- Switch it on per scanner with **Share as AirScan** on its card in
+  **Devices**. It's off until you do.
+- AirScan has no sign-in, so anyone on your network can scan from a shared
+  scanner. Folio accepts only private addresses.
+- Publish port 8090 and mount the host's Avahi folder, as for AirPrint, and
+  Folio announces shared scanners on your network. For computers on another
+  network, Devices shows the announcement file to add by hand.
+- Folio uses [AirSane](https://github.com/SimulPiscator/AirSane) (GPL-3.0)
+  for this, built into both images from a fixed version.
+
+iPhones and iPads have no built-in app that scans from network scanners;
+use Folio's page there.
+
 ### Fixed
 - **Some driverless printers couldn't be added.** Adding an Epson L3250
   as a driverless (IPP Everywhere) printer failed with "Unable to create
@@ -68,8 +92,9 @@ fields show each connection's usual values.
   WSD the ones the scanner reports.
 
 ### Verified
-- **Tests:** 279 on the host, 3 skipped. Inside the images, on amd64: Full
-  282, Lite 278 with 4 skipped. New tests use a fake network device (WSD
+- **Tests:** 290 on the host, 5 skipped. Inside the images, on amd64: Full
+  295, Lite 291 with 4 skipped.
+- **New tests for the address check** use a fake network device (WSD
   discovery over UDP, WSD and eSCL over HTTP) and the fake CUPS server:
   - a scanner that describes itself
   - one that doesn't, found at a known address, and none assumed when none
@@ -83,8 +108,19 @@ fields show each connection's usual values.
   - a printer address with a port and path
   - the driverless fallback when CUPS turns a printer down (and the
     half-made printer removed when both fail), and the check over HTTPS
-- **With the maintainer's two real devices, in a separate test copy of
-  Folio (Full), in headless Chrome:**
+- **New tests for AirScan sharing:**
+  - AirSane leaves out every scanner that isn't shared
+  - each shared scanner's address is read from AirSane's start-up log
+  - AirSane starts, reloads when a shared scanner changes, and stops when
+    none is shared (with a stand-in AirSane)
+  - the supervisor, which runs as root, accepts only a strict announcement
+    file, doesn't follow links, and leaves AirPrint's files alone (and
+    AirPrint leaves its files alone)
+  - only administrators can switch sharing on
+  - inside both images, the real AirSane: a scan through it from SANE's
+    test scanner, and the pinned version with its licence
+- **The address check, with the maintainer's two real devices**, in a
+  separate test copy of Folio (Full), in headless Chrome:
   - **Epson L3250.** The check found WSD scanning at port 80, `/WDP/SCAN`
     (from the device itself) and driverless IPP (encrypted connections
     only). From the filled-in forms it was added as a scanner (Folio read
@@ -96,11 +132,28 @@ fields show each connection's usual values.
     address alone.
   - An address with nothing there, and a mistyped one, are explained.
   - At phone width (375 px), nothing is wider than the screen.
-  - Nothing was printed or scanned.
+  - The check itself printed and scanned nothing.
+- **AirScan sharing, with the real Samsung M2885FW** (WSD only), in a
+  separate test copy of Folio (Full):
+  - In headless Chrome, **Share as AirScan** started AirSane as Folio's own
+    user, and within 30 seconds the supervisor wrote the announcement into
+    the (mounted) Avahi folder; the page showed it, and the file to add by
+    hand.
+  - From another container, sane-airscan (the AirScan client Linux uses)
+    scanned pages from the shared scanner: 5 to 10 seconds a page, in grey
+    and colour.
+  - Starting a scan in Folio while an AirScan scan runs (and the other way
+    round): the first finishes, the second fails after about 11 seconds
+    with an error. Scans started right after another sometimes fail too,
+    also when scanning directly over WSD, so this is the scanner needing a
+    pause; with 15 seconds between them, every scan worked.
+  - After a restart, sharing came back by itself, with the same address.
 - **The Epson driverless setup** also worked in a test copy of the Lite
   edition.
-- **Start-up check:** both images start healthy.
+- **Start-up check:** both images start healthy, with AirSane present.
 - **Not verified:**
+  - scanning from a Mac, Windows or Android through AirScan
+  - Folio announcing through a real Avahi (only the file was checked)
   - printing a page and scanning a page with the Epson
   - the arm64 images (built and tested by the release workflow)
 
@@ -109,6 +162,10 @@ Nothing is required; your data and settings carry over, and scanners keep
 their ports and paths. To move from 0.21, set `FOLIO_VERSION=0.22` in `.env`
 (or use the `full` or `lite` tag), then `docker compose pull` and
 `docker compose up -d`.
+
+To share scanners as AirScan, publish port 8090 (and mount the host's Avahi
+folder for announcing), then press **Share as AirScan** on the scanner's
+card. See [Sharing scanners](docs/DEPLOYMENT.md#sharing-scanners-airscan).
 
 ## 0.21.0 — Fair turns, Debian 13, easier to read
 

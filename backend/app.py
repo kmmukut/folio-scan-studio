@@ -22,7 +22,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
-from backend import security
+from backend import airscan, security
 from backend.processing import transform_page
 from backend import printing, devices, diagnostics, tasks, ipp, cupsadmin, cupsimport, features, stats, printserver, mail, notify
 from backend.version import __version__
@@ -92,10 +92,12 @@ async def lifespan(_app: FastAPI):
     ensure_directories()
     stop_background = threading.Event()
     threading.Thread(target=background_upkeep, args=(stop_background,), daemon=True, name='folio-upkeep').start()
+    airscan.sharing.start(lambda: (DATA_DIR, registry(), managed_sane_path()))  # Scanners shared as AirScan
     try:
         yield
     finally:
         stop_background.set()
+        await asyncio.to_thread(airscan.sharing.stop)
         await asyncio.to_thread(gracefully_stop_on_server_shutdown)
 
 
@@ -185,6 +187,7 @@ def persist_registry(state: dict) -> None:
     devices.write_managed_sane_config(state, managed_sane_path())
     # SANE sees new or changed endpoints on its next query; don't serve old answers.
     devices.invalidate('sane')
+    airscan.sharing.poke()  # A shared scanner may have changed
 
 
 def cups_servers(config: dict | None = None) -> list[str]:

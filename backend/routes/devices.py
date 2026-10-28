@@ -17,7 +17,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from backend import airprint, cupsadmin, devices, diagnostics, ipp, printing, printserver, probe, tasks
+from backend import airprint, airscan, cupsadmin, devices, diagnostics, ipp, printing, printserver, probe, tasks
 from backend.version import __version__
 from backend import app as web
 
@@ -49,6 +49,7 @@ class ScannerAttachBody(BaseModel):
 
 
 class ScannerUpdateBody(BaseModel):
+    airscan: bool | None = None  # Share it with other computers as an AirScan scanner
     name: str | None = Field(default=None, min_length=1, max_length=75)
     ip: str | None = None
     protocol: Literal['WSD','eSCL'] | None = None
@@ -210,6 +211,10 @@ def modify_scanner(scanner_id: str, body: ScannerUpdateBody):
         raise HTTPException(409,'Another scanner already uses this endpoint')
     if body.enabled is not None:
         original['enabled']=body.enabled
+    if body.airscan is not None:
+        if body.airscan and original.get('kind') not in airscan.SHAREABLE:
+            raise HTTPException(400,'Only scanners added in Folio can be shared as AirScan')
+        original['airscan']=body.airscan
     if body.make_default:
         if not original.get('enabled',True):
             raise HTTPException(400,'A disabled scanner cannot be the default')
@@ -221,6 +226,13 @@ def modify_scanner(scanner_id: str, body: ScannerUpdateBody):
         cfg['default_scanner']=scanner_id
     web.persist_registry(cfg)
     return original
+
+
+@router.get('/api/admin/airscan')
+def airscan_status():
+    """Which scanners are shared as AirScan, whether they're announced, and the
+    service file for announcing one by hand."""
+    return airscan.sharing.status()
 
 
 @router.delete('/api/admin/scanners/{scanner_id}')

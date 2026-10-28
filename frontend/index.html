@@ -266,6 +266,10 @@
         <div class="device-column">
           <div class="device-heading"><span class="overline">01 / SCANNERS</span><h2>Capture devices.</h2><p>Choose the default, check capabilities, or edit network endpoints.</p></div>
           <div id="device-scanner-list" class="device-list"><p>Discovering scanners…</p></div>
+          <div class="device-add-panel" id="airscan-panel"><h3>Share as AirScan</h3>
+            <p>Let Macs (Image Capture, Preview), Windows 10 and 11, Android (the Mopria Scan app) and Linux scan from a scanner without Folio, and without a driver. Switch it on with <strong>Share as AirScan</strong> on the scanner’s card. AirScan has no sign-in: anyone on your network can then scan from it. iPhones and iPads have no built-in app for it.</p>
+            <div id="airscan-status" role="status" aria-live="polite"></div>
+          </div>
           <div class="device-add-panel"><h3>Attach a detected scanner</h3><p>For USB or other devices already visible to SANE inside this container.</p><form id="attach-scanner-form" class="device-form"><label>SANE scanner <select id="attach-scanner-select"><option value="">No unregistered devices detected</option></select></label><label>Display name <input id="attach-scanner-name" maxlength="75" placeholder="Document scanner" required></label><button class="button outline-button" type="submit">Attach scanner</button></form></div>
           <div class="device-add-panel"><h3 id="scanner-form-title">Add a network scanner</h3>
             <form id="scanner-device-form" class="device-form">

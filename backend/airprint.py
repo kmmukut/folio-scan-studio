@@ -145,7 +145,7 @@ def sync(conn: ipp.Connection | None) -> list[str]:
         if name and all(c.isalnum() or c in '_.-' for c in name):
             wanted[f'{PREFIX}{name}.service'] = service_file(printer, port())
     for path in SERVICES_DIR.glob(f'{PREFIX}*.service'):
-        if path.name not in wanted:
+        if path.name not in wanted and '@' not in path.name:  # '@': shared scanners' (airscan.py)
             path.unlink(missing_ok=True)
     for filename, content in wanted.items():
         _write(SERVICES_DIR / filename, content)

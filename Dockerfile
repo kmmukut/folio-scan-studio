@@ -1,5 +1,22 @@
 # Pinned by digest for reproducible builds; Dependabot proposes updates
 # (Debian and Python security fixes) as pull requests that CI tests.
+# AirSane shares Folio's scanners with other computers as AirScan (eSCL)
+# scanners (see backend/airscan.py). Debian doesn't package it, so it's built
+# here, on the same base, from a pinned commit (GPL-3.0); only the program and
+# its licence go into the image.
+FROM python:3.12-slim-trixie@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159 AS airsane
+ARG AIRSANE_COMMIT=08ff4d798d718e2e50ef805404ddef82f6d03cc1
+RUN apt-get update && apt-get install -y --no-install-recommends \
+       g++ make cmake git ca-certificates libsane-dev libjpeg-dev libpng-dev libavahi-client-dev libusb-1.0-0-dev \
+    && git clone --quiet https://github.com/SimulPiscator/AirSane.git /src \
+    && git -C /src checkout --quiet "$AIRSANE_COMMIT" \
+    && cmake -S /src -B /build -DCMAKE_BUILD_TYPE=Release \
+    && make -C /build -j"$(nproc)" airsaned \
+    && strip /build/airsaned \
+    && mkdir -p /out/doc \
+    && cp /build/airsaned /out/ && cp /src/LICENSE /out/doc/copyright \
+    && printf 'AirSane, built by Folio from https://github.com/SimulPiscator/AirSane\ncommit %s\nLicence: GPL-3.0 (see copyright). The source is at that address.\n' "$AIRSANE_COMMIT" > /out/doc/README.Folio
+
 FROM python:3.12-slim-trixie@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159
 # One codebase, two editions:
 #   full (default): everything, including searchable PDFs and auto-straighten
@@ -20,6 +37,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DEBIAN_FRONTEND=noninteractive
 RUN case "$FOLIO_EDITION" in full|lite) ;; *) echo "FOLIO_EDITION must be full or lite" >&2; exit 1;; esac \
     && apt-get update && apt-get install -y --no-install-recommends \
        sane-utils sane-airscan cups-client ca-certificates tini \
+       libavahi-client3 libjpeg62-turbo libpng16-16t64 libusb-1.0-0 \
        cups cups-filters printer-driver-all foomatic-db-compressed-ppds openprinting-ppds hplip \
        $( [ "$FOLIO_EDITION" = full ] && echo ocrmypdf tesseract-ocr-eng ) \
     && rm -rf /var/lib/apt/lists/* \
@@ -38,12 +56,15 @@ RUN pip install --no-cache-dir pip==26.2.2 \
 COPY backend ./backend
 COPY frontend ./frontend
 COPY LICENSE docker-entrypoint.sh ./
+COPY --from=airsane /out/airsaned /usr/local/bin/airsaned
+COPY --from=airsane /out/doc /usr/share/doc/airsane
 RUN mkdir -p /data/jobs /etc/sane.d/airscan.d \
     && ln -s /data/managed-airscan.conf /etc/sane.d/airscan.d/folio-managed.conf
 ENV DATA_DIR=/data SCANNER_DEVICE="" FOLIO_EDITION=${FOLIO_EDITION}
 # 8870: Folio. 631: the built-in print server, for phones and computers that
-# print to it directly (AirPrint, IPP); publish it only if you want that.
-EXPOSE 8870 631
+# print to it directly (AirPrint, IPP). 8090: scanners shared as AirScan.
+# Publish 631 and 8090 only if you want those.
+EXPOSE 8870 631 8090
 # Liveness only: confirms the app answers and its data volume is usable.
 HEALTHCHECK --interval=30s --timeout=6s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8870/api/health', timeout=5)"

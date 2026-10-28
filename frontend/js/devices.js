@@ -16,11 +16,11 @@ async function refreshDeviceManager(refresh=false){
   attach.innerHTML=(result.unregistered||[]).map(d=>`<option value="${html(d.sane_name)}">${html(d.description||d.sane_name)}</option>`).join('')||'<option value="">No unregistered SANE devices detected</option>';
   $('#attach-scanner-form button[type=submit]').disabled=!(result.unregistered||[]).length;
   $('#device-scanner-list').innerHTML=result.scanners.map(s=>{
-    const caps=s.capabilities||{};const tags=[s.protocol||'SANE',...(caps.sources||[]),...(caps.modes||[]),caps.resolutions?.length?Math.max(...caps.resolutions)+' DPI':'Options unavailable'];
+    const caps=s.capabilities||{};const tags=[s.protocol||'SANE',...(caps.sources||[]),...(caps.modes||[]),caps.resolutions?.length?Math.max(...caps.resolutions)+' DPI':'Options unavailable',...(s.airscan?['Shared as AirScan']:[])];
     return `<article class="device-card ${s.id===result.default_scanner?'current':''}" data-scanner="${html(s.id)}">
       <header><div><strong>${html(s.name)}</strong><small>${html(s.ip||s.sane_name||s.hint||'Existing configuration')}</small></div><span class="device-state ${s.connected?'':'off'}">${s.connected?'Connected':'Offline'}</span></header>
       <div class="device-tags">${tags.map(x=>`<span>${html(x)}</span>`).join('')}</div>
-      <div class="device-actions"><button data-scanner-action="test">Test</button><button data-scanner-action="edit">Edit</button>${s.id!==result.default_scanner?'<button data-scanner-action="default">Make default</button>':''}<button data-scanner-action="toggle">${s.enabled?'Disable':'Enable'}</button>${s.kind==='managed'?'<button data-scanner-action="delete">Remove</button>':''}</div></article>`;
+      <div class="device-actions"><button data-scanner-action="test">Test</button><button data-scanner-action="edit">Edit</button>${s.id!==result.default_scanner?'<button data-scanner-action="default">Make default</button>':''}<button data-scanner-action="toggle">${s.enabled?'Disable':'Enable'}</button>${['managed','attached'].includes(s.kind)?`<button data-scanner-action="airscan">${s.airscan?'Stop sharing':'Share as AirScan'}</button>`:''}${s.kind==='managed'?'<button data-scanner-action="delete">Remove</button>':''}</div></article>`;
   }).join('')||'<p>No scanner configured.</p>';
   $('#device-printer-list').innerHTML=result.printers.map(q=>{
     const settings=q.settings||{},caps=q.capabilities||{};
@@ -37,6 +37,30 @@ async function refreshDeviceManager(refresh=false){
   $('#device-printer-list').querySelectorAll('[data-printer-action]').forEach(btn=>btn.onclick=()=>handlePrinterAction(btn).catch(problem));
   $('#device-printer-list').querySelectorAll('[data-queue-action]').forEach(btn=>btn.onclick=()=>handleQueueAction(btn).catch(problem));
   for(const q of result.printers)if(q.status!=='Not found in CUPS')loadSupplies(q.id);
+  loadAirscan().catch(problem);
+}
+// Scanners shared as AirScan (AirSane): what's shared, and how to announce it by hand.
+async function loadAirscan(){
+  const status=await api('/api/admin/airscan'),out=$('#airscan-status');
+  out.innerHTML=airscanHtml(status);
+  out.querySelectorAll('[data-copy-service]').forEach(button=>button.onclick=()=>{
+    const text=button.closest('details').querySelector('pre').textContent;
+    (navigator.clipboard?.writeText(text)||Promise.reject()).then(()=>toast('Copied.'),()=>{
+      const range=document.createRange();range.selectNodeContents(button.closest('details').querySelector('pre'));
+      getSelection().removeAllRanges();getSelection().addRange(range);toast('Selected: copy it with Ctrl+C (⌘C on a Mac).');
+    });
+  });
+  if(status.running&&!status.ready)setTimeout(()=>loadAirscan().catch(()=>{}),3000);  // Starting: look again shortly
+}
+function airscanHtml(status){
+  if(!status.available)return '<p class="inline-note">This copy of Folio doesn’t include AirSane, so it can’t share scanners.</p>';
+  if(!status.running)return '<p class="inline-note">No scanner is shared.</p>';
+  if(!status.ready)return '<p class="inline-note">Starting AirSane…</p>';
+  const byHand=`Folio announces shared scanners itself when the host’s Avahi folder is mounted and the built-in print server is on (as for AirPrint), and then only on the host’s own network. If the Macs and phones are on another network, or the host’s Avahi can’t reach them, save this as <code>/etc/avahi/services/folio-scanner.service</code> on a Linux computer that runs Avahi on their network, and make its port ${status.port} reach Folio’s port 8090.`;
+  const rows=status.scanners.map(s=>`<div class="airscan-row"><strong>${html(s.name)}</strong> · ${s.problem?html(s.problem):s.announced?'shared, and announced through this host’s Avahi':'shared; not announced by Folio'}
+    ${!s.problem&&s.service_file?`<details class="manual-details"${s.announced?'':' open'}><summary>Announce it yourself</summary><p class="inline-note">${byHand}</p><pre>${html(s.service_file)}</pre><button type="button" class="small-link" data-copy-service>Copy</button></details>`:''}</div>`).join('');
+  return `${status.error?`<p class="print-feedback error">${html(status.error)}</p>`:''}<div class="airscan-list">${rows}</div>
+    <p class="inline-note">Other computers reach shared scanners on port ${status.port}: publish it to Folio’s port 8090 (see <code>compose.yaml</code>).</p>`;
 }
 // Toner, ink and wearing parts, as the printer reports them; nothing if it doesn't.
 async function loadSupplies(id){
@@ -72,6 +96,12 @@ async function handleScannerAction(btn){
     const response=await api(`/api/admin/scanners/${id}/test`);
     const c=response.capabilities;
     toast(`${current.name}: ${c.available?'SANE ready':'Capabilities unavailable'} · ${(c.modes||[]).join(', ')} · ${(c.resolutions||[]).join(', ')} dpi`,!c.available);return;
+  }
+  if(act==='airscan'){
+    if(!current.airscan&&!confirm(`Share ${current.name} as an AirScan scanner?\n\nMacs, Windows and Android devices on your network can then scan from it without signing in to Folio.`))return;
+    await api(`/api/admin/scanners/${id}`,{method:'PATCH',body:{airscan:!current.airscan}});
+    await refreshDeviceManager();
+    toast(current.airscan?`${current.name} is no longer shared.`:`${current.name} is shared as AirScan; it takes a few seconds to start.`);return;
   }
   if(act==='delete'&&!confirm(`Remove ${current.name} from Folio? Existing scans remain.`))return;
   if(act==='default')await api(`/api/admin/scanners/${id}`,{method:'PATCH',body:{make_default:true}});

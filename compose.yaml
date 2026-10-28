@@ -17,6 +17,9 @@ services:
       # The built-in print server, for phones and computers that print to it
       # directly (AirPrint, IPP). Not needed when only Folio prints.
       # - "631:631"
+      # Scanners shared as AirScan (Devices → a scanner → Share as AirScan), for
+      # Macs, Windows and Android. Not needed otherwise.
+      # - "8090:8090"
     environment:
       DATA_DIR: /data
       SCAN_STUDIO_ADMIN_USER: "${SCAN_STUDIO_ADMIN_USER:-admin}"
@@ -32,13 +35,15 @@ services:
       CUPS_SERVERS: "${CUPS_SERVERS:-}"
       USER_PRINT_MAX_MB: "${USER_PRINT_MAX_MB:-256}"
       FOLIO_AIRSCAN_DISCOVERY: "${FOLIO_AIRSCAN_DISCOVERY:-off}"
+      FOLIO_AIRSCAN_PORT: "${FOLIO_AIRSCAN_PORT:-8090}"
       FOLIO_RENDER_CONCURRENCY: "${FOLIO_RENDER_CONCURRENCY:-}"
       SCAN_TIMEOUT_SECONDS: "${SCAN_TIMEOUT_SECONDS:-900}"
       SCAN_GRACE_SECONDS: "${SCAN_GRACE_SECONDS:-30}"
     volumes:
       - ./data:/data
-      # Announce the built-in printers to phones and computers (AirPrint) through
-      # the host's Avahi, which Raspberry Pi OS and most Linux desktops run:
+      # Announce the built-in printers (AirPrint) and shared scanners (AirScan)
+      # to phones and computers through the host's Avahi, which Raspberry Pi OS
+      # and most Linux desktops run:
       # - /etc/avahi/services:/etc/avahi/services
       # Folders documents can be sent to (Devices → Destinations), e.g. a NAS
       # share mounted on the host, or Paperless-ngx's consume folder:

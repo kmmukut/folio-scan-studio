@@ -33,6 +33,9 @@ echo "Folio runs as: $user"
 # Scanning: listing scanners as Folio's user must work (no SANE plug-in may crash it).
 docker exec -u folio "$name" timeout 60 scanimage -L >/dev/null 2>&1 || { echo "scanimage -L failed in the image"; exit 1; }
 echo "scanner listing: works"
+# AirSane (scanners shared as AirScan) is built in, with every library it needs.
+docker exec "$name" sh -c '! ldd /usr/local/bin/airsaned | grep -q "not found"' || { echo "AirSane is missing or can't load"; exit 1; }
+echo "AirSane: present"
 # The built-in print server: signed in, System check must find it answering.
 jar=$(mktemp)
 csrf=$(curl -fsS -c "$jar" -H 'Content-Type: application/json' \

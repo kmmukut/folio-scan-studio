@@ -16,6 +16,8 @@ Folio runs as one Docker container. It needs:
 - [Portainer](#portainer)
 - [Raspberry Pi](#raspberry-pi)
 - [Printing](#printing): AirPrint, CUPS's own pages, other CUPS servers
+- [Sharing scanners (AirScan)](#sharing-scanners-airscan): scanning from
+  Macs, Windows and Android without Folio
 - [Email: invitations, password resets and notifications](#email-invitations-password-resets-and-notifications)
 - [Sending documents to Paperless-ngx or a folder](#sending-documents-to-paperless-ngx-or-a-folder)
 - [USB printers and scanners](#usb-printers-and-scanners)
@@ -188,6 +190,58 @@ encrypted connection when CUPS asks for one. Printers Folio creates are
 always shared, because CUPS only accepts jobs from other computers for
 shared printers.
 
+## Sharing scanners (AirScan)
+
+Folio can share a scanner with other computers as an AirScan (eSCL)
+scanner, including one that speaks only WSD. Then:
+- **Macs** scan from it in Image Capture and Preview (it appears under
+  System Settings → Printers & Scanners)
+- **Windows 10 and 11** add it as a scanner
+- **Android** scans from it with the Mopria Scan app
+- **Linux** scans from it with sane-airscan
+
+iPhones and iPads have no built-in app that scans from network scanners;
+use Folio's page there.
+
+AirScan has no sign-in: anyone on your network can scan from a shared
+scanner. Folio accepts only private addresses (10.x, 172.16–31.x, 192.168.x
+and the like), and sharing is off until you switch it on for a scanner.
+
+1. In `compose.yaml`, publish the port and, so Folio can announce the
+   scanners, mount the host's Avahi folder (as for AirPrint):
+
+   ```yaml
+       ports:
+         - "8870:8870"
+         - "8090:8090"                                # scanners shared as AirScan
+       volumes:
+         - ./data:/data
+         - /etc/avahi/services:/etc/avahi/services    # announce them
+   ```
+
+2. In **Devices**, press **Share as AirScan** on the scanner's card.
+
+Within 30 seconds a `folio-airscan@<scanner>.service` file appears in
+`/etc/avahi/services`, and the scanner shows up on Macs as
+"<name> @ <host>". Announcing needs the built-in print server
+(`FOLIO_BUILTIN_CUPS=on`, the default), because it does the writing. If you
+publish a different host port (e.g. `"8091:8090"`), set
+`FOLIO_AIRSCAN_PORT=8091`.
+
+**Computers on another network**, or a host whose Avahi can't reach them
+(for example Folio in a container or VM on an internal network): **Devices →
+Share as AirScan → Announce it yourself** shows the service file. Save it in
+`/etc/avahi/services` on a Linux computer that runs Avahi on the computers'
+network, and forward its port 8090 to Folio's.
+
+A scanner does one scan at a time. If someone starts a scan in Folio while
+a Mac is scanning (or the other way round), the second one fails with an
+error after a few seconds; start it again when the first is done. Some
+scanners also need a few seconds' pause between scans.
+
+Folio uses [AirSane](https://github.com/SimulPiscator/AirSane) for this,
+built into the image from a fixed version.
+
 ## Email: invitations, password resets and notifications
 
 With email set up, Folio can:
@@ -304,7 +358,8 @@ To serve Folio over HTTPS (Nginx Proxy Manager, Caddy, Traefik, nginx):
    so links in emails point there.
 
 The proxy only serves Folio's web pages. Printing from phones (AirPrint)
-and CUPS's own administration pages use port 631 directly, not the proxy.
+and CUPS's own administration pages use port 631 directly, and shared
+scanners (AirScan) port 8090, not the proxy.
 
 Long exports and print jobs run in the background, so proxy timeouts don't
 cut them off. Caching proxies are fine: Folio's scripts and styles have a

@@ -11,7 +11,8 @@ the built-in one off entirely.
 web process only reads the generated administrator password.
 
 The supervisor also keeps its printers announced on the network (AirPrint,
-see airprint.py), checking every 30 seconds and withdrawing them when it stops.
+see airprint.py), and the scanners Folio shares (AirScan, see airscan.py),
+checking every 30 seconds and withdrawing them when it stops.
 
 CUPS's own web administration (https://<host>:631/admin) is off unless an
 administrator turns it on in Folio with a login of their choosing. Folio,
@@ -42,7 +43,7 @@ import sys
 import time
 from pathlib import Path
 
-from backend import airprint, ipp
+from backend import airprint, airscan, ipp
 
 SERVER = 'localhost:631'
 ADMIN_USER = 'folio-cups'
@@ -380,10 +381,16 @@ def cupsd_command(root: Path) -> list[str]:
 
 
 def announce(data_dir: Path, server: str = SERVER) -> list[str]:
-    """Announce the shared printers (AirPrint) and record the result for Folio."""
+    """Announce the shared printers (AirPrint) and scanners (AirScan), and record
+    the result for Folio."""
     if not airprint.available():
         airprint.write_status(announced=[])
+        airscan.write_status(announced=[])
         return []
+    try:
+        airscan.write_status(announced=airscan.sync_announcements(data_dir))
+    except OSError as exc:
+        airscan.write_status(announced=[], error=str(exc)[:200])
     try:
         login = credentials(data_dir)
         announced = airprint.sync(ipp.Connection(server, *(login or (None, None)), timeout=10))
@@ -436,8 +443,9 @@ def supervise(data_dir: Path) -> int:
         deadline = time.monotonic() + delay
         while not stopping and time.monotonic() < deadline:
             time.sleep(.2)
-    airprint.withdraw()  # Don't leave phones looking for printers that are gone
+    airprint.withdraw()  # Don't leave phones looking for printers (or scanners) that are gone
     airprint.write_status(announced=[])
+    airscan.write_status(announced=[])
     return 0
 
 

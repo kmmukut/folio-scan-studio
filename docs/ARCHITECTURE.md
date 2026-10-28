@@ -53,6 +53,8 @@ healthy, and to make the workflow layer excellent.
   requested in Folio (D17).
 - `backend/airprint.py`: announces the built-in printers through the host's
   Avahi services folder (D14).
+- `backend/airscan.py`: shares scanners as AirScan: runs AirSane and
+  describes the shared scanners for the announcement (D20).
 - `backend/mail.py`: email settings and sending through SMTP (D18);
   `backend/notify.py` decides which notification emails go out.
 - `backend/backup.py`: backups of everything Folio keeps, and restoring one,
@@ -353,6 +355,44 @@ DOCTYPE is refused (entities could make a small answer huge).
 raster. Otherwise a driver (the print server's best match for the model,
 as in the driverless check), over JetDirect, IPP or LPD, in that order.
 
+### D20 — Scanners shared as AirScan, through AirSane (0.22)
+A scanner can be shared with other computers as an AirScan (eSCL) scanner,
+so Macs, Windows, Android and Linux scan from it without a driver, even
+when the scanner itself speaks only WSD.
+
+**AirSane rather than Folio's own server.** AirSane (GPL-3.0) is an
+existing eSCL server for SANE scanners, used with Apple, Mopria and Windows
+clients. Writing one in Folio would mean meeting each client's quirks
+again. Debian doesn't package it, so the image builds it in a separate stage
+from a pinned commit; only the program (about 0.5 MB) and its licence ship.
+That commit is the first that runs with its own announcing switched off and
+no Avahi daemon.
+
+**One AirSane, run by Folio as its own user.** It has to read Folio's
+private scanner settings. Folio starts it while any scanner is shared,
+reloads it (SIGHUP, which re-reads everything) when that changes, and
+stops it when none is. It is configured so that:
+- its ignore list is one negative-lookahead rule leaving out every device
+  except the shared ones
+- only private addresses may connect
+- its web pages are off (one of them scans from a browser)
+
+**Each scanner's address comes from AirSane's start-up log.** AirSane
+serves the first scanner at `/eSCL` and the others at `/<uuid>`. That UUID
+hashes the machine ID and the scanner's name with the C++ library's string
+hash, which Python can't reproduce reliably. So AirSane runs with
+`--debug=true`, and Folio reads the "found:" and "uuid:" lines. It then
+confirms each address by asking AirSane for that scanner's capabilities,
+which also give the announcement's details. The log format is pinned with
+the commit and tested inside the image.
+
+**Announced like AirPrint (D14).** Folio writes what to announce into
+`data/airscan/announce.json`. The print server's supervisor (root)
+validates it and writes `folio-airscan@<id>.service` into the host's Avahi
+folder. `@` can't appear in printer names, so AirPrint's clean-up leaves
+those files alone. For computers on another network, the Devices page shows
+the same file to add by hand.
+
 ### D6 — Capabilities come from the device, never from model names
 Sizes, trays, duplex, colour, scan modes and resolutions are what CUPS/SANE
 report. Folio does not fabricate options, and no device, address or network
@@ -382,8 +422,9 @@ may change with real use.
    with a login chosen in Folio, a driverless check; see D17.
 11. ~~**0.20 — Email.**~~ Invitations, "Forgot your password?", notifications;
    see D18.
-12. ~~**0.22 — Check a network address.**~~ Folio asks a device which ways
-   to print and scan it offers, with ports and paths; see D19.
+12. ~~**0.22 — Check a network address; share scanners.**~~ Folio asks a
+   device which ways to print and scan it offers, with ports and paths (see
+   D19), and shares scanners as AirScan (see D20).
 13. **Next candidates:** community hardware reports toward 1.0;
    translations; saved scan presets.
 USB-specific work waits for community testers (D11).

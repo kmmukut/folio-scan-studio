@@ -130,20 +130,23 @@ Using Portainer, a reverse proxy or a Raspberry Pi? See
 Images are published for **x86-64 (amd64)** and **64-bit ARM (arm64)**:
 Raspberry Pi 3, 4 and 5 running a 64-bit OS, and other ARM servers.
 
-| Edition | Includes | Size | Image |
+| Edition | Includes | Size (download) | Image |
 |---|---|---|---|
-| **Full** | Everything, including searchable PDFs (OCR) and automatic straightening suggestions | ~1.3 GB | `ghcr.io/kmmukut/folio-scan-studio:0.15-full` |
-| **Lite** | Everything except those two; for Raspberry Pi–class hosts | ~890 MB | `ghcr.io/kmmukut/folio-scan-studio:0.15-lite` |
+| **Full** | Everything, including searchable PDFs (OCR) and automatic straightening suggestions | ~1.3 GB (~330 MB) | `ghcr.io/kmmukut/folio-scan-studio:0.20-full` |
+| **Lite** | Everything except those two; for Raspberry Pi–class hosts | ~0.9 GB (~220 MB) | `ghcr.io/kmmukut/folio-scan-studio:0.20-lite` |
 
-Choose with `FOLIO_EDITION=full` or `lite` in `.env`. Tags: `0.15.0-full`
-(exact), `0.15-full` (receives 0.15.x fixes), `full` (newest release), and
-the same with `-lite`. `latest` is the newest Full release. The images are
-also mirrored to Docker Hub as `kmmukut/folio-scan-studio`.
+Both include the print server and its drivers. Choose with
+`FOLIO_EDITION=full` or `lite` in `.env`. Tags: `0.20.0-full` (exact),
+`0.20-full` (receives 0.20.x fixes; what `compose.yaml` uses), `full`
+(newest release), and the same with `-lite`. `latest` is the newest Full
+release. The images are also mirrored to Docker Hub as
+`kmmukut/folio-scan-studio`.
 
 ## Documentation
 
 - [Deployment](docs/DEPLOYMENT.md): Compose, Portainer, Raspberry Pi,
-  reverse proxies, a CUPS server, USB devices, backups and upgrades.
+  printing and AirPrint, email, Paperless-ngx and NAS folders, USB devices,
+  reverse proxies, backups and upgrades.
 - [Configuration](docs/CONFIGURATION.md): every setting.
 - [Hardware](docs/HARDWARE.md): what has been tested, and how to report
   your device.
@@ -183,5 +186,6 @@ source code.
 
 The images also contain third-party software under its own licenses,
 including PyMuPDF and Ghostscript (AGPL-3.0), OCRmyPDF (MPL-2.0), Tesseract
-and OpenCV (Apache-2.0), FastAPI (MIT), and the SANE and CUPS client tools,
-on a Debian base.
+and OpenCV (Apache-2.0), FastAPI (MIT), CUPS (Apache-2.0) with cups-filters
+and the printer drivers Debian ships (mostly GPL), and SANE with
+sane-airscan (GPL), on a Debian base.

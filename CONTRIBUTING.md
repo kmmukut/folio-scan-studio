@@ -60,26 +60,28 @@ folders.
 To run Folio from your checkout:
 
 ```bash
-cp .env.example .env && nano .env    # set SCAN_STUDIO_ADMIN_PASSWORD
+cp .env.example .env               # optional: SCAN_STUDIO_ADMIN_PASSWORD, or create the admin in the browser
 docker compose -f compose.yaml -f compose.build.yaml up -d --build
 ```
 
-**The Lite edition** must not import NumPy or OpenCV at startup. Test it
-inside its own image, where they really are missing:
+**Inside the images.** The Lite edition must not import NumPy or OpenCV at
+startup, and some tests (a real CUPS, the scanner tools) only run where the
+image's software really is. Run the suite inside each image, then start it
+the way users do:
 
 ```bash
 docker build --build-arg FOLIO_EDITION=lite -t folio-scan-studio:lite .
-docker run --rm --entrypoint sh -v "$PWD:/src:ro" folio-scan-studio:lite -c \
-  'pip install -q pytest==9.1.1 httpx==0.28.1 pypdf==6.21.2 && cp -r /src /tmp/w && cd /tmp/w && python -m pytest -q -p no:cacheprovider'
+.github/scripts/test-image.sh folio-scan-studio:lite        # the suite, inside the image
+.github/scripts/smoke-test.sh folio-scan-studio:lite lite   # starts it and checks it works
 ```
 
-Tests that need OpenCV are marked `full_only` and skip themselves there.
+Tests that need OpenCV are marked `full_only` and skip themselves in Lite.
 
 ## Pull requests
 
 - Branch from `main`; one topic per pull request.
 - CI must pass: tests on the host, both images built, the suite run inside
-  the Lite image, and a start-up check of each image.
+  each image, and a start-up check of each image.
 - Add a line to the `## Unreleased` section of [CHANGELOG.md](CHANGELOG.md)
   for anything users would notice.
 - Fill in the pull request template, especially *How was this tested?*

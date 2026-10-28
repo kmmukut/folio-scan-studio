@@ -7,8 +7,9 @@ Folio is configured in two places:
   to be known before anyone signs in. [.env.example](../.env.example) lists
   them all with comments.
 - **In Folio itself**, by an administrator: print servers, printers,
-  scanners, accounts, guest printing and statistics. These are stored in the
-  data folder and survive upgrades.
+  scanners, destinations (Paperless-ngx, folders), email, accounts and
+  invitations, guest printing, page quotas and statistics. These are stored
+  in the data folder and survive upgrades.
 
 ## Environment variables
 

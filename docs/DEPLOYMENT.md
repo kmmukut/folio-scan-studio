@@ -4,8 +4,9 @@ Folio runs as one Docker container. It needs:
 
 - **Docker with Compose v2** on Linux (x86-64 or 64-bit ARM). Portainer
   works too.
-- **Memory:** about 60 MB at rest; previews and exports of large scans
-  peak around 400 MB.
+- **Memory:** about 180 MB at rest, including the built-in print server
+  (measured with the Full edition); previews and exports of large scans
+  need a few hundred MB more while they run.
 - **Nothing else for printing:** Folio has its own print server (CUPS with
   drivers for most printers) built in. See [Printing](#printing).
 - **For scanning:** a network scanner that speaks eSCL (AirScan) or WSD,
@@ -14,7 +15,8 @@ Folio runs as one Docker container. It needs:
 - [Docker Compose](#docker-compose)
 - [Portainer](#portainer)
 - [Raspberry Pi](#raspberry-pi)
-- [Printing](#printing)
+- [Printing](#printing): AirPrint, CUPS's own pages, other CUPS servers
+- [Email: invitations, password resets and notifications](#email-invitations-password-resets-and-notifications)
 - [Sending documents to Paperless-ngx or a folder](#sending-documents-to-paperless-ngx-or-a-folder)
 - [USB printers and scanners](#usb-printers-and-scanners)
 - [Behind a reverse proxy](#behind-a-reverse-proxy)
@@ -73,7 +75,7 @@ sudo usermod -aG docker "$USER"              # then log out and back in
 Then follow [Docker Compose](#docker-compose) with, in `.env`:
 
 ```bash
-FOLIO_EDITION=lite             # leaves out OCR and auto-straighten (~890 MB)
+FOLIO_EDITION=lite             # leaves out OCR and auto-straighten (~0.9 GB)
 FOLIO_RENDER_CONCURRENCY=1     # one full-size page decode at a time
 ```
 
@@ -279,6 +281,12 @@ To serve Folio over HTTPS (Nginx Proxy Manager, Caddy, Traefik, nginx):
    use `*` if port 8870 is also reachable directly.
 4. Allow uploads as large as `USER_PRINT_MAX_MB` (256 MB by default), e.g.
    `client_max_body_size 256m;` in nginx.
+5. If you use email, set Folio's address to the proxy's
+   (`FOLIO_PUBLIC_URL=https://folio.example.com`, or in **Devices → Email**),
+   so links in emails point there.
+
+The proxy only serves Folio's web pages. Printing from phones (AirPrint)
+and CUPS's own administration pages use port 631 directly, not the proxy.
 
 Long exports and print jobs run in the background, so proxy timeouts don't
 cut them off. Caching proxies are fine: Folio's scripts and styles have a
@@ -296,7 +304,8 @@ with your documents, accounts, settings, print statistics, and the built-in
 printers with their drivers. **Restore from a backup** puts it all back,
 also on a new installation: the built-in printers are set up again from the
 backup. What a restore replaces is kept in `data/.before-restore`. The file
-holds your accounts and print-server logins, so keep it somewhere safe.
+holds your accounts and your print-server and email logins, so keep it
+somewhere safe.
 
 **From the host:** everything Folio keeps is in the data folder.
 

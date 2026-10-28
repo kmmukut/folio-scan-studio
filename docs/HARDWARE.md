@@ -9,7 +9,10 @@ the options the device reports.
 
 - **Driverless printers** (most network printers from about 2015 onward:
   IPP Everywhere, AirPrint, Mopria) need no driver. In **Add a printer**,
-  choose *Driverless*.
+  choose *Driverless*. Folio first asks the printer what it accepts:
+  driverless printing needs PDF or PWG raster, and some printers that offer
+  only AirPrint's own raster print garbled pages. Folio then suggests the
+  best-matching driver instead.
 - **Older printers** need a driver. Folio's built-in print server includes
   the drivers Debian ships (Gutenprint, HPLIP for HP, foo2zjs, SpliX for
   Samsung and Xerox, the OpenPrinting collections and more), and lists the
@@ -25,6 +28,9 @@ the options the device reports.
 
 - **Network scanners** that speak eSCL (AirScan) or WSD work through
   sane-airscan, which is built in. Add them in **Devices** by IP address.
+- **HP multifunction printers** scan through eSCL like the others. HP's own
+  SANE plug-in (hpaio) is switched off in the image, because without D-Bus
+  it crashes every scanner listing; HP's printer drivers are all included.
 - **Other scanners** work if a SANE backend supports them; see the
   [SANE supported devices](http://www.sane-project.org/sane-supported-devices.html).
   USB scanners need the device passed into Folio's container (untested,
@@ -39,7 +45,7 @@ including devices that didn't work: knowing what fails is just as useful.
 
 | Device | Type | Connection | Printing | Scanning | Folio | Notes |
 |---|---|---|---|---|---|---|
-| Samsung M2885FW | Mono laser multifunction | Network | ✓ | ✓ (WSD) | 0.9.x–0.15 | Maintainer's device. Scanner offers flatbed and feeder. Driverless setup reads its capabilities (monochrome, duplex, 17 paper sizes); reports toner, imaging unit, fuser and roller levels. |
+| Samsung M2885FW | Mono laser multifunction | Network | ✓ | ✓ (WSD) | 0.9.x–0.20 | Maintainer's device. Print with the *Samsung M288x Series PXL* driver (verified over JetDirect): driverless printing garbles pages, because the printer offers only AirPrint's raster (no PDF or PWG raster), and Folio says so. Monochrome, duplex, 17 paper sizes; reports toner, imaging unit, fuser and roller levels. Scanner offers flatbed and feeder. |
 
 ### Not yet tested
 

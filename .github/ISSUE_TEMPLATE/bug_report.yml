@@ -27,7 +27,7 @@ body:
     id: version
     attributes:
       label: Folio version and edition
-      description: Shown at the bottom of the sidebar, e.g. "0.14.0, Full".
+      description: Shown at the bottom of the sidebar, e.g. "0.20.0, Full".
     validations:
       required: true
   - type: dropdown

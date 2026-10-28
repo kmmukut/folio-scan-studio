@@ -230,6 +230,21 @@ def test_version_is_consistent_across_release_files():
     assert web.app.version == __version__
 
 
+def test_the_docs_name_the_current_version():
+    """Image tags and versions in the README and docs move with each release
+    (0.20.1: the README still showed 0.15 five releases later)."""
+    minor = '.'.join(__version__.split('.')[:2])
+    named = {'README.md', 'SECURITY.md', 'docs/DEPLOYMENT.md', 'docs/CONFIGURATION.md',
+             '.github/ISSUE_TEMPLATE/bug_report.yml', '.github/ISSUE_TEMPLATE/hardware_report.yml'}
+    found = []
+    for name in named:
+        text = (ROOT / name).read_text()
+        for pattern in (r'folio-scan-studio:(\d+\.\d+)(?:\.\d+)?-(?:full|lite)', r'FOLIO_VERSION=(\d+\.\d+)\b',
+                        r'`FOLIO_VERSION` \| `(\d+\.\d+)`', r'currently (\d+\.\d+)\.x', r'e\.g\. "?(\d+\.\d+)\.\d+'):
+            found += [(name, version) for version in re.findall(pattern, text)]
+    assert found and all(version == minor for _, version in found), [f for f in found if f[1] != minor]
+
+
 def test_health_is_public_cheap_and_reports_storage_failures(client, monkeypatch):
     anonymous = TestClient(web.app)
     healthy = anonymous.get('/api/health')

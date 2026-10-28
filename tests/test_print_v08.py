@@ -5,7 +5,7 @@ import subprocess
 import time
 import sys
 from pathlib import Path
-import fitz
+import pymupdf as fitz
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image

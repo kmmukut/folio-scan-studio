@@ -4,9 +4,9 @@
 # pin, reinstall in a clean venv, run the tests, and re-pin from `pip freeze`.
 fastapi==0.162.0
 uvicorn==0.54.0
-pillow==12.3.0
+pillow==13.0.0
 img2pdf==0.6.3
-pymupdf==1.28.2
+pymupdf==2.0
 
 # Transitive
 annotated-doc==0.0.5

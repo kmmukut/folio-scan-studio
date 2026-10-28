@@ -6,6 +6,9 @@ Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
 ## Unreleased
 
+- **Updated libraries:** Pillow 13.0 (images), PyMuPDF 2.0 (PDFs) and, in
+  the Full edition, OpenCV 5.0 (auto-straighten). Their licences are
+  unchanged. The full test suite passes on the host and inside both images.
 - **Documentation:** Folio is now tested on a real Raspberry Pi: a Pi 4
   Model B (2 GB) with Raspberry Pi OS 64-bit (Debian 13) runs the Lite
   edition, scanning and printing to the maintainer's Samsung M2885FW, with

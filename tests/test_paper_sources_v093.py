@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import fitz
+import pymupdf as fitz
 from fastapi.testclient import TestClient
 import pytest
 from backend import app as web, devices, security

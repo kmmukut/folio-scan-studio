@@ -4,7 +4,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-import fitz
+import pymupdf as fitz
 from fastapi.testclient import TestClient
 import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

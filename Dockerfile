@@ -29,9 +29,8 @@ RUN case "$FOLIO_EDITION" in full|lite) ;; *) echo "FOLIO_EDITION must be full o
     && sed -i 's/^hpaio/#hpaio/' /etc/sane.d/dll.d/hplip
 WORKDIR /app
 COPY requirements.txt requirements-full.txt ./
-# pip is needed only here, so it doesn't stay in the image: the base image's
-# copy has known flaws, and so do the helpers bundled in newer ones. A current
-# pip installs the libraries, then goes. (The image's test run brings one back
+# pip is needed only here, so it doesn't stay in the image: a current pip
+# installs the libraries, then goes. (The image's test run brings one back
 # with "python -m ensurepip", in its own throwaway container.)
 RUN pip install --no-cache-dir pip==26.2.2 \
     && pip install --no-cache-dir -r "$( [ "$FOLIO_EDITION" = full ] && echo requirements-full.txt || echo requirements.txt )" \

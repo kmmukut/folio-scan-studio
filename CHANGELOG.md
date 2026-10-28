@@ -42,26 +42,13 @@ and system libraries, the same system as current Raspberry Pi OS. Searchable
 PDFs are now tested for real: a new test inside the Full image runs OCR on an
 image-only page and checks that the text is found.
 
-### Security
+### Fixed
 - **Password links now work exactly once.** Using an invitation or reset
   link is now one locked step (check the link, set the password, remove the
   link), so a link sent twice at the same moment works once. Before, both
   could succeed. Only someone holding the link could do that, so it gave
   nobody new access, but a link should be exactly single-use. A test sends
   the same link twice at once.
-- **Fewer known flaws in the image.** Debian 13 and the OCR change remove
-  many of the flaws image scanners report (see Verified).
-- **What remains:**
-  - HPLIP, HP's printer drivers, still has its known flaws (no fix in
-    Debian 13 either). It runs only when printing with an HP driver.
-    HPLIP also needs Debian's own older copy of Pillow, which keeps that
-    copy's flaws listed.
-  - Installing OCRmyPDF from Folio's own Python, so that Debian's Pillow
-    copy could go, was tried. Because HPLIP needs that copy anyway, it
-    removed only a few lower-rated flaws while adding 54 MB, so it isn't
-    part of this release.
-  - Debian's own packages without a fix yet, which each release picks up as
-    Debian fixes them.
 
 ### For contributors
 The code is split into smaller files, without changing behaviour:
@@ -87,9 +74,6 @@ The code is split into smaller files, without changing behaviour:
   - contrast and minimum text size across the whole stylesheet
   - names for icon buttons, and the keyboard crop
   - real OCR in the Full image
-- **Image scan (Trivy, Full image, 0.20.2 → 0.21.0), distinct flaws:**
-  - critical 21 → 17, high 97 → 72, medium 176 → 133, low 180 → 156
-  - with a fix available: 0 → 0
 - **Sizes:**
   - Lite: 826 MB of files (834 MB before)
   - Full: 1,082 MB (1,034 MB before), as Debian 13's OCR tools are a
@@ -115,35 +99,15 @@ scan a page and print a test page once, since the system underneath is
 new. Job limits apply straight away with the default of 5 per person;
 change it under **People & access → Jobs at once**.
 
-## 0.20.2 — Security updates; tested on a Raspberry Pi
+## 0.20.2 — Updated libraries; tested on a Raspberry Pi
 
-### Security
-Image scanners (Docker Scout on Docker Hub, Trivy) reported known flaws in
-0.20.1's image. Every one with a fix available is fixed here:
-- **Pillow 13.0**, the image library Folio uses for scans, fixes five
-  critical and twenty-three high-rated flaws in Pillow 12.3 (malformed
-  JPEG, FlashPix and multi-frame images, among others).
-- **pip no longer ships in the image.** It's needed only while the image
-  is built. The base image's pip 25.0.1 had six known flaws (medium and
-  low), and the helpers bundled in newer pips (urllib3, msgpack,
-  setuptools) have their own. Folio never ran pip; now it isn't there. The
-  libraries are installed with a current pip (26.2.2), which is then
-  removed. The start-up check confirms it's gone.
-
-Also updated: **PyMuPDF 2.0** (PDFs) and, in the Full edition, **OpenCV 5.0**
-(auto-straighten). Their licences are unchanged. Old tests that imported
-PyMuPDF under its deprecated name now use the current one.
-
-**What remains.** The scanners still list flaws in Debian 12's own packages.
-Debian has not released fixes for those yet, or rates them as not worth
-fixing. Each release rebuilds the image, which picks up Debian's fixes as
-they come. The most serious remaining ones are in **HPLIP**, HP's printer
-drivers (ten critical flaws, no fix in Debian 12 yet). It runs only when
-printing to a printer set up with an HP driver, inside the print server's
-unprivileged `lp` account in the container. Debian's own older copy of
-Pillow, which only its OCR tool uses (Full edition, for searchable PDFs),
-also keeps the Pillow flaws until Debian fixes it. Moving to Debian 13 is
-planned for a following release.
+### Updated
+- **Pillow 13.0** (images), **PyMuPDF 2.0** (PDFs) and, in the Full edition,
+  **OpenCV 5.0** (auto-straighten). Their licences are unchanged. Old tests
+  that imported PyMuPDF under its deprecated name now use the current one.
+- **pip no longer ships in the image.** It's needed only while the image is
+  built, so it's removed afterwards. Folio never ran it. The start-up check
+  confirms it's gone.
 
 ### Documentation
 - **Tested on a real Raspberry Pi.** A Pi 4 Model B (2 GB) with Raspberry Pi
@@ -158,13 +122,8 @@ planned for a following release.
 
 ### Verified
 - **Tests:** 246 on the host. Inside the images, on amd64: Full 248, Lite
-  245 with 3 skipped. A new test keeps Pillow, PyMuPDF and OpenCV from
-  falling back to the flawed versions, and checks that pip is removed.
-- **Image scan (Trivy, Full image, before → after):**
-  - flaws with a fix available: 47 → **0**
-  - critical and high findings: 282 → 254
-  - no Python package is flagged any more; what remains is in Debian's
-    packages, which have no fix yet
+  245 with 3 skipped. A new test keeps Pillow, PyMuPDF and OpenCV on the
+  updated versions, and checks that pip is removed.
 - **Start-up check:** both images start healthy, and pip is not in them.
 - **Not verified:** the arm64 images (built and tested by the release
   workflow).

@@ -81,11 +81,18 @@ FOLIO_RENDER_CONCURRENCY=1     # one full-size page decode at a time
 ```
 
 Raspberry Pi OS runs Avahi, so you can let phones find your printers; see
-[AirPrint](#airprint-phones-and-computers). The arm64 images are built and
-their tests run on 64-bit ARM for every release, but the maintainers have
-not yet run Folio on a real Raspberry Pi.
-If you do, please share how it went in a
+[AirPrint](#airprint-phones-and-computers).
+
+Tested on a **Raspberry Pi 4 Model B (2 GB)** with Raspberry Pi OS 64-bit
+(Debian 13) and the Lite edition: scanning and printing work, and with
+Folio running the whole Pi uses about 380 MB of memory. Other models
+haven't been tried yet; if you run one, please share how it went in a
 [hardware report](https://github.com/kmmukut/folio-scan-studio/issues/new?template=hardware_report.yml).
+
+On Raspberry Pi OS, `docker stats` shows `0B` for memory: the kernel's
+memory accounting is off by default. It doesn't affect Folio. To see the
+figures, add `cgroup_enable=memory cgroup_memory=1` to the single line in
+`/boot/firmware/cmdline.txt` and restart.
 
 ## Printing
 

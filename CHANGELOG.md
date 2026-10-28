@@ -4,6 +4,14 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## Unreleased
+
+- **Documentation:** Folio is now tested on a real Raspberry Pi: a Pi 4
+  Model B (2 GB) with Raspberry Pi OS 64-bit (Debian 13) runs the Lite
+  edition, scanning and printing to the maintainer's Samsung M2885FW, with
+  the whole Pi using about 380 MB of memory. The hardware list also explains
+  why that printer scans at most 300 dpi over the network.
+
 ## 0.20.1 — Install it like an app; documentation brought up to date
 
 **Folio can be installed on phones, tablets and computers**, with its own

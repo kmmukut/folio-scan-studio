@@ -159,11 +159,12 @@ release. The images are also mirrored to Docker Hub as
 ## Project status
 
 Folio is in **public beta** (0.x) and is used daily on an x86-64 Docker
-host with a network multifunction printer. Each release runs the full test
-suite inside both editions on both architectures before it is published.
-Not yet verified by the maintainers: a real Raspberry Pi, and USB printers
-or scanners (we have none to test with). Reports from your hardware are the
-most valuable contribution right now.
+host with a network multifunction printer. It also runs on a Raspberry Pi 4
+(2 GB) with the Lite edition, using about 380 MB of memory for the whole Pi.
+Each release runs the full test suite inside both editions on both
+architectures before it is published. Not yet verified by the maintainers:
+USB printers or scanners (we have none to test with). Reports from your
+hardware are the most valuable contribution right now.
 
 ## Help wanted
 
@@ -172,8 +173,8 @@ most valuable contribution right now.
   whether it worked or not. Reports become the compatibility list.
 - **USB printers and scanners:** passthrough recipes, IPP-over-USB and
   per-model notes, tested on real devices.
-- **Raspberry Pi:** install time, memory use and anything that got in the
-  way.
+- **Other Raspberry Pi models and ARM boards** (a Pi 4 is tested): install
+  time, memory use and anything that got in the way.
 - Bug reports, fixes and ideas: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Please report security issues privately, as described in

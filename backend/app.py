@@ -622,16 +622,20 @@ def quiet_supplies(server: str, queue: str) -> list[dict]:
         return []
 
 
-def asset_version() -> str:
-    """Fingerprint of the page's script and styles.
+PAGE_ASSET = re.compile(r'"(/assets/(?:js/[\w-]+\.js|style\.css))"')
 
-    The page references them as /assets/app.js?v=<fingerprint>, so after an
-    upgrade browsers and caching proxies (Nginx Proxy Manager's "Cache Assets"
-    keeps them 30 minutes regardless of headers) fetch the new files at once.
+
+def asset_version() -> str:
+    """Fingerprint of the page's scripts and styles.
+
+    The page references them as /assets/js/core.js?v=<fingerprint> and so on,
+    so after an upgrade browsers and caching proxies (Nginx Proxy Manager's
+    "Cache Assets" keeps them 30 minutes regardless of headers) fetch the new
+    files at once.
     """
     digest = hashlib.sha256()
-    for name in ('app.js', 'style.css'):
-        digest.update((WEB_DIR / name).read_bytes())
+    for path in [*sorted((WEB_DIR / 'js').glob('*.js')), WEB_DIR / 'style.css']:
+        digest.update(path.name.encode() + b'\0' + path.read_bytes())
     return digest.hexdigest()[:12]
 
 
@@ -639,8 +643,7 @@ def asset_version() -> str:
 def homepage():
     version = asset_version()
     page = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
-    for asset in ('/assets/app.js', '/assets/style.css'):
-        page = page.replace(f'"{asset}"', f'"{asset}?v={version}"')
+    page = PAGE_ASSET.sub(lambda m: f'"{m.group(1)}?v={version}"', page)
     # The page itself is always revalidated; it is what points at the current assets.
     return HTMLResponse(page, headers={'Cache-Control': 'no-cache'})
 

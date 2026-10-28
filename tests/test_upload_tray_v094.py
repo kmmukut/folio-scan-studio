@@ -17,7 +17,7 @@ def test_inputslot_without_ppd_nickname(monkeypatch):
 
 def test_guest_and_member_drop_zones_have_visible_source_controls():
     page=(Path(__file__).resolve().parents[1]/'frontend/index.html').read_text()
-    js=(Path(__file__).resolve().parents[1]/'frontend/app.js').read_text()
+    js='\n'.join(p.read_text() for p in sorted((Path(__file__).resolve().parents[1]/'frontend/js').glob('*.js')))
     for key, chosen in [('guest','chosen-file'),('member','member-chosen-file')]:
         first=page.index('id="'+chosen+'"')
         tray=page.index('id="'+key+'-source"')

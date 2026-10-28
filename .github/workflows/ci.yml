@@ -31,7 +31,7 @@ jobs:
       - name: Lint (errors only)
         run: ruff check backend tests
       - name: Check the page scripts
-        run: node --check frontend/app.js && node --check frontend/sw.js
+        run: for f in frontend/js/*.js frontend/sw.js; do node --check "$f"; done
       - name: Tests
         run: python -m pytest -q
 

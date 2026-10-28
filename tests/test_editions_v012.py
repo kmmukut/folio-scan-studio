@@ -134,14 +134,16 @@ def test_page_assets_are_fingerprinted_so_upgrades_are_never_served_stale(client
     page = client.get('/')
     assert page.headers['cache-control'] == 'no-cache'
     version = web.asset_version()
-    assert f'/assets/app.js?v={version}' in page.text and f'/assets/style.css?v={version}' in page.text
-    assert client.get(f'/assets/app.js?v={version}').headers['cache-control'] == 'public, max-age=31536000, immutable'
-    assert client.get('/assets/app.js').headers['cache-control'] == 'no-cache'
+    for script in ('core', 'auth', 'workbench', 'print', 'people', 'stats', 'devices', 'admin', 'main'):
+        assert f'/assets/js/{script}.js?v={version}' in page.text
+    assert f'/assets/style.css?v={version}' in page.text and '/assets/app.js' not in page.text
+    assert client.get(f'/assets/js/core.js?v={version}').headers['cache-control'] == 'public, max-age=31536000, immutable'
+    assert client.get('/assets/js/core.js').headers['cache-control'] == 'no-cache'
     # Any change to the script or styles produces a new address.
     import shutil
     copy = tmp_path / 'frontend'
     shutil.copytree(web.WEB_DIR, copy)
     monkeypatch.setattr(web, 'WEB_DIR', copy)
     assert web.asset_version() == version
-    (copy / 'app.js').write_text((copy / 'app.js').read_text() + '\n// changed\n')
+    (copy / 'js' / 'stats.js').write_text((copy / 'js' / 'stats.js').read_text() + '\n// changed\n')
     assert web.asset_version() != version

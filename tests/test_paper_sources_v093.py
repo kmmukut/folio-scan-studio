@@ -147,7 +147,7 @@ def test_guest_and_saved_document_print_selected_tray(printing_site,monkeypatch)
 def test_ui_has_tray_controls_for_all_print_flows():
     root=Path(__file__).resolve().parents[1]
     html=(root/'frontend/index.html').read_text()
-    js=(root/'frontend/app.js').read_text()
+    js='\n'.join(p.read_text() for p in sorted((root/'frontend/js').glob('*.js')))
     for prefix in ('guest','member','saved'):
         assert f'id="{prefix}-source"' in html
     assert "'X-Print-Source':$(`#${prefix}-source`).value" in js

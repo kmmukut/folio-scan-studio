@@ -50,5 +50,5 @@ def test_the_service_worker_keeps_no_copies():
     # Nothing stored: no Cache Storage, no IndexedDB. Only page loads that fail get the "can't be reached" page.
     assert 'caches' not in script and 'indexedDB' not in script
     assert "event.request.mode !== 'navigate'" in script and 'can’t be reached' in script
-    app_js = (ROOT / 'frontend' / 'app.js').read_text()
+    app_js = (ROOT / 'frontend' / 'js' / 'main.js').read_text()
     assert "window.isSecureContext)navigator.serviceWorker.register('/sw.js')" in app_js

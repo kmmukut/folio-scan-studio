@@ -91,7 +91,7 @@ def test_paper_size_labels_across_print_flows():
     from pathlib import Path
     root=Path(__file__).resolve().parents[1]
     html=(root/'frontend/index.html').read_text()
-    js=(root/'frontend/app.js').read_text()
+    js='\n'.join(p.read_text() for p in sorted((root/'frontend/js').glob('*.js')))
     for name in ('member','guest','saved'):
         assert f'id="{name}-media"' in html
         assert f'id="{name}-media-hint"' in html

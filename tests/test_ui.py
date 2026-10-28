@@ -2,7 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 HTML = (ROOT / "frontend" / "index.html").read_text()
-JS = (ROOT / "frontend" / "app.js").read_text()
+JS = "\n".join(p.read_text() for p in sorted((ROOT / "frontend" / "js").glob("*.js")))  # app.js until 0.21
 
 
 def test_restore_control_is_contextual_not_global_undo():

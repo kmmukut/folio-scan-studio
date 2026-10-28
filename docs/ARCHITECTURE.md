@@ -59,7 +59,13 @@ healthy, and to make the workflow layer excellent.
   a mounted folder (D16).
 - `docker-entrypoint.sh`: starts the print-server supervisor as root, then
   Folio as the `PUID` user (D15).
-- `frontend/`: framework-free HTML/CSS/JS, served as static files.
+- `frontend/`: framework-free HTML/CSS/JS, served as static files. The
+  scripts are in `frontend/js/`, one file per area, loaded in order by
+  `index.html`: `core` (talking to the server, messages, views), `auth`,
+  `workbench`, `print`, `people`, `stats`, `devices`, `admin`, and `main`
+  (navigation and start-up, last). Code that runs while the page loads may
+  only use what an earlier file (or its own) defines; handlers may use
+  anything. Until 0.21 they were one 1,960-line `app.js`.
 
 Storage: page originals are immutable PNGs under `data/jobs/<id>/pages/`;
 edits are metadata in `job.json`; previews are a disposable cache under

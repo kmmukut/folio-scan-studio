@@ -68,7 +68,7 @@ body:
     id: host
     attributes:
       label: Folio version, edition and host
-      placeholder: e.g. 0.21.0 Lite on a Raspberry Pi 4 (4 GB), Raspberry Pi OS 64-bit
+      placeholder: e.g. 0.22.0 Lite on a Raspberry Pi 4 (4 GB), Raspberry Pi OS 64-bit
     validations:
       required: true
   - type: textarea

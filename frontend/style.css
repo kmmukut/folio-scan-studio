@@ -496,3 +496,19 @@
 
 /* v0.21: a visible focus ring when the crop frame is used with a keyboard. */
 .crop-image-wrap:focus-visible{outline:3px solid var(--clay);outline-offset:4px}
+
+/* v0.22: check a network address; port and path for a typed printer address. */
+.address-check{margin-top:0}
+.address-check .device-form-row{align-items:flex-end}.address-check .device-form-row>.button{flex:0 0 auto}
+.address-check-result{margin-top:14px}.address-check-result:empty{display:none}
+.address-check-result h4{font:normal 20px Georgia,serif;color:#294330;margin:0;overflow-wrap:anywhere}
+.address-check-result h4 small{font:11px Consolas,monos;color:#5e6e5f;margin-left:10px}
+.address-check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:10px}
+.address-check-grid section{border:1px solid #dfe4d8;background:#fff;padding:12px 14px;min-width:0}
+.address-check-grid ul{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:10px;font-size:12px;color:#344939}
+.address-check-grid small{font-size:11px;color:#5e6e5f}
+.address-check-grid code{font-size:11px;overflow-wrap:anywhere}
+.address-check-grid .small-link{margin-top:6px}
+.manual-details summary{cursor:pointer;font-size:11px;color:var(--clay);font-weight:700;padding:3px 0}
+.manual-details .device-form-row{margin-top:8px}
+@media(max-width:640px){.address-check-grid{grid-template-columns:1fr}.address-check .device-form-row{flex-wrap:wrap}.address-check .device-form-row>.button{width:100%}}

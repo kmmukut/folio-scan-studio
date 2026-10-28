@@ -103,7 +103,11 @@ thousands of models. Folio sets it up and connects to it by itself, so
 **Devices → Add a printer** works straight away:
 
 1. Choose the *Built-in* print server.
-2. Type the printer's IP address, or search for it.
+2. Type the printer's IP address, or search for it. **Check a network
+   address**, at the top of Devices, does this for you: it asks the printer
+   how it can be reached (IPP, JetDirect, LPD) and fills in the form,
+   driver included. Printers on unusual ports have *Port and path
+   (optional)* under the address.
 3. Choose *Driverless* for most network printers made since about 2015, or
    pick the driver for your model. For a driverless IPP printer, Folio first
    asks the printer which formats it accepts. Driverless printing needs PDF
@@ -357,8 +361,8 @@ docker compose pull
 docker compose up -d
 ```
 
-With `FOLIO_VERSION=0.21` this picks up 0.21.x fixes. To move to a new
-minor version, change `FOLIO_VERSION` (e.g. to `0.22`). To go back, restore
+With `FOLIO_VERSION=0.22` this picks up 0.22.x fixes. To move to a new
+minor version, change `FOLIO_VERSION` (e.g. to `0.23`). To go back, restore
 the backup and set the previous version; newer versions may change the
 data folder in ways older ones don't understand.
 

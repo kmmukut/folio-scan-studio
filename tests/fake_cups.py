@@ -11,6 +11,7 @@ import ssl
 import struct
 import threading
 import time
+import urllib.parse
 from pathlib import Path
 
 from backend import ipp
@@ -33,6 +34,7 @@ class FakeCups:
         self.encrypted_only = False      # Like some printers: every request needs TLS
         self.everywhere_fails = False    # CUPS's own driverless generator gives up, like it does for an Epson L3250
         self.driverless_generator = True # cups-filters' "driverless:<address>" models are installed
+        self.paths = {}                  # Other paths a printer answers at, like a network printer's /ipp/print
         self.cancel_needs_auth = cancel_needs_auth
         self.printers: dict[str, dict] = {}
         self.jobs: dict[int, dict] = {}
@@ -99,7 +101,9 @@ class FakeCups:
 
     def queue_of(self, attrs):
         uri = (attrs.get('printer-uri') or [''])[0]
-        return uri.rsplit('/printers/', 1)[1] if '/printers/' in uri else None
+        if '/printers/' in uri:
+            return uri.rsplit('/printers/', 1)[1]
+        return self.paths.get(urllib.parse.urlsplit(uri).path)
 
     def add_job(self, queue, user, title, state=3, pages=0, sheets=0):
         job_id = len(self.jobs) + 1

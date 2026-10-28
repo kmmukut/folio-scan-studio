@@ -7,8 +7,8 @@
 services:
   scan-studio:
     # FOLIO_EDITION: "full" (default) or "lite" for Raspberry Pi-class hosts.
-    # FOLIO_VERSION: "0.21" follows 0.21.x fixes; pin e.g. "0.21.0" to stay put.
-    image: "ghcr.io/kmmukut/folio-scan-studio:${FOLIO_VERSION:-0.21}-${FOLIO_EDITION:-full}"
+    # FOLIO_VERSION: "0.22" follows 0.22.x fixes; pin e.g. "0.22.0" to stay put.
+    image: "ghcr.io/kmmukut/folio-scan-studio:${FOLIO_VERSION:-0.22}-${FOLIO_EDITION:-full}"
     container_name: scan-studio
     restart: unless-stopped
     stop_grace_period: 45s

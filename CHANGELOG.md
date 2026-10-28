@@ -4,7 +4,45 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
-## Unreleased
+## 0.22.0 — Check a network address
+
+Printers and scanners don't all use the same ports and paths, and Folio
+used to expect you to know them. Now it asks the device.
+
+**Check a network address.** At the top of **Devices**, type a printer's or
+scanner's IP address or host name. Folio asks the device what it offers:
+- printing over IPP (including whether it prints driverless, and whether it
+  accepts only encrypted connections), JetDirect and LPD
+- scanning over eSCL (AirScan) and WSD, with the exact port and path
+
+It shows what it found and suggests how to add the printer. **Add as
+printer** and **Add as scanner** fill in the forms. That includes the
+print server's best driver when the printer can't print driverless. For a
+Samsung M2885FW, for example, it suggests JetDirect with the *Samsung M288x
+Series PXL* driver, the setup known to print correctly.
+
+Folio only asks; nothing is printed or scanned. For JetDirect and LPD it
+opens a connection and closes it again without sending anything.
+
+**WSD scanners no longer start from Samsung's address.** The scanner form
+used to fill in port 8018 and `/wsd/scan`, which Samsung's scanners use.
+Other brands use their own: an Epson L3250 uses port 80 and `/WDP/SCAN`.
+The two fields now start empty. Leave them empty and Folio asks the
+scanner:
+- First it sends a WSD discovery request straight to the scanner's address
+  (the usual discovery reaches only the local network), and reads the scan
+  address from the scanner's list of services.
+- Some scanners don't answer that (the Samsung M2885FW doesn't). Then Folio
+  tries the addresses known brands use, and keeps one only if a scanner
+  answers there.
+- If nothing answers, Folio says so, and you can type the port and path from
+  the scanner's network settings.
+
+Scanners you have already added keep their settings.
+
+**Port and path for a typed printer address.** For printers on unusual
+ports, open *Port and path (optional)* under the printer's address. The
+fields show each connection's usual values.
 
 ### Fixed
 - **Some driverless printers couldn't be added.** Adding an Epson L3250
@@ -25,6 +63,52 @@ Sections for 0.9.5 and earlier are carried over from the release READMEs.
   Some printers (the Epson too) answer only over an encrypted connection,
   so the check couldn't run and Folio went ahead without it. Folio now asks
   again over an encrypted connection.
+- **Switching a scanner between WSD and eSCL** kept the old protocol's port
+  and path. Now the new protocol's are used: eSCL's standard ones, or for
+  WSD the ones the scanner reports.
+
+### Verified
+- **Tests:** 279 on the host, 3 skipped. Inside the images, on amd64: Full
+  282, Lite 278 with 4 skipped. New tests use a fake network device (WSD
+  discovery over UDP, WSD and eSCL over HTTP) and the fake CUPS server:
+  - a scanner that describes itself
+  - one that doesn't, found at a known address, and none assumed when none
+    answers
+  - eSCL offered first
+  - answers with a DOCTYPE, and redirects, ignored
+  - only the given address asked, even when a device names another host
+  - JetDirect checked without sending anything
+  - the suggestions, including a driver from the print server
+  - adding a WSD scanner without port and path, and switching protocol
+  - a printer address with a port and path
+  - the driverless fallback when CUPS turns a printer down (and the
+    half-made printer removed when both fail), and the check over HTTPS
+- **With the maintainer's two real devices, in a separate test copy of
+  Folio (Full), in headless Chrome:**
+  - **Epson L3250.** The check found WSD scanning at port 80, `/WDP/SCAN`
+    (from the device itself) and driverless IPP (encrypted connections
+    only). From the filled-in forms it was added as a scanner (Folio read
+    its options: flatbed, colour, grey, up to 300 dpi), and as a driverless
+    printer, with cups-filters' driver.
+  - **Samsung M2885FW.** The check found WSD scanning at port 8018,
+    `/wsd/scan` (at the known address), and suggested JetDirect with the
+    *Samsung M288x Series PXL* driver. It was added as a scanner from its IP
+    address alone.
+  - An address with nothing there, and a mistyped one, are explained.
+  - At phone width (375 px), nothing is wider than the screen.
+  - Nothing was printed or scanned.
+- **The Epson driverless setup** also worked in a test copy of the Lite
+  edition.
+- **Start-up check:** both images start healthy.
+- **Not verified:**
+  - printing a page and scanning a page with the Epson
+  - the arm64 images (built and tested by the release workflow)
+
+### Upgrading
+Nothing is required; your data and settings carry over, and scanners keep
+their ports and paths. To move from 0.21, set `FOLIO_VERSION=0.22` in `.env`
+(or use the `full` or `lite` tag), then `docker compose pull` and
+`docker compose up -d`.
 
 ## 0.21.0 — Fair turns, Debian 13, easier to read
 

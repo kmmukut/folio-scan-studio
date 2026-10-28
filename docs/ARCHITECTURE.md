@@ -16,7 +16,7 @@ Most of what makes an old printer feel modern comes from the sharing layer.
 Folio's job is to make the device and sharing layers easy to set up and keep
 healthy, and to make the workflow layer excellent.
 
-## Current structure (0.21)
+## Current structure (0.22)
 
 - `backend/app.py`: the application's shared core: settings and data
   folders, the sign-in middleware, start-up and background upkeep, and the
@@ -43,6 +43,8 @@ healthy, and to make the workflow layer excellent.
 - `backend/ipp.py`: minimal IPP client (CUPS administration and job queries).
 - `backend/cupsadmin.py`: stored CUPS admin logins, discovery, drivers,
   queue management, per-user print jobs, and the driverless check (D17).
+- `backend/probe.py`: what a network address offers (printing over IPP,
+  JetDirect, LPD; scanning over eSCL, WSD), read-only (D19).
 - `backend/stats.py`: Folio's print log and the statistics built from it
   (D12); `backend/cupsimport.py` optionally adds jobs sent straight to CUPS.
 - `backend/printserver.py`: the built-in print server: writes CUPS's
@@ -314,6 +316,43 @@ doesn't repeat anything. "Offline" is deliberately ignored. Nothing is
 remembered while email can't be sent, so problems that exist when email is
 set up are still reported once.
 
+### D19 — Ask the device what it offers (0.22)
+Ports and paths differ by brand. WSD scanning has no standard address at
+all: Samsung uses port 8018 and `/wsd/scan`, Epson port 80 and `/WDP/SCAN`.
+The scanner form used to start from Samsung's. **Check a network address**
+(`backend/probe.py`) asks the device instead, and only reads:
+- **IPP:** Get-Printer-Attributes at the usual paths (`/ipp/print` first),
+  plain and then over TLS, for the formats (driverless or not) and model.
+- **JetDirect and LPD:** a TCP connection is opened and closed. Nothing is
+  sent, so a printer can't take it for a job.
+- **eSCL:** `ScannerCapabilities` over HTTP.
+- **WSD:** a WS-Discovery probe sent straight to the address over UDP, then
+  a WS-Transfer Get for the device's list of services, which names the scan
+  service. Multicast discovery doesn't cross subnets or Docker's bridge
+  network; a direct probe does.
+
+Some devices ignore a direct probe (the Samsung M2885FW does). Then the scan
+addresses seen on real devices are tried, and one is used only if a scanner
+answers a GetScannerElements request there. That keeps D6: the device
+confirms, rather than Folio assuming from a brand. The list grows with
+hardware reports. Adding a WSD scanner with its port and path left empty
+runs the same search.
+
+Tried and left out: asking over mDNS directly (unicast DNS-SD to port
+5353), which would also give eSCL paths and LPD queue names. Neither test
+device answered it from another subnet, which is the usual case for Folio
+in Docker.
+
+**Safety.** Only administrators can run the check. Folio contacts only the
+address it was given: when a device names another host in its answers,
+Folio keeps the port and path but asks the given address. Redirects aren't
+followed, no proxy is used, answers are limited to 512 KB, and XML with a
+DOCTYPE is refused (entities could make a small answer huge).
+
+**Suggestions.** Driverless over IPP when the printer accepts PDF or PWG
+raster. Otherwise a driver (the print server's best match for the model,
+as in the driverless check), over JetDirect, IPP or LPD, in that order.
+
 ### D6 — Capabilities come from the device, never from model names
 Sizes, trays, duplex, colour, scan modes and resolutions are what CUPS/SANE
 report. Folio does not fabricate options, and no device, address or network
@@ -343,8 +382,10 @@ may change with real use.
    with a login chosen in Folio, a driverless check; see D17.
 11. ~~**0.20 — Email.**~~ Invitations, "Forgot your password?", notifications;
    see D18.
-12. **Next candidates:** a Raspberry Pi check and community hardware reports
-   toward 1.0; translations; saved scan presets.
+12. ~~**0.22 — Check a network address.**~~ Folio asks a device which ways
+   to print and scan it offers, with ports and paths; see D19.
+13. **Next candidates:** community hardware reports toward 1.0;
+   translations; saved scan presets.
 USB-specific work waits for community testers (D11).
 
 Before 1.0: a fresh Raspberry Pi plus a supported USB printer reaches a first

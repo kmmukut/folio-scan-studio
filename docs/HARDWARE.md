@@ -28,6 +28,9 @@ the options the device reports.
 
 - **Network scanners** that speak eSCL (AirScan) or WSD work through
   sane-airscan, which is built in. Add them in **Devices** by IP address.
+  Each brand's WSD scanners use their own port and path (Samsung: 8018 and
+  `/wsd/scan`; Epson: 80 and `/WDP/SCAN`). Folio asks the scanner for them,
+  so leave both empty, or use **Check a network address**.
 - **HP multifunction printers** scan through eSCL like the others. HP's own
   SANE plug-in (hpaio) is switched off in the image, because without D-Bus
   it crashes every scanner listing; HP's printer drivers are all included.

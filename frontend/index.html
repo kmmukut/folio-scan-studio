@@ -104,7 +104,7 @@
     <div class="rail-bottom">
       <div class="machine-status"><span class="led" id="device-led"></span><div><span id="rail-scanner-name">Selected scanner</span><small id="device-status">Checking connection…</small></div></div>
       <button class="rail-logout" id="logout-button">SIGN OUT <span>↗</span></button>
-      <div class="rail-license">EDITION <span>0.21.0</span></div>
+      <div class="rail-license">EDITION <span>0.22.0</span></div>
       <a class="rail-source" href="https://github.com/kmmukut/folio-scan-studio" target="_blank" rel="noopener">Source code · AGPL-3.0</a>
     </div>
   </aside>
@@ -257,6 +257,11 @@
       <div class="overline">EQUIPMENT / 06</div><h1>Tools of<br><em>the trade.</em></h1>
       <p>Add, edit or remove scanners and printers right here; Folio writes the SANE configuration and sets up CUPS queues for you. Neither requires a Docker restart.</p>
       <div class="device-intro"><span class="led on"></span><strong id="device-cups-server">CUPS server</strong><button class="button outline-button" type="button" id="devices-refresh">Refresh devices ↻</button></div>
+      <div class="device-add-panel address-check"><h3>Check a network address</h3>
+        <p>Type a printer’s or scanner’s IP address or host name. Folio asks the device what it offers (printing over IPP, JetDirect or LPD; scanning over eSCL or WSD, with the exact port and path) and fills in the forms below. It only asks: nothing is printed or scanned.</p>
+        <form id="address-check-form" class="device-form"><div class="device-form-row"><label>IP address or host name <input id="address-check-input" placeholder="192.168.1.60" required maxlength="253" autocomplete="off"></label><button class="button dark-button" type="submit" id="address-check-submit">Check</button></div></form>
+        <div id="address-check-result" class="address-check-result" role="status" aria-live="polite"></div>
+      </div>
       <div class="device-grid">
         <div class="device-column">
           <div class="device-heading"><span class="overline">01 / SCANNERS</span><h2>Capture devices.</h2><p>Choose the default, check capabilities, or edit network endpoints.</p></div>
@@ -266,11 +271,11 @@
             <form id="scanner-device-form" class="device-form">
               <label>Display name <input id="device-scanner-name" maxlength="75" placeholder="Office scanner" required></label>
               <label>IP address <input id="device-scanner-ip" placeholder="192.168.1.50" required inputmode="decimal"></label>
-              <div class="device-form-row"><label>Protocol <select id="device-scanner-protocol"><option value="WSD">WSD</option><option value="eSCL">eSCL / AirScan</option></select></label><label>Port <input id="device-scanner-port" type="number" min="1" max="65535" value="8018"></label></div>
-              <label>Endpoint path <input id="device-scanner-path" value="/wsd/scan" placeholder="/wsd/scan"></label>
+              <div class="device-form-row"><label>Protocol <select id="device-scanner-protocol"><option value="WSD">WSD</option><option value="eSCL">eSCL / AirScan</option></select></label><label>Port <input id="device-scanner-port" type="number" min="1" max="65535" placeholder="automatic"></label></div>
+              <label>Endpoint path <input id="device-scanner-path" maxlength="128" placeholder="automatic" autocomplete="off"></label>
               <label class="device-checkbox"><input id="device-scanner-default" type="checkbox"> Make default scanner</label>
               <div class="device-form-row"><button class="button dark-button" type="submit" id="scanner-form-save">Add scanner</button><button class="button outline-button hidden" id="scanner-form-cancel" type="button">Cancel edit</button></div>
-            </form><p class="inline-note">For VLAN-separated scanners, enter their reachable IP and endpoint. Folio writes the configuration into persistent storage. Nothing to mount in Docker Compose. If this is your first scanner, it becomes the default automatically.</p>
+            </form><p class="inline-note">Each brand’s WSD scanners use their own port and path: leave them empty and Folio asks the scanner, or use <strong>Check a network address</strong> above. For VLAN-separated scanners, enter their reachable IP. Folio writes the configuration into persistent storage. Nothing to mount in Docker Compose. If this is your first scanner, it becomes the default automatically.</p>
           </div>
         </div>
         <div class="device-column">
@@ -284,7 +289,8 @@
               </section>
               <section class="setup-step"><h4><span>2</span> The printer</h4>
                 <label class="device-checkbox"><input type="radio" name="printer-way" value="manual" checked> <span><strong>Type the printer’s address</strong> · find it in the printer’s network settings or on its printed configuration page</span></label>
-                <div id="manual-printer" class="device-form-row step-indent"><label>Printer’s IP address or host name <input id="add-printer-address" placeholder="192.168.1.60" autocomplete="off"></label><label>How Folio should reach it <select id="add-printer-connection"><option value="ipp">IPP / AirPrint (most printers)</option><option value="socket">JetDirect (port 9100)</option><option value="lpd">LPD (very old printers)</option></select></label></div>
+                <div id="manual-printer" class="step-indent"><div class="device-form-row"><label>Printer’s IP address or host name <input id="add-printer-address" placeholder="192.168.1.60" autocomplete="off"></label><label>How Folio should reach it <select id="add-printer-connection"><option value="ipp">IPP / AirPrint (most printers)</option><option value="socket">JetDirect (port 9100)</option><option value="lpd">LPD (very old printers)</option></select></label></div>
+                  <details id="manual-printer-details" class="manual-details"><summary>Port and path (optional)</summary><div class="device-form-row"><label>Port <input id="add-printer-port" type="number" min="1" max="65535" placeholder="631"></label><label id="add-printer-path-field">Path <input id="add-printer-path" maxlength="120" placeholder="/ipp/print" autocomplete="off"></label></div></details></div>
                 <label class="device-checkbox"><input type="radio" name="printer-way" value="search"> <span><strong>Search for it</strong> · finds USB printers on the print server, and network printers on the print server’s own network</span></label>
                 <div id="printer-search" class="step-indent hidden"><div class="device-form-row find-row"><button type="button" class="button outline-button" id="find-printers">Search now</button><span id="find-printers-status" class="inline-note"></span></div><div id="found-printers" class="found-printers"></div></div>
               </section>

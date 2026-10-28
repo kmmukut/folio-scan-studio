@@ -90,7 +90,7 @@ DEVICEID = re.compile(r'^[a-z0-9][a-z0-9-]{0,40}$')
 DEVICE_NAME = re.compile(r'^[A-Za-z0-9][\w .-]{0,75}$')
 SANE_OPT = re.compile(r'^[ \t]*--(source|mode|resolution)[ \t]+([^\r\n]*)', re.I | re.M)
 SANE_LISTED = re.compile(r'^device [`\']([^`\']+)[`\'] is a (.*)$', re.M)
-NETWORK_PROTOCOLS = {'WSD':(8018,'/wsd/scan'), 'eSCL':(80,'/eSCL')}
+NETWORK_PROTOCOLS = {'WSD':None, 'eSCL':(80,'/eSCL')}  # WSD has no standard port or path; Folio asks the scanner
 
 
 def path_for(data_dir: Path) -> Path:
@@ -147,13 +147,18 @@ def save_config(data_dir: Path, state: dict) -> None:
                 os.unlink(tmp)
 
 
-def scanner_endpoint(address: str, port: int, path: str) -> str:
+def scanner_ip(address: str) -> str:
     try:
         ip = ipaddress.ip_address(address.strip())
     except ValueError as exc:
         raise ValueError('Enter a valid scanner IP address') from exc
     if ip.version != 4:
         raise ValueError('IPv4 scanner addresses are supported in this wizard')
+    return str(ip)
+
+
+def scanner_endpoint(address: str, port: int, path: str) -> str:
+    ip = scanner_ip(address)
     if not (1 <= int(port) <= 65535):
         raise ValueError('Invalid scanner port')
     if not re.fullmatch(r'/[A-Za-z0-9._/%-]{0,127}', path) or '..' in path or '//' in path:
@@ -168,11 +173,14 @@ def make_scanner(name: str, address: str, protocol: str, port: int | None,
         raise ValueError('Scanner name should use letters, numbers, spaces, dot or dash')
     if protocol not in NETWORK_PROTOCOLS:
         raise ValueError('Use WSD or eSCL scanning')
-    default_port, default_path=NETWORK_PROTOCOLS[protocol]
-    endpoint=scanner_endpoint(address, port or default_port, path or default_path)
+    default_port, default_path=NETWORK_PROTOCOLS[protocol] or (None, None)
+    port, path=port or default_port, path or default_path
+    if not (port and path):
+        raise ValueError('Enter the scanner’s port and path')
+    endpoint=scanner_endpoint(address, port, path)
     identifier=existing_id or ('net-' + hashlib.sha256(endpoint.encode()).hexdigest()[:12])
     return {'id':identifier, 'name':name, 'kind':'managed', 'protocol':protocol,
-            'ip':address.strip(), 'port':port or default_port,'path':path or default_path,
+            'ip':address.strip(), 'port':port,'path':path,
             'endpoint':endpoint,'enabled':True}
 
 

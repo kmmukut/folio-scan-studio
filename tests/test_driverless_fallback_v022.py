@@ -85,6 +85,7 @@ def test_the_driverless_check_also_asks_printers_that_only_answer_over_tls(tmp_p
                                    'formats': ['application/octet-stream', 'image/pwg-raster', 'application/vnd.epson.escpr']}
         found = cupsadmin.driverless_support(f'ipp://{printer.server}/printers/ipp')
         assert found == {'formats': ['application/octet-stream', 'image/pwg-raster', 'application/vnd.epson.escpr'],
-                         'make_model': 'EPSON L3250 Series', 'full': True}
+                         'make_model': 'EPSON L3250 Series', 'full': True,
+                         'encrypted_only': True}
     finally:
         printer.close()

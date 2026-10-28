@@ -221,7 +221,8 @@ def driverless_support(device_uri: str) -> dict | None:
     attrs = response.group(ipp.PRINTER)
     formats = [str(f) for f in attrs.get('document-format-supported') or []]
     return {'formats': formats, 'make_model': str((attrs.get('printer-make-and-model') or [''])[0] or ''),
-            'full': 'application/pdf' in formats or 'image/pwg-raster' in formats}
+            'full': 'application/pdf' in formats or 'image/pwg-raster' in formats,
+            'encrypted_only': tls and parts.scheme == 'ipp'}
 
 
 def makes(conn: ipp.Connection) -> list[str]:

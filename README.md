@@ -116,12 +116,14 @@ docker compose up -d
 Open `http://<host>:8870` within 15 minutes and create the administrator
 account. A checklist then walks you through the rest:
 
-1. **Devices → Add a printer:** type the printer's IP address or search for
-   it, choose *Driverless* or your model's driver, and print a test page.
-2. **Devices → Add a network scanner:** name, IP address and protocol (WSD
-   or eSCL). Press **Test**.
-3. **Devices → Run checks** confirms storage, printers and scanners.
-4. **Devices → Backup:** download a copy of everything Folio keeps.
+1. **Devices → Check a network address:** type your printer's or scanner's
+   IP address. Folio asks the device how it prints and scans, then
+   **Add as printer** and **Add as scanner** fill in the forms for you
+   (driver, port and path included). Print a test page, and press **Test**
+   on the scanner. You can also fill in the forms yourself, or search for
+   printers.
+2. **Devices → Run checks** confirms storage, printers and scanners.
+3. **Devices → Backup:** download a copy of everything Folio keeps.
 
 Want phones to print without Folio (AirPrint), USB printers, or to use the
 CUPS server you already have? See [Printing](docs/DEPLOYMENT.md#printing).
@@ -136,12 +138,12 @@ Raspberry Pi 3, 4 and 5 running a 64-bit OS, and other ARM servers.
 
 | Edition | Includes | Size (download) | Image |
 |---|---|---|---|
-| **Full** | Everything, including searchable PDFs (OCR) and automatic straightening suggestions | ~1.3 GB (~330 MB) | `ghcr.io/kmmukut/folio-scan-studio:0.21-full` |
-| **Lite** | Everything except those two; for Raspberry Pi–class hosts | ~0.9 GB (~220 MB) | `ghcr.io/kmmukut/folio-scan-studio:0.21-lite` |
+| **Full** | Everything, including searchable PDFs (OCR) and automatic straightening suggestions | ~1.3 GB (~330 MB) | `ghcr.io/kmmukut/folio-scan-studio:0.22-full` |
+| **Lite** | Everything except those two; for Raspberry Pi–class hosts | ~0.9 GB (~220 MB) | `ghcr.io/kmmukut/folio-scan-studio:0.22-lite` |
 
 Both include the print server and its drivers. Choose with
-`FOLIO_EDITION=full` or `lite` in `.env`. Tags: `0.21.0-full` (exact),
-`0.21-full` (receives 0.21.x fixes; what `compose.yaml` uses), `full`
+`FOLIO_EDITION=full` or `lite` in `.env`. Tags: `0.22.0-full` (exact),
+`0.22-full` (receives 0.22.x fixes; what `compose.yaml` uses), `full`
 (newest release), and the same with `-lite`. `latest` is the newest Full
 release. The images are also mirrored to Docker Hub as
 `kmmukut/folio-scan-studio`.

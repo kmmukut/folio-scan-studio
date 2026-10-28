@@ -59,9 +59,9 @@ async function handleScannerAction(btn){
     $('#scanner-form-title').textContent=`Edit ${current.name}`;
     $('#device-scanner-name').value=current.name;
     $('#device-scanner-ip').value=current.ip||'';
-    $('#device-scanner-protocol').value=current.protocol||'WSD';
-    $('#device-scanner-port').value=current.port||8018;
-    $('#device-scanner-path').value=current.path||'/wsd/scan';
+    $('#device-scanner-protocol').value=current.protocol||'WSD';updateScannerPlaceholders();
+    $('#device-scanner-port').value=current.port||'';
+    $('#device-scanner-path').value=current.path||'';
     $('#device-scanner-default').checked=result.default_scanner===id;
     $('#scanner-form-cancel').classList.remove('hidden');
     $('#scanner-form-save').textContent='Save changes';
@@ -82,7 +82,7 @@ async function handleScannerAction(btn){
 function clearScannerEditor(){
   const f=$('#scanner-device-form');f.reset();delete f.dataset.editId;
   $('#scanner-form-title').textContent='Add a network scanner';
-  $('#device-scanner-port').value='8018';$('#device-scanner-path').value='/wsd/scan';
+  updateScannerPlaceholders();
   $('#scanner-form-save').textContent='Add scanner';
   $('#scanner-form-cancel').classList.add('hidden');
 }
@@ -96,22 +96,28 @@ $('#attach-scanner-form').onsubmit=async event=>{
     toast('Detected scanner attached to Folio.');
   }catch(error){problem(error);}
 };
-$('#device-scanner-protocol').onchange=()=>{
+// WSD has no standard port or path (each brand picks its own); left empty, Folio asks the scanner.
+function updateScannerPlaceholders(){
   const wsd=$('#device-scanner-protocol').value==='WSD';
-  $('#device-scanner-port').value=wsd?8018:80;
-  $('#device-scanner-path').value=wsd?'/wsd/scan':'/eSCL';
+  $('#device-scanner-port').placeholder=wsd?'automatic':'80';
+  $('#device-scanner-path').placeholder=wsd?'automatic':'/eSCL';
+}
+$('#device-scanner-protocol').onchange=()=>{
+  $('#device-scanner-port').value='';$('#device-scanner-path').value='';updateScannerPlaceholders();
 };
 $('#scanner-device-form').onsubmit=async e=>{
-  e.preventDefault();const f=e.currentTarget,id=f.dataset.editId;
+  e.preventDefault();const f=e.currentTarget,id=f.dataset.editId,save=$('#scanner-form-save'),label=save.textContent;
   const body={name:$('#device-scanner-name').value,ip:$('#device-scanner-ip').value,
-      protocol:$('#device-scanner-protocol').value,port:Number($('#device-scanner-port').value),
-      path:$('#device-scanner-path').value,make_default:$('#device-scanner-default').checked};
+      protocol:$('#device-scanner-protocol').value,port:Number($('#device-scanner-port').value)||null,
+      path:$('#device-scanner-path').value.trim()||null,make_default:$('#device-scanner-default').checked};
+  save.disabled=true;save.textContent=body.protocol==='WSD'&&!(body.port&&body.path)?'Asking the scanner…':'Saving…';
   try{
     await api(id?`/api/admin/scanners/${id}`:'/api/admin/scanners',
               {method:id?'PATCH':'POST',body});
     clearScannerEditor();await refreshDeviceManager();await refreshScannerChoices();
     toast('Scanner saved. Its SANE connection has been updated without restarting Folio. Use Test to verify.');
-  }catch(error){problem(error);}
+  }catch(error){problem(error);save.textContent=label;}
+  finally{save.disabled=false;}
 };
 async function handlePrinterAction(btn){
   const card=btn.closest('[data-printer]'),queue=card.dataset.printer;
@@ -183,7 +189,7 @@ $('#add-server-form').onsubmit=async event=>{
   }catch(error){problem(error);}
   finally{button.disabled=false;button.textContent='Add print server';}
 };
-const addPrinter={found:[],makesFor:null};
+const addPrinter={found:[],makesFor:null,checked:null};  // checked: the model a network address check found
 // 'manual', a detected device's URI, or '' while searching without a choice.
 function selectedSource(){
   if(document.querySelector('input[name=printer-way]:checked').value==='manual')return 'manual';
@@ -195,8 +201,21 @@ function updatePrinterForm(){
   $('#manual-printer').classList.toggle('hidden',searching);
   $('#printer-search').classList.toggle('hidden',!searching);
   $('#driver-picker').classList.toggle('hidden',driverKind()!=='ppd');
-  if(driverKind()==='ppd')loadDriverMakes(addPrinter.found.find(d=>d.uri===selectedSource())).catch(problem);
+  if(driverKind()==='ppd')return loadDriverMakes(addPrinter.found.find(d=>d.uri===selectedSource())||(selectedSource()==='manual'?addPrinter.checked:null)).catch(problem);
 }
+// A typed address: port and path are optional, with each connection's usual ones as placeholders.
+const CONNECTION_DEFAULTS={ipp:['631','/ipp/print'],socket:['9100',''],lpd:['515','/queue']};
+function updateConnectionFields(){
+  const [port,path]=CONNECTION_DEFAULTS[$('#add-printer-connection').value];
+  $('#add-printer-port').placeholder=port;$('#add-printer-path').placeholder=path;
+  $('#add-printer-path-field').classList.toggle('hidden',!path);
+}
+function manualPrinterTarget(){
+  const connection=$('#add-printer-connection').value,path=$('#add-printer-path').value.trim();
+  return {connection,address:$('#add-printer-address').value.trim(),port:Number($('#add-printer-port').value)||null,path:connection!=='socket'&&path?path:null};
+}
+$('#add-printer-connection').onchange=updateConnectionFields;
+$('#add-printer-address').oninput=()=>{addPrinter.checked=null;};
 function suggestName(text){return (text.match(/[A-Za-z0-9]+/g)||[]).slice(0,4).join('_').slice(0,60);}
 function useFoundPrinter(device){
   $('#add-printer-name').value=suggestName(device.make_model||device.name);
@@ -254,13 +273,14 @@ $('#add-printer-form').onsubmit=async event=>{
   }
   const body={name:$('#add-printer-name').value.trim(),driver,location:$('#add-printer-location').value.trim(),
     make_default:$('#add-printer-default').checked,guest:$('#add-printer-guest').checked,
-    ...(source==='manual'?{connection:$('#add-printer-connection').value,address:$('#add-printer-address').value.trim()}:{device_uri:source})};
+    ...(source==='manual'?manualPrinterTarget():{device_uri:source})};
   button.disabled=true;
   try{
     const started=await api(`${serverPath($('#add-printer-server').value)}/printers`,{method:'POST',body});
     const {result}=await followTask(started.task,{onUpdate:task=>setPrintFeedback(feedback,taskText(task),'info')});
     setPrintFeedback(feedback,`${result.queue} is ready${result.state?.driver?` (${result.state.driver})`:''}. Use Test page on its card to check it.`,'ok');
-    $('#add-printer-form').reset();addPrinter.found=[];$('#found-printers').innerHTML='';$('#find-printers-status').textContent='';updatePrinterForm();
+    $('#add-printer-form').reset();addPrinter.found=[];addPrinter.checked=null;$('#found-printers').innerHTML='';$('#find-printers-status').textContent='';
+    $('#manual-printer-details').open=false;updateConnectionFields();updatePrinterForm();
     await refreshDeviceManager(true);await refreshPrintQueues(true);
   }catch(error){setPrintFeedback(feedback,error.message,'error');}
   finally{button.disabled=false;}
@@ -268,7 +288,7 @@ $('#add-printer-form').onsubmit=async event=>{
 // Driverless printing needs PDF or PWG raster; some printers that offer only
 // AirPrint's raster print it as garbage. Ask the printer first, and offer a driver.
 async function checkDriverless(source,feedback){
-  const target=source==='manual'?($('#add-printer-connection').value==='ipp'?{connection:'ipp',address:$('#add-printer-address').value.trim()}:null)
+  const target=source==='manual'?($('#add-printer-connection').value==='ipp'?manualPrinterTarget():null)
     :(/^ipps?:\/\//i.test(source)?{device_uri:source}:null);
   if(!target)return 'everywhere';
   setPrintFeedback(feedback,'Asking the printer which formats it accepts…','info');
@@ -286,6 +306,65 @@ async function checkDriverless(source,feedback){
   if(confirm(`${printer} ${why}.\n\nAdd it as driverless anyway? If its pages come out garbled, remove it and choose a driver in step 3, or connect it as JetDirect.`))return 'everywhere';
   setPrintFeedback(feedback,'Not added. Choose a driver in step 3, or connect it as JetDirect.','info');
   return null;
+}
+// Check a network address: Folio asks the device what it offers (it only asks;
+// nothing is printed or scanned), then fills in the scanner or printer form.
+let checkedAddress=null;
+const PROTOCOL_NAMES={eSCL:'eSCL / AirScan',WSD:'WSD'},CONNECTION_NAMES={ipp:'IPP',socket:'JetDirect',lpd:'LPD'};
+$('#address-check-form').onsubmit=async event=>{
+  event.preventDefault();
+  const button=$('#address-check-submit'),out=$('#address-check-result');
+  button.disabled=true;button.textContent='Checking…';out.innerHTML='<p class="inline-note">Asking the device. This takes a few seconds.</p>';
+  try{
+    checkedAddress=await api('/api/admin/devices/check-address',{method:'POST',body:{address:$('#address-check-input').value.trim(),server:$('#add-printer-server').value||null}});
+    out.innerHTML=addressCheckHtml(checkedAddress);
+    out.querySelectorAll('[data-use-scanner]').forEach(b=>b.onclick=()=>useCheckedScanner(checkedAddress.scanners[Number(b.dataset.useScanner)]));
+    out.querySelectorAll('[data-use-printer]').forEach(b=>b.onclick=()=>useCheckedPrinter().catch(problem));
+  }catch(error){out.innerHTML=`<p class="print-feedback error">${html(error.message)}</p>`;}
+  finally{button.disabled=false;button.textContent='Check';}
+};
+function addressCheckHtml(c){
+  const p=c.printing,plan=p.recommended,canAddPrinter=!$('#add-printer-form').classList.contains('hidden');
+  const where=html(c.address)+(c.address!==c.ip?` · ${html(c.ip)}`:'');
+  const heading=c.make_model?`<h4>${html(c.make_model)}<small>${where}</small></h4>`:`<h4>${where}</h4>`;
+  if(!c.scanners.length&&!p.ipp&&!p.jetdirect&&!p.lpd)
+    return `${heading}<p class="print-feedback error">Nothing answered at this address: no printing (IPP, JetDirect, LPD) and no scanning (eSCL, WSD). Check the address, and that the device is switched on and reachable from Folio.</p>`;
+  const scanners=c.scanners.map((s,i)=>`<li><strong>${PROTOCOL_NAMES[s.protocol]}</strong> · port ${s.port} · <code>${html(s.path)}</code>${s.found_by==='known address'?'<br><small>The scanner didn’t describe itself, but answered at the address its brand uses.</small>':''}<br><button type="button" class="small-link" data-use-scanner="${i}">Add as scanner</button></li>`).join('');
+  const printing=[
+    p.ipp&&`<li><strong>IPP</strong> · port ${p.ipp.port} · <code>${html(p.ipp.path)}</code><br><small>${p.ipp.full?'Prints driverless':'Can’t print driverless reliably (no PDF or PWG raster)'}${p.ipp.encrypted_only?' · encrypted connections only':''}</small></li>`,
+    p.jetdirect&&`<li><strong>JetDirect</strong> · port ${p.jetdirect}</li>`,
+    p.lpd&&`<li><strong>LPD</strong> · port ${p.lpd}</li>`].filter(Boolean).join('');
+  const driver=!plan?'':plan.driver==='everywhere'?'driverless':p.suggested?`the driver “${html(p.suggested.name)}”`:'a driver you choose';
+  const add=!plan?'':canAddPrinter?'<button type="button" class="small-link" data-use-printer>Add as printer</button>':'<p class="inline-note">To add it, first connect a print server’s administrator login under <strong>Print servers</strong>.</p>';
+  return `${heading}<div class="address-check-grid">
+    <section><span class="overline">Scanning</span>${scanners?`<ul>${scanners}</ul>`:'<p class="inline-note">No scanning found (eSCL or WSD).</p>'}</section>
+    <section><span class="overline">Printing</span>${printing?`<ul>${printing}</ul>`:'<p class="inline-note">No printing found (IPP, JetDirect or LPD).</p>'}
+      ${plan?`<p class="inline-note">Suggested: ${CONNECTION_NAMES[plan.connection]}, ${driver}.</p>${add}`:''}</section></div>`;
+}
+// Scanner names allow letters, numbers, spaces, dot, dash and underscore.
+function deviceName(text){return (text||'').replace(/[^\w .-]+/g,' ').replace(/\s+/g,' ').trim().replace(/^[^A-Za-z0-9]+/,'').slice(0,75);}
+function useCheckedScanner(s){
+  clearScannerEditor();
+  $('#device-scanner-name').value=deviceName(checkedAddress.make_model||s.name)||'Network scanner';
+  $('#device-scanner-ip').value=checkedAddress.ip;$('#device-scanner-protocol').value=s.protocol;updateScannerPlaceholders();
+  $('#device-scanner-port').value=s.port;$('#device-scanner-path').value=s.path;
+  $('#scanner-device-form').scrollIntoView({behavior:'smooth',block:'center'});$('#device-scanner-name').focus({preventScroll:true});
+  toast('Filled in from the check. Check the name, then press Add scanner.');
+}
+async function useCheckedPrinter(){
+  const c=checkedAddress,plan=c.printing.recommended;
+  document.querySelector('input[name=printer-way][value=manual]').checked=true;
+  $('#add-printer-address').value=c.address;$('#add-printer-connection').value=plan.connection;updateConnectionFields();
+  $('#add-printer-port').value=plan.port||'';$('#add-printer-path').value=plan.path||'';
+  $('#manual-printer-details').open=Boolean(plan.port||plan.path);
+  $('#add-printer-name').value=suggestName(c.make_model||'Printer');
+  addPrinter.checked={make_model:c.make_model};
+  document.querySelector(`input[name=driver-kind][value=${plan.driver==='everywhere'?'everywhere':'ppd'}]`).checked=true;
+  $('#add-printer-form').scrollIntoView({behavior:'smooth',block:'start'});
+  await updatePrinterForm();
+  if(plan.driver&&plan.driver!=='everywhere'&&[...$('#driver-choice').options].some(o=>o.value===plan.driver))$('#driver-choice').value=plan.driver;
+  $('#add-printer-name').focus({preventScroll:true});
+  toast(plan.driver==='everywhere'||plan.driver?'Filled in from the check. Check the name, then press Add printer.':'Filled in from the check. Choose a driver in step 3, then press Add printer.');
 }
 async function handleQueueAction(button){
   const card=button.closest('[data-printer]'),id=card.dataset.printer,action=button.dataset.queueAction;

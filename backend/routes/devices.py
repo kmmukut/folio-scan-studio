@@ -17,7 +17,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from backend import airprint, cupsadmin, devices, diagnostics, ipp, printing, printserver, tasks
+from backend import airprint, cupsadmin, devices, diagnostics, ipp, printing, printserver, probe, tasks
 from backend.version import __version__
 from backend import app as web
 
@@ -103,11 +103,24 @@ def admin_devices(refresh: bool = False):
             'cups_servers':web.cups_servers()}
 
 
+def scanner_record(name: str, ip: str, protocol: str, port: int | None, path: str | None,
+                   existing_id: str | None = None) -> dict:
+    """devices.make_scanner, after asking a WSD scanner for its port and path
+    when they're left empty (WSD has no standard ones)."""
+    if protocol=='WSD' and not (port and path):
+        found=probe.wsd_scanner(devices.scanner_ip(ip))
+        if not found:
+            raise ValueError(f'No WSD scanner answered at {ip.strip()}. Enter its port and path (in the scanner’s '
+                             'network settings), or use Check a network address.')
+        port,path=port or found['port'],path or found['path']
+    return devices.make_scanner(name,ip,protocol,port,path,existing_id=existing_id)
+
+
 @router.post('/api/admin/scanners',status_code=201)
 def register_scanner(body: ScannerConfigBody):
     cfg=web.registry()
     try:
-        record=devices.make_scanner(body.name,body.ip,body.protocol,body.port,body.path)
+        record=scanner_record(body.name,body.ip,body.protocol,body.port,body.path)
     except ValueError as exc:
         raise HTTPException(400,str(exc)) from exc
     if any((e['id']==record['id'] or
@@ -157,7 +170,7 @@ def modify_scanner(scanner_id: str, body: ScannerUpdateBody):
     if original['kind']=='attached':
         if body.ip is not None:
             try:
-                original.update(devices.make_scanner(body.name or original['name'],body.ip,
+                original.update(scanner_record(body.name or original['name'],body.ip,
                     body.protocol or 'WSD',body.port,body.path,existing_id=original['id']))
             except ValueError as exc:
                 raise HTTPException(400,str(exc)) from exc
@@ -171,7 +184,7 @@ def modify_scanner(scanner_id: str, body: ScannerUpdateBody):
             # administrator changes its endpoint. Leave the RO legacy mount intact.
             if body.ip is not None:
                 try:
-                    original.update(devices.make_scanner(body.name or original['name'],body.ip,
+                    original.update(scanner_record(body.name or original['name'],body.ip,
                         body.protocol or 'WSD',body.port,body.path,existing_id=original['id']))
                 except ValueError as exc:
                     raise HTTPException(400,str(exc)) from exc
@@ -180,10 +193,12 @@ def modify_scanner(scanner_id: str, body: ScannerUpdateBody):
             elif body.name:
                 original['name']=body.name[:75]
         else:
+            protocol=body.protocol or original['protocol']
+            same=protocol==original['protocol']  # Another protocol doesn't keep the old port and path
             try:
-                new=devices.make_scanner(body.name or original['name'],body.ip or original['ip'],
-                                         body.protocol or original['protocol'],body.port or original['port'],
-                                         body.path or original['path'],existing_id=original['id'])
+                new=scanner_record(body.name or original['name'],body.ip or original['ip'],protocol,
+                                   body.port or (original['port'] if same else None),
+                                   body.path or (original['path'] if same else None),existing_id=original['id'])
             except ValueError as exc:
                 raise HTTPException(400,str(exc)) from exc
             original.update(new)
@@ -417,15 +432,41 @@ def check_driverless(server: str, body: DriverlessCheckBody):
     support = cupsadmin.driverless_support(uri)
     if support is None:
         return {'checked': False}
-    suggested = None
-    if not support['full'] and support['make_model']:
-        try:
-            candidates = cupsadmin.models(cupsadmin.connection(web.DATA_DIR, server), support['make_model'].split()[0])
-            ranked = cupsadmin.rank_drivers(candidates, support['make_model'], limit=1)
-            suggested = ranked[0] if ranked else None
-        except ipp.IPPError:
-            suggested = None
+    suggested = suggest_driver(server, support['make_model']) if not support['full'] else None
     return {'checked': True, **support, 'suggested': suggested}
+
+
+def suggest_driver(server: str, make_model: str) -> dict | None:
+    """This print server's best driver for a printer model, if it has one."""
+    if not make_model:
+        return None
+    try:
+        candidates = cupsadmin.models(cupsadmin.connection(web.DATA_DIR, server), make_model.split()[0])
+    except ipp.IPPError:
+        return None
+    ranked = cupsadmin.rank_drivers(candidates, make_model, limit=1)
+    return ranked[0] if ranked else None
+
+
+class AddressCheckBody(BaseModel):
+    address: str = Field(min_length=1, max_length=253)
+    server: str | None = Field(default=None, max_length=300)  # For a driver suggestion
+
+
+@router.post('/api/admin/devices/check-address')
+def check_address(body: AddressCheckBody):
+    """What a printer's or scanner's address offers, to fill in the forms.
+    Only asks the device; nothing is printed or scanned."""
+    try:
+        found = probe.check(body.address)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    printing = found['printing']
+    needs_driver = not (printing['ipp'] or {}).get('full') and (printing['ipp'] or printing['jetdirect'] or printing['lpd'])
+    suggested = suggest_driver(web.configured_server(body.server), found['make_model']) if body.server and needs_driver else None
+    printing['suggested'] = suggested
+    printing['recommended'] = probe.recommend_printer(found, suggested)
+    return found
 
 
 class WebAdminBody(BaseModel):

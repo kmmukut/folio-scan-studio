@@ -30,8 +30,8 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Lint (errors only)
         run: ruff check backend tests
-      - name: Check the page script
-        run: node --check frontend/app.js
+      - name: Check the page scripts
+        run: node --check frontend/app.js && node --check frontend/sw.js
       - name: Tests
         run: python -m pytest -q
 

@@ -1938,4 +1938,7 @@ async function runDiagnostics(){
   finally{button.disabled=false;}
 }
 
+// Installable as an app (0.20.1). Browsers allow the service worker only over
+// HTTPS (or on the computer Folio runs on); over plain http Folio works as before.
+if('serviceWorker' in navigator && window.isSecureContext)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 boot().catch(problem);

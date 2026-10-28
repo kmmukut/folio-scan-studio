@@ -92,6 +92,8 @@ and privacy-conscious design.
   them on the Print desk.
 - **Share safely:** administrator, member and print-only accounts, private
   document libraries, and optional rate-limited guest printing.
+- **Install it like an app** on phones and computers, with its own icon and
+  window (when Folio is served over HTTPS).
 
 | Print desk | Statistics |
 |---|---|

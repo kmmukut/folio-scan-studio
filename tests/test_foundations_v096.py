@@ -211,8 +211,8 @@ def test_no_development_network_addresses_in_shipped_files():
     """Examples use loopback, documentation ranges or obvious placeholders, never a real network."""
     allowed = [ipaddress.ip_network(n) for n in ('127.0.0.0/8', '0.0.0.0/32', '192.0.2.0/24', '198.51.100.0/24',
                                                  '203.0.113.0/24', '192.168.1.0/24', '172.19.0.0/16')]
-    shipped = [*ROOT.glob('backend/*.py'), *ROOT.glob('frontend/*'), ROOT / 'compose.yaml',
-               ROOT / '.env.example', ROOT / 'Dockerfile']
+    shipped = [*ROOT.glob('backend/*.py'), *(p for p in ROOT.glob('frontend/*') if p.is_file()),
+               ROOT / 'compose.yaml', ROOT / '.env.example', ROOT / 'Dockerfile']  # (frontend/icons: images)
     for path in shipped:
         for found in re.findall(r'\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b', path.read_text(encoding='utf-8')):
             network = ipaddress.ip_network(found, strict=False)

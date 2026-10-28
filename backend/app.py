@@ -2118,6 +2118,20 @@ def homepage():
     return HTMLResponse(page, headers={'Cache-Control': 'no-cache'})
 
 
+@app.get('/manifest.webmanifest')
+def web_app_manifest():
+    """What lets phones and computers install Folio as an app."""
+    return FileResponse(WEB_DIR / 'manifest.webmanifest', media_type='application/manifest+json',
+                        headers={'Cache-Control': 'no-cache'})
+
+
+@app.get('/sw.js')
+def service_worker():
+    """Served from the site's root: a service worker only looks after pages in
+    its own folder and below. Always revalidated, so upgrades reach it."""
+    return FileResponse(WEB_DIR / 'sw.js', media_type='text/javascript', headers={'Cache-Control': 'no-cache'})
+
+
 @app.get('/api/health')
 def health():
     """Cheap liveness check for Docker/Portainer; reveals no configuration."""

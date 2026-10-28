@@ -4,6 +4,54 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.20.1 — Install it like an app; documentation brought up to date
+
+**Folio can be installed on phones, tablets and computers**, with its own
+icon (Folio's "F.") and its own window without an address bar:
+- **Android (Chrome):** menu → Add to home screen.
+- **iPhone and iPad (Safari):** Share → Add to Home Screen.
+- **Computers:** the install icon in Chrome's or Edge's address bar.
+
+Browsers offer this only over HTTPS (for example behind a reverse proxy).
+Over plain `http://`, Folio works as before.
+
+The installed app keeps nothing on the device and needs no updating.
+Without a connection to your network, it says that Folio can't be reached
+and offers to try again. The browser tab now shows Folio's icon too.
+
+**Documentation:**
+- **README:** the images table still named 0.15; it now names 0.20, with
+  the measured download sizes.
+- **Deployment guide:**
+  - memory use with the print server (about 180 MB at rest)
+  - email and port 631 behind a reverse proxy
+  - installing as an app
+- **Hardware list:** the driverless check, HP scanning through eSCL, and
+  the maintainer's Samsung (use the PXL driver; driverless garbles pages).
+- **Contributing guide:** the image test scripts, and that no administrator
+  password is needed.
+- A new test fails if the documentation names a version other than the
+  current one.
+
+### Verified
+- **Tests:** 244 on the host. Inside the images, on amd64: Full 246,
+  Lite 243 with 3 skipped. They check the manifest, every icon's size, the page's
+  links to them, and that the service worker stores nothing.
+- **In headless Chrome** (on the computer Folio runs on, which browsers
+  treat like HTTPS):
+  - the service worker takes charge of the page
+  - Chrome reports no manifest errors and no reasons it couldn't install
+  - offline, the "can't be reached" page appears (checked at phone width),
+    and *Try again* returns to the sign-in page once back online
+- **Not verified:**
+  - installing on a real phone, and iPhone home-screen behaviour (no
+    device here)
+  - the arm64 images (built and tested by the release workflow)
+
+### Upgrading
+Nothing is required. To install Folio, open it over HTTPS and use the
+browser's install option.
+
 ## 0.20.0 — Email: invitations, password resets, notifications
 
 Folio can now send email through any SMTP server: your provider (Gmail,

@@ -20,6 +20,7 @@ Folio runs as one Docker container. It needs:
 - [Sending documents to Paperless-ngx or a folder](#sending-documents-to-paperless-ngx-or-a-folder)
 - [USB printers and scanners](#usb-printers-and-scanners)
 - [Behind a reverse proxy](#behind-a-reverse-proxy)
+- [Installing Folio as an app](#installing-folio-as-an-app)
 - [Backups and upgrades](#backups-and-upgrades)
 - [Building from source](#building-from-source)
 
@@ -296,6 +297,26 @@ fingerprint in their address, so an upgrade is picked up at once. **Devices
 Folio is designed for a home or office network. If you make it reachable
 from the internet, use HTTPS and strong passwords, and keep guest printing
 off unless you need it.
+
+## Installing Folio as an app
+
+Folio can be installed on phones, tablets and computers like an app: its
+own icon, its own window, no address bar.
+
+- **Android (Chrome):** menu → **Add to home screen** → **Install**.
+- **iPhone and iPad (Safari):** Share → **Add to Home Screen**.
+- **Computers (Chrome, Edge):** the install icon at the right of the address
+  bar.
+
+Browsers offer a real install only when Folio is served over **HTTPS**, for
+example behind a [reverse proxy](#behind-a-reverse-proxy). Opened as
+`http://<address>:8870`, Folio works the same, but a home-screen icon is
+only a bookmark that opens in the browser.
+
+The app is Folio itself, from your server. It keeps nothing on the device:
+without a connection to your network, it says that Folio can't be reached.
+Upgrades reach it at once. On iPhones, the installed app has its own sign-in,
+separate from Safari's.
 
 ## Backups and upgrades
 

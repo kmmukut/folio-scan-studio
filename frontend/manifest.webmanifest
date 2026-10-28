@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "Folio Scan Studio",
+  "short_name": "Folio",
+  "description": "Scan, print and tidy up documents with the printers and scanners you already have.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f2e9",
+  "theme_color": "#172820",
+  "icons": [
+    {"src": "/assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

@@ -50,7 +50,7 @@ python3.12 -m venv .venv && . .venv/bin/activate
 pip install -r requirements-dev.txt
 python -m pytest -q          # the whole suite; no hardware needed
 ruff check backend tests     # errors only (unused imports, undefined names)
-node --check frontend/app.js # or: docker run --rm -v "$PWD/frontend:/src:ro" node:22-alpine node --check /src/app.js
+node --check frontend/app.js && node --check frontend/sw.js   # or in node:22-alpine with Docker
 ```
 
 Tests simulate scanners and CUPS (including an in-process CUPS that speaks

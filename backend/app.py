@@ -661,7 +661,9 @@ def change_guest(body: GuestSettings):
 
 @app.get('/api/admin/users')
 def users():
-    return [{**user, 'quota': quota_state(user['username'])} for user in security.list_users(DATA_DIR)]
+    return [{**user, 'quota': quota_state(user['username']),
+             'jobs': {'limit': security.job_limit_for(DATA_DIR, user['username'])}}
+            for user in security.list_users(DATA_DIR)]
 
 
 class QuotaBody(BaseModel):
@@ -697,6 +699,34 @@ def set_quota_default(body: QuotaBody):
 @app.get('/api/print/quota')
 def my_print_quota(request: Request):
     return quota_state(request.state.username)
+
+
+class JobLimitBody(BaseModel):
+    job_limit: int | None = Field(default=None, ge=-1, le=security.JOB_LIMIT_MAX)
+
+
+@app.put('/api/admin/users/{username}/job-limit')
+def set_user_job_limit(username: str, body: JobLimitBody):
+    """``null``: follow the default; -1: no limit; otherwise jobs at once."""
+    try:
+        security.set_job_limit(DATA_DIR, username, body.job_limit)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {'limit': security.job_limit_for(DATA_DIR, username)}
+
+
+@app.get('/api/admin/job-limit-default')
+def job_limit_default():
+    return {'job_limit': security.job_limit_default(DATA_DIR)}
+
+
+@app.put('/api/admin/job-limit-default')
+def set_job_limit_default(body: JobLimitBody):
+    try:
+        security.set_job_limit_default(DATA_DIR, body.job_limit if body.job_limit is not None else 0)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return job_limit_default()
 
 
 @app.post('/api/admin/users', status_code=201)
@@ -1228,6 +1258,14 @@ def task_owner(request: Request, guest: bool = False) -> str:
     return f'guest:{preview_owner(request, True)}' if guest else f'user:{request.state.username}'
 
 
+GUEST_JOB_LIMIT = 2  # Guests: a print or two at a time (they are rate-limited as well)
+
+
+def job_limit(request: Request, guest: bool = False) -> int | None:
+    """How many background jobs this person may have waiting or running at once."""
+    return GUEST_JOB_LIMIT if guest else security.job_limit_for(DATA_DIR, request.state.username)
+
+
 def task_response(task: tasks.Task) -> JSONResponse:
     return JSONResponse({'task': task.public(tasks.runner.position(task))}, status_code=202)
 
@@ -1250,7 +1288,7 @@ async def submit_preview(request: Request, body: PreviewPrintRequest, guest: boo
     return task_response(tasks.runner.submit(
         'print', 'print', task_owner(request, guest),
         lambda task: run_print(task.directory / 'source', record['kind'], record['name'], choices, task),
-        prepare=lambda folder: shutil.copyfile(source, folder / 'source')))
+        prepare=lambda folder: shutil.copyfile(source, folder / 'source'), limit=job_limit(request, guest)))
 
 
 @app.post('/api/print/submit-preview')
@@ -1773,7 +1811,7 @@ def cups_add_printer(server: str, body: AddPrinterBody, request: Request):
         persist_registry(cfg)
         task.update('Checking the new printer…', .8)
         return {'id': key, 'queue': body.name, 'server': server, 'state': cups_call(cupsadmin.printer_state, conn, body.name)}
-    return task_response(tasks.runner.submit('printer-setup', 'print', task_owner(request), work))
+    return task_response(tasks.runner.submit('printer-setup', 'print', task_owner(request), work, limit=job_limit(request)))
 
 
 @app.delete('/api/admin/printers/{printer}')
@@ -1892,7 +1930,7 @@ def start_backup(request: Request):
         cfg['last_backup_at'] = now()
         persist_registry(cfg)
         return {**manifest, 'bytes': target.stat().st_size}
-    return task_response(tasks.runner.submit('backup', 'export', task_owner(request), work))
+    return task_response(tasks.runner.submit('backup', 'export', task_owner(request), work, limit=job_limit(request)))
 
 
 @app.post('/api/admin/restore', status_code=202)
@@ -1935,7 +1973,7 @@ async def start_restore(request: Request):
                                       f'Restoring ({done} of {total} files)…', .05 + .8 * done / max(total, 1)))
         finally:
             upload.unlink(missing_ok=True)
-    task = tasks.runner.submit('restore', 'export', task_owner(request), work)
+    task = tasks.runner.submit('restore', 'export', task_owner(request), work, limit=job_limit(request))
     return JSONResponse({'task': task.public(tasks.runner.position(task)), 'manifest': manifest}, status_code=202)
 
 
@@ -2145,6 +2183,11 @@ def health():
 def available_features():
     return {'version': __version__, **features.summary(),
             'builtin_print_server': printserver.SERVER if printserver.enabled() else None}
+
+
+@app.exception_handler(tasks.Busy)
+def too_many_jobs(request: Request, exc: tasks.Busy):
+    return JSONResponse({'detail': str(exc)}, status_code=429)
 
 
 @app.exception_handler(features.Unavailable)
@@ -2930,7 +2973,7 @@ def start_export(job_id: str, body: ExportRequest, request: Request):
         build_job_pdf(job_id, j, target, body.quality, body.ocr, task)
         task.file, task.filename = target, export_filename(j, body.ocr)
         return {'pages': len(j['pages']), 'bytes': target.stat().st_size}
-    return task_response(tasks.runner.submit('export', 'export', task_owner(request), work))
+    return task_response(tasks.runner.submit('export', 'export', task_owner(request), work, limit=job_limit(request)))
 
 
 class DestinationBody(BaseModel):
@@ -3031,7 +3074,7 @@ def send_document(job_id: str, body: SendBody, request: Request):
             current.setdefault('sent', []).append({'destination': destination['name'], 'at': now()})
             save_job(current)
         return {'destination': destination['name'], 'detail': detail}
-    return task_response(tasks.runner.submit('send', 'export', task_owner(request), work))
+    return task_response(tasks.runner.submit('send', 'export', task_owner(request), work, limit=job_limit(request)))
 
 
 @app.post('/api/jobs/{job_id}/print')
@@ -3053,7 +3096,7 @@ async def print_folio_document(job_id: str, request: Request, background: bool =
         document = task.directory / 'document.pdf'
         build_job_pdf(job_id, j, document, 'balanced', False, task, progress=(0.0, .6))
         return run_print(document, 'pdf', j['title'], choices, task, progress=(.6, 1.0), origin='document')
-    return task_response(tasks.runner.submit('print', 'print', task_owner(request), work))
+    return task_response(tasks.runner.submit('print', 'print', task_owner(request), work, limit=job_limit(request)))
 
 
 def owned_task(task_id: str, owner: str) -> tasks.Task:

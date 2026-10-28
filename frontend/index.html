@@ -238,6 +238,10 @@
         <form id="quota-default-form" class="people-form quota-default-form"><label>Limit for everyone <input id="quota-default" type="number" min="0" max="100000" placeholder="No limit"></label><button class="button outline-button" type="submit">Save</button></form>
         <p id="quota-warning" class="quota-warning hidden">Print statistics are switched off, so pages aren’t counted and nobody is limited. Turn them on under Statistics.</p>
       </section>
+      <section class="people-panel quota-panel"><span class="overline">JOBS AT ONCE</span><h2>Fair turns.</h2>
+        <p>How many exports, prints and sends each person may have waiting or running at the same time, so no one fills the queue for everyone else. Administrators have no limit; guests may have two at a time. Each person can also have their own number above.</p>
+        <form id="job-limit-form" class="people-form quota-default-form"><label>Jobs at once, for everyone <input id="job-limit-default" type="number" min="1" max="100" required></label><button class="button outline-button" type="submit">Save</button></form>
+      </section>
       <div class="security-note">Changing a user's role, password or enabled status ends their active sessions. Deleting an account preserves its scans for administrators to recover. Invitation links work once, within 48 hours; password links within one hour.</div>
     </section>
     <section id="admin-devices-view" class="devices-desk hidden">

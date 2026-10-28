@@ -8,6 +8,12 @@ heavy job per lane.
 
 Tasks live in memory. A restart forgets them and removes their files at
 startup; the browser reports that as an interrupted job to retry.
+
+Each person may have a limited number of tasks waiting or running (their
+job limit, set by administrators; see security.job_limit_for), and all of
+them together at most MAX_ACTIVE, so no one can fill the queue or the disk
+for everyone. Finished tasks are kept for download per person too, so one
+busy account can't push out someone else's finished export.
 """
 from __future__ import annotations
 
@@ -24,12 +30,18 @@ from uuid import uuid4
 LANES = ('print', 'export')
 RETENTION_SECONDS = 30 * 60   # Finished tasks and their files are kept this long
 MAX_FINISHED = 40             # ...and at most this many, oldest removed first
+MAX_FINISHED_PER_OWNER = 10   # ...of which at most this many are one person's
+MAX_ACTIVE = 50               # Everyone's tasks waiting or running: a backstop for the disk
 FINISHED = ('done', 'failed', 'cancelled')
 log = logging.getLogger('folio.tasks')
 
 
 class Cancelled(Exception):
     """Raised inside a task's work when its owner asked to cancel it."""
+
+
+class Busy(Exception):
+    """Too many tasks are waiting; the message says why, for the person."""
 
 
 @dataclass
@@ -106,24 +118,37 @@ class TaskRunner:
                     self._threads.append(thread)
 
     def submit(self, kind: str, lane: str, owner: str, work: Callable[[Task], Any],
-               prepare: Callable[[Path], None] | None = None) -> Task:
+               prepare: Callable[[Path], None] | None = None, limit: int | None = None) -> Task:
         """Queue ``work``. ``prepare`` runs first, in the caller's thread, to put
-        inputs into the task's private directory before any worker can start."""
+        inputs into the task's private directory before any worker can start.
+
+        ``limit``: how many tasks ``owner`` may have waiting or running (None:
+        no limit of their own). Raises Busy, before anything is written, when
+        that or MAX_ACTIVE is reached."""
         if lane not in LANES or self.root is None:
             raise RuntimeError('Task runner is not started')
         self.prune()
         task_id = uuid4().hex
         task = Task(id=task_id, kind=kind, lane=lane, owner=owner,
                     directory=self.root / task_id, work=work)
-        task.directory.mkdir(mode=0o700)
-        if prepare:
-            try:
-                prepare(task.directory)
-            except BaseException:
-                shutil.rmtree(task.directory, ignore_errors=True)
-                raise
-        with self._mutex:
+        with self._mutex:  # Counted and reserved together, so two requests can't both take the last place
+            active = [t for t in self._tasks.values() if t.status not in FINISHED]
+            mine = sum(t.owner == owner for t in active)
+            if limit is not None and mine >= limit:
+                raise Busy(f"You already have {mine} {'job' if mine == 1 else 'jobs'} waiting or running "
+                           f'(your limit is {limit}). Wait for one to finish, or cancel one.')
+            if len(active) >= MAX_ACTIVE:
+                raise Busy('Folio is busy with many jobs right now. Try again in a minute.')
             self._tasks[task_id] = task
+        try:
+            task.directory.mkdir(mode=0o700)
+            if prepare:
+                prepare(task.directory)
+        except BaseException:
+            with self._mutex:
+                self._tasks.pop(task_id, None)
+            shutil.rmtree(task.directory, ignore_errors=True)
+            raise
         self._queues[lane].put(task)
         return task
 
@@ -184,7 +209,14 @@ class TaskRunner:
             finished = sorted((t for t in self._tasks.values() if t.status in FINISHED),
                               key=lambda t: t.finished or 0)
             expired = [t for t in finished if now - (t.finished or now) > RETENTION_SECONDS]
-            expired += finished[len(expired):max(len(expired), len(finished) - MAX_FINISHED)]
+            kept = [t for t in finished if t not in expired]
+            by_owner: dict[str, list[Task]] = {}
+            for task in kept:
+                by_owner.setdefault(task.owner, []).append(task)
+            for owned in by_owner.values():  # Each person's oldest first, beyond their share
+                expired += owned[:max(0, len(owned) - MAX_FINISHED_PER_OWNER)]
+            kept = [t for t in kept if t not in expired]
+            expired += kept[:max(0, len(kept) - MAX_FINISHED)]
             for task in expired:
                 self._tasks.pop(task.id, None)
         for task in expired:

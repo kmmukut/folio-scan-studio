@@ -904,6 +904,7 @@ async function submitPrintFile(event,guest){
 
 // null (the default) >= 0 is true in JavaScript, so test for a number.
 const ownLimit=u=>typeof u.monthly_pages==='number'&&u.monthly_pages>=0;
+const ownJobs=u=>typeof u.job_limit==='number'&&u.job_limit>=1;
 async function loadUsers(){
   try{
     const [users,mailState]=await Promise.all([api('/api/admin/users'),api('/api/admin/mail').catch(()=>null)]);
@@ -916,6 +917,7 @@ async function loadUsers(){
       <label>Email address <input class="person-email" type="email" maxlength="254" value="${html(u.email||'')}" placeholder="None"></label>
       <label>Reset password (optional) <input class="person-password" type="password" minlength="12" autocomplete="new-password" placeholder="New password, 12+ chars"></label>
       ${u.role==='admin'?'':`<div class="person-quota"><label>Pages a month <select class="person-quota-mode"><option value="default" ${u.monthly_pages===null?'selected':''}>Default</option><option value="none" ${u.monthly_pages===-1?'selected':''}>No limit</option><option value="custom" ${ownLimit(u)?'selected':''}>Their own</option></select></label><input class="person-quota-pages ${ownLimit(u)?'':'hidden'}" type="number" min="0" max="100000" value="${ownLimit(u)?u.monthly_pages:''}" aria-label="Pages a month"><small>${count(u.quota.used)} printed this month${u.quota.limit===null?'':` of ${count(u.quota.limit)}`}</small></div>`}
+      ${u.role==='admin'?'':`<div class="person-quota"><label>Jobs at once <select class="person-jobs-mode"><option value="default" ${u.job_limit===null?'selected':''}>Default</option><option value="none" ${u.job_limit===-1?'selected':''}>No limit</option><option value="custom" ${ownJobs(u)?'selected':''}>Their own</option></select></label><input class="person-jobs-limit ${ownJobs(u)?'':'hidden'}" type="number" min="1" max="100" value="${ownJobs(u)?u.job_limit:''}" aria-label="Jobs at once"><small>Exports, prints and sends waiting or running${u.jobs.limit===null?'':`: at most ${u.jobs.limit}`}</small></div>`}
       <div class="person-actions"><button class="button outline-button person-save">Save changes</button><button class="small-action danger person-delete">Delete user</button></div>
       <div class="person-actions person-links">${u.email&&state.mailReady?`<button type="button" class="small-action" data-person-link="send">${u.pending?'Email a new invitation':'Email a password link'}</button>`:''}<button type="button" class="small-action" data-person-link="copy">${u.pending?'Copy a new invitation link':'Copy a password link'}</button></div>
       <div class="invite-result hidden"></div>
@@ -939,10 +941,16 @@ async function loadUsers(){
           const pages=mode==='default'?null:mode==='none'?-1:Number(row.querySelector('.person-quota-pages').value||0);
           await api(`/api/admin/users/${encodeURIComponent(username)}/quota`,{method:'PUT',body:{monthly_pages:pages}});
         }
+        const jobsMode=row.querySelector('.person-jobs-mode')?.value;
+        if(jobsMode){
+          const jobs=jobsMode==='default'?null:jobsMode==='none'?-1:Number(row.querySelector('.person-jobs-limit').value||0);
+          await api(`/api/admin/users/${encodeURIComponent(username)}/job-limit`,{method:'PUT',body:{job_limit:jobs}});
+        }
         toast('Updated '+username);await loadUsers();
       }catch(e){problem(e);}
     });
     $$('.person-quota-mode').forEach(select=>select.onchange=()=>select.closest('.person').querySelector('.person-quota-pages').classList.toggle('hidden',select.value!=='custom'));
+    $$('.person-jobs-mode').forEach(select=>select.onchange=()=>select.closest('.person').querySelector('.person-jobs-limit').classList.toggle('hidden',select.value!=='custom'));
     $$('.person-delete').forEach(button=>button.onclick=async()=>{
       const username=button.closest('.person').dataset.person;
       if(!confirm(`Delete account "${username}"? Its scans will remain available to administrators.`))return;
@@ -1085,7 +1093,7 @@ const CHECKLIST_ACTIONS={
   printer:['Add a printer',async()=>{await openDeviceManager();$('#add-printer-panel').scrollIntoView({behavior:'smooth'});}],
   print:['Print a test page',async()=>{await openDeviceManager();$('#device-printer-list').scrollIntoView({behavior:'smooth'});}],
   scanner:['Add a scanner',async()=>{await openDeviceManager();$('#device-scanner-list').scrollIntoView({behavior:'smooth'});}],
-  people:['Add people',async()=>{workspace(false,true);await loadUsers();}],
+  people:['Add people',()=>$('#users-tab').onclick()],
   airprint:['How',()=>window.open('https://github.com/kmmukut/folio-scan-studio/blob/main/docs/DEPLOYMENT.md#airprint-phones-and-computers','_blank','noopener')],
   backup:['Back up',async()=>{await openDeviceManager();$('#backup-panel').scrollIntoView({behavior:'smooth'});}],
   email:['Set up',async()=>{await openDeviceManager();$('#email-panel').scrollIntoView({behavior:'smooth'});}],
@@ -1343,7 +1351,16 @@ for(const prefix of ['member','guest']){
   };
 }
 
-$('#users-tab').onclick=async()=>{if(state.role!=='admin')return;workspace(false,true);await Promise.all([loadUsers(),loadQuotaDefault()]);};
+$('#users-tab').onclick=async()=>{if(state.role!=='admin')return;workspace(false,true);await Promise.all([loadUsers(),loadQuotaDefault(),loadJobLimitDefault()]);};
+async function loadJobLimitDefault(){$('#job-limit-default').value=(await api('/api/admin/job-limit-default')).job_limit;}
+$('#job-limit-form').onsubmit=async event=>{
+  event.preventDefault();
+  try{
+    const {job_limit}=await api('/api/admin/job-limit-default',{method:'PUT',body:{job_limit:Number($('#job-limit-default').value)}});
+    toast(`Everyone may have ${job_limit} ${job_limit===1?'job':'jobs'} waiting or running at once, unless they have their own number.`);
+    await Promise.all([loadUsers(),loadJobLimitDefault()]);
+  }catch(e){problem(e);}
+};
 async function loadQuotaDefault(){
   const result=await api('/api/admin/quota-default');
   $('#quota-default').value=result.monthly_pages??'';

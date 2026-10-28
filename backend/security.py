@@ -32,6 +32,8 @@ USERNAME_PATTERN = re.compile(r'^[a-zA-Z][a-zA-Z0-9_.-]{2,31}$')
 EMAIL_PATTERN = re.compile(r'^[^@\s<>(),;:"\\]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?'
                            r'(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)+$')
 LINK_SECONDS = {'invite': 48 * 60 * 60, 'reset': 60 * 60}
+JOB_LIMIT_DEFAULT = 5    # Background jobs a person may have waiting or running, unless set otherwise
+JOB_LIMIT_MAX = 100
 _login_attempts: dict[str, deque] = defaultdict(deque)
 _reset_requests: dict[str, deque] = defaultdict(deque)
 _guest_tokens: dict[str, tuple[str, float]] = {}
@@ -76,6 +78,8 @@ def init(data_dir: Path):
             db.execute('ALTER TABLE users ADD COLUMN email TEXT')
         if 'pending' not in columns:  # Invited, no password chosen yet
             db.execute('ALTER TABLE users ADD COLUMN pending INTEGER NOT NULL DEFAULT 0')
+        if 'job_limit' not in columns:  # Jobs at once: NULL = the default, -1 = no limit
+            db.execute('ALTER TABLE users ADD COLUMN job_limit INTEGER')
         db.execute('CREATE TABLE IF NOT EXISTS password_links (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, '
                    'purpose TEXT NOT NULL, expires INTEGER NOT NULL)')
         db.execute('DELETE FROM password_links WHERE expires < ?', (int(time.time()),))
@@ -217,10 +221,10 @@ def list_users(data_dir: Path):
     with connection(data_dir) as db:
         rows = db.execute('''SELECT u.username,u.role,u.enabled,u.created,u.monthly_pages,u.email,u.pending,
                                     (SELECT max(expires) FROM password_links l WHERE l.username=u.username
-                                     AND l.purpose='invite' AND l.expires >= ?)
+                                     AND l.purpose='invite' AND l.expires >= ?), u.job_limit
                              FROM users u ORDER BY u.created,u.username''', (int(time.time()),)).fetchall()
     return [{'username': r[0], 'role': r[1], 'enabled': bool(r[2]), 'created': r[3], 'monthly_pages': r[4],
-             'email': r[5] or None, 'pending': bool(r[6]), 'invite_expires': r[7]} for r in rows]
+             'email': r[5] or None, 'pending': bool(r[6]), 'invite_expires': r[7], 'job_limit': r[8]} for r in rows]
 
 
 # --- Email addresses and password links (0.20) -------------------------------------
@@ -310,15 +314,37 @@ def link_account(data_dir: Path, token: str | None) -> dict | None:
 
 def use_link(data_dir: Path, token: str, password: str) -> dict:
     """Set the password through a link and sign in; the link (and every other
-    sign-in of the account) stops working."""
+    sign-in of the account) stops working.
+
+    Checking the link and using it up are one transaction, so a link works
+    exactly once even if it is sent twice at the same moment."""
     if not 12 <= len(password) <= 256:
         raise ValueError('Password must contain 12–256 characters')
-    found = link_account(data_dir, token)
-    if not found:
-        raise PermissionError('This link has expired or was already used. Ask for a new one.')
-    with connection(data_dir) as db:
-        _set_password(db, found['username'], password)
-    return {**start_session(data_dir, found['username'], found['role']), 'purpose': found['purpose']}
+    used = PermissionError('This link has expired or was already used. Ask for a new one.')
+    if not token or len(token) > 100:
+        raise used
+    salt = secrets.token_bytes(24)
+    password_hash = hash_password(password, salt)  # Slow on purpose: done before the lock
+    db = sqlite3.connect(db_path(data_dir), timeout=10, isolation_level=None)
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        row = db.execute('''SELECT l.username,l.purpose,u.role,u.enabled FROM password_links l
+                            JOIN users u ON u.username=l.username WHERE l.token_hash=? AND l.expires>=?''',
+                         (hashlib.sha256(token.encode()).hexdigest(), int(time.time()))).fetchone()
+        if not row or not row[3]:
+            db.execute('ROLLBACK')
+            raise used
+        db.execute('UPDATE users SET salt=?, password_hash=?, pending=0 WHERE username=?', (salt, password_hash, row[0]))
+        db.execute('DELETE FROM sessions WHERE username=?', (row[0],))
+        db.execute('DELETE FROM password_links WHERE username=?', (row[0],))
+        db.execute('COMMIT')
+    except sqlite3.Error:
+        if db.in_transaction:
+            db.execute('ROLLBACK')
+        raise
+    finally:
+        db.close()
+    return {**start_session(data_dir, row[0], row[2]), 'purpose': row[1]}
 
 
 def reset_target(data_dir: Path, login: str) -> dict | None:
@@ -392,6 +418,46 @@ def quota_for(data_dir: Path, username: str) -> int | None:
     if not row or row[0] == 'admin' or row[1] == -1:
         return None
     return row[1] if row[1] is not None else quota_default(data_dir)
+
+
+# --- Background jobs at once ------------------------------------------------------
+# How many exports, prints and sends a person may have waiting or running at
+# the same time, so one account can't fill the queue (or the disk) for
+# everyone. Like print quotas: a default, and each account may have its own
+# number or none. Administrators have no limit.
+
+def job_limit_default(data_dir: Path) -> int:
+    with connection(data_dir) as db:
+        row = db.execute("SELECT value FROM settings WHERE key='default_job_limit'").fetchone()
+    return int(row[0]) if row else JOB_LIMIT_DEFAULT
+
+
+def set_job_limit_default(data_dir: Path, jobs: int) -> None:
+    if not 1 <= jobs <= JOB_LIMIT_MAX:
+        raise ValueError(f'Choose between 1 and {JOB_LIMIT_MAX} jobs at once')
+    with connection(data_dir) as db:
+        db.execute("INSERT INTO settings (key,value) VALUES ('default_job_limit', ?) "
+                   'ON CONFLICT(key) DO UPDATE SET value=excluded.value', (str(jobs),))
+
+
+def set_job_limit(data_dir: Path, username: str, jobs: int | None) -> None:
+    """``None``: follow the default; -1: no limit; otherwise jobs at once."""
+    if jobs is not None and jobs != -1 and not 1 <= jobs <= JOB_LIMIT_MAX:
+        raise ValueError(f'Choose between 1 and {JOB_LIMIT_MAX} jobs at once, no limit, or the default')
+    with connection(data_dir) as db:
+        if not db.execute('UPDATE users SET job_limit=? WHERE username=?', (jobs, username)).rowcount:
+            raise ValueError('User does not exist')
+
+
+def job_limit_for(data_dir: Path, username: str) -> int | None:
+    """Jobs this person may have waiting or running at once; ``None`` means no limit."""
+    with connection(data_dir) as db:
+        row = db.execute('SELECT role,job_limit FROM users WHERE username=?', (username,)).fetchone()
+    if not row:
+        return 0  # Gone: no new jobs
+    if row[0] == 'admin' or row[1] == -1:
+        return None
+    return row[1] if row[1] is not None else job_limit_default(data_dir)
 
 
 def add_user(data_dir: Path, username: str, password: str, role: str, email: str | None = None):

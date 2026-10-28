@@ -16,9 +16,18 @@ Most of what makes an old printer feel modern comes from the sharing layer.
 Folio's job is to make the device and sharing layers easy to set up and keep
 healthy, and to make the workflow layer excellent.
 
-## Current structure (0.20)
+## Current structure (0.21)
 
-- `backend/app.py`: FastAPI routes, auth middleware, scan and print flows.
+- `backend/app.py`: the application's shared core: settings and data
+  folders, the sign-in middleware, start-up and background upkeep, and the
+  helpers the routes share (documents on disk, rendering, scanning,
+  printing through CUPS). See D8.
+- `backend/routes/`: the route handlers, one module per area: `accounts`
+  (signing in, people, invitations, quotas and job limits), `devices`
+  (scanners, printers, print servers), `printing` (Print desk, guests,
+  print jobs), `documents` (scanning, pages, editing, exporting, sending),
+  `admin` (statistics, System check, backups, destinations, email) and
+  `tasks` (background job progress and downloads).
 - `backend/devices.py`: scanner registry (`data/devices.json`), generated
   `sane-airscan` config, read-only CUPS discovery and capability parsing,
   short-lived device-query cache with CUPS backoff.
@@ -106,6 +115,19 @@ one-step split means rewriting the tests that would check the split, and
 users would see nothing from it. New features go into their own modules
 (`tasks.py`, `diagnostics.py`), and existing areas move out when they are
 next changed substantially.
+
+**0.21: the route handlers moved out.** By then `app.py` had grown to 3,200
+lines, so its 119 route handlers, with the request models and helpers only
+they use, moved into `backend/routes/` (one module per area), and `app.py`
+went down to about 950 lines. The shared state and helpers stayed in
+`app.py`, and route modules reach them as `web.NAME` (`from backend import
+app as web`). That way every test that swaps something on `backend.app`
+(the data folder, the printer, the scanner process) still reaches the moved
+code, and the unchanged test suite, all passing, checks the move. The move
+was done by a script that found each name with Python's own parser, not by
+hand. The routes are added at the end of `app.py`, after everything they use.
+Next: helpers that belong to one area can move to it in later releases, and
+the browser code was split into files by area in 0.21 too.
 
 ### D10 — Lite and Full editions from one codebase (0.12)
 A build argument (`FOLIO_EDITION`) decides which optional packages go into

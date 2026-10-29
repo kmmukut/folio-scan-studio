@@ -230,14 +230,21 @@ publish a different host port (e.g. `"8091:8090"`), set
 
 **Computers on another network**, or a host whose Avahi can't reach them
 (for example Folio in a container or VM on an internal network): **Devices →
-Share as AirScan → Announce it yourself** shows the service file. Save it in
-`/etc/avahi/services` on a Linux computer that runs Avahi on the computers'
-network, and forward its port 8090 to Folio's.
+Share as AirScan → Announce it yourself** shows the service file and the name
+to save it under, one per scanner (`folio-scanner-office.service` for a
+scanner named "Office"). Save it in `/etc/avahi/services` on a Linux computer
+that runs Avahi on the computers' network, and forward its port 8090 to
+Folio's. The files stay right across updates. If you share or stop sharing
+another scanner, or rename one, copy the files again: AirSane serves the
+first shared scanner at `/eSCL` and the others at their own paths, so an
+address can change.
 
 A scanner does one scan at a time. If someone starts a scan in Folio while
 a Mac is scanning (or the other way round), the second one fails with an
 error after a few seconds; start it again when the first is done. Some
-scanners also need a few seconds' pause between scans.
+scanners also need a few seconds' pause between scans. On a Mac, Image
+Capture makes a quick overview scan of the glass as soon as you choose the
+scanner; with such a scanner, wait a few seconds after it before you scan.
 
 Folio uses [AirSane](https://github.com/SimulPiscator/AirSane) for this,
 built into the image from a fixed version.

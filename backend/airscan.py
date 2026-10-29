@@ -30,6 +30,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import shutil
 import signal
 import stat
@@ -37,6 +38,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import unicodedata
 import urllib.request
 from pathlib import Path
 from typing import Callable
@@ -48,6 +50,7 @@ log = logging.getLogger('folio.airscan')
 
 LISTEN_PORT = 8090  # AirSane's port inside the container
 SERVICE_PREFIX = 'folio-airscan@'  # '@' never appears in printer names, so AirPrint's files can't clash
+BY_HAND_PREFIX = 'folio-scanner-'  # The file name suggested for announcing a scanner by hand
 SHAREABLE = ('managed', 'attached')  # Scanners Folio set up (not the read-only legacy configuration)
 # AirScan has no sign-in, so only private and local addresses may scan.
 ACCESS = ('127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16',
@@ -243,9 +246,59 @@ def service_file(item: dict, airscan_port: int, note: str) -> str:
         '</service-group>', ''])
 
 
+def by_hand_names(scanners: list[dict]) -> dict[str, str]:
+    """A file name per shared scanner, for announcing it by hand: folio-scanner-<its name>.service.
+    Scanners with the same name get their IDs added, so one file doesn't replace another."""
+    slugs = {}
+    for scanner in scanners:
+        name = unicodedata.normalize('NFKD', scanner.get('name') or '').encode('ascii', 'ignore').decode()
+        slugs[scanner['id']] = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')[:40].strip('-') or scanner['id']
+    counts = collections.Counter(slugs.values())
+    return {key: f'{BY_HAND_PREFIX}{slug if counts[slug] == 1 else f"{slug}-{key}"}.service'
+            for key, slug in slugs.items()}
+
+
 AUTOMATIC = 'Written by Folio for a scanner shared as AirScan; it is replaced or removed automatically.'
 BY_HAND = ('Folio: a scanner shared as AirScan. Put this file in /etc/avahi/services on a computer that '
            'runs Avahi on the network of the Macs and phones, and forward the port to Folio if needed.')
+
+
+# --- At the container's start (root) -----------------------------------------------------
+
+MACHINE_ID = re.compile(r'[0-9a-f]{32}')
+
+
+def keep_machine_id(data_dir: Path, target: Path = Path('/etc/machine-id')) -> bool:
+    """AirSane makes each shared scanner's UUID, part of its address, from the machine ID, and
+    the image's own changes with every build. So each installation keeps its own in the data
+    folder, and announcements copied by hand stay right after updates. Folio may change that
+    folder, so the file is read without following links or waiting on pipes, and replaced."""
+    saved = data_dir / 'machine-id'
+    value = ''
+    try:
+        fd = os.open(saved, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        pass
+    else:
+        try:
+            if stat.S_ISREG(os.fstat(fd).st_mode):
+                value = os.read(fd, 64).decode('ascii', 'replace').strip()
+        finally:
+            os.close(fd)
+    try:
+        if not MACHINE_ID.fullmatch(value):
+            value = secrets.token_hex(16)
+            data_dir.mkdir(parents=True, exist_ok=True)
+            if saved.is_symlink() or saved.exists():
+                saved.unlink()  # Whatever was there (a link isn't followed); a folder fails below
+            _write(saved, value + '\n')
+        if not target.exists() or target.read_text(encoding='ascii', errors='replace').strip() != value:
+            target.write_text(value + '\n', encoding='ascii')
+    except OSError as exc:
+        log.warning('Could not keep the machine ID for shared scanners (%s); their addresses may '
+                    'change with the next update.', exc)
+        return False
+    return True
 
 
 # --- In the print server's supervisor (root) ---------------------------------------------
@@ -253,12 +306,13 @@ BY_HAND = ('Folio: a scanner shared as AirScan. Put this file in /etc/avahi/serv
 def read_announcements(data_dir: Path) -> list[dict]:
     path = folder(data_dir) / 'announce.json'
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)  # Not a link, nor a pipe to wait on
     except OSError:
         return []
+    if not stat.S_ISREG(os.fstat(fd).st_mode):  # Checked first: a folder can't even be opened to read
+        os.close(fd)
+        return []
     with os.fdopen(fd, 'rb') as handle:
-        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
-            return []
         data = handle.read(65537)
     if len(data) > 65536:
         return []
@@ -449,14 +503,20 @@ class Sharing:
         announced = announcement_status()
         recent = time.time() - announced.get('checked_at', 0) < 120
         items = {item['id']: item for item in self.state.get('items', [])}
+        names = by_hand_names(self.state.get('scanners', []))
         scanners = []
         for scanner in self.state.get('scanners', []):
             item = items.get(scanner['id'])
             scanners.append({**scanner, 'announced': recent and scanner['id'] in announced.get('announced', []),
-                             'service_file': service_file(item, port(), BY_HAND) if item else None})
+                             'service_file': service_file(item, port(), BY_HAND) if item else None,
+                             'service_name': names[scanner['id']] if item else None})
         return {'available': bool(binary()), 'running': self.state.get('running', False),
                 'ready': self.state.get('ready', False), 'error': self.state.get('error'), 'port': port(),
                 'announcing': bool(recent and announced.get('mounted')), 'scanners': scanners}
 
 
 sharing = Sharing()
+
+
+if __name__ == '__main__':  # docker-entrypoint.sh, as root, before Folio starts
+    keep_machine_id(Path(os.environ.get('DATA_DIR', '/data')))

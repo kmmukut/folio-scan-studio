@@ -178,7 +178,8 @@ hardware are the most valuable contribution right now.
 
 - **Tell us about your hardware.** Open a
   [hardware report](https://github.com/kmmukut/folio-scan-studio/issues/new?template=hardware_report.yml),
-  whether it worked or not. Reports become the compatibility list.
+  whether it worked or not. Folio writes it for you: **Devices → Hardware
+  report** on the device's card. Reports become the compatibility list.
 - **USB printers and scanners:** passthrough recipes, IPP-over-USB and
   per-model notes, tested on real devices.
 - **Other Raspberry Pi models and ARM boards** (a Pi 4 is tested): install

@@ -55,6 +55,8 @@ healthy, and to make the workflow layer excellent.
   Avahi services folder (D14).
 - `backend/airscan.py`: shares scanners as AirScan: runs AirSane and
   describes the shared scanners for the announcement (D20).
+- `backend/report.py`: hardware reports, written from what a device and
+  the print server answer, with what identifies anyone left out (D21).
 - `backend/mail.py`: email settings and sending through SMTP (D18);
   `backend/notify.py` decides which notification emails go out.
 - `backend/backup.py`: backups of everything Folio keeps, and restoring one,
@@ -386,19 +388,52 @@ confirms each address by asking AirSane for that scanner's capabilities,
 which also give the announcement's details. The log format is pinned with
 the commit and tested inside the image.
 
+**A machine ID per installation.** The image's own `/etc/machine-id` is
+fixed when it is built: the same for every installation of one release,
+and different in the next. Scanners' addresses would then change with
+every update, and announcement files added by hand would go stale. So the
+entrypoint, as root, keeps an ID in `data/machine-id` (made once) and puts
+it in `/etc/machine-id` before Folio starts. The data folder is Folio's, so
+root accepts only 32 hex digits from it, follows no link and waits on no
+pipe there. Renaming a scanner still changes its address, as does sharing
+or no longer sharing another one (the first at `/eSCL` may change).
+
 **Announced like AirPrint (D14).** Folio writes what to announce into
 `data/airscan/announce.json`. The print server's supervisor (root)
 validates it and writes `folio-airscan@<id>.service` into the host's Avahi
 folder. `@` can't appear in printer names, so AirPrint's clean-up leaves
 those files alone. For computers on another network, the Devices page shows
-the same file to add by hand.
+the same file to add by hand, with a name of its own for each scanner
+(`folio-scanner-<name>.service`).
 
 ### D6 — Capabilities come from the device, never from model names
 Sizes, trays, duplex, colour, scan modes and resolutions are what CUPS/SANE
 report. Folio does not fabricate options, and no device, address or network
 is hardcoded (enforced by a test).
 
-## Direction
+### D21 — Hardware reports: written by Folio, sent by people (0.22)
+The compatibility list (`docs/HARDWARE.md`) grows from people's reports,
+and the details that explain a failure are ones people can't easily look
+up: which formats the printer accepts over IPP, what CUPS and SANE say, at
+which port and path the device answers. So Folio writes the report from
+what the device and the print server answer at that moment (the address
+check, the queue's state and driver, SANE's options and errors).
+
+**Folio sends nothing.** The report opens in an editable window; the
+administrator reads it and opens GitHub's issue form with it filled in
+through the link (the form's field IDs). Submitting needs their GitHub
+account anyway, and no Folio installation talks to a server of the
+project's. A PDF was considered and rejected: text can be read and edited
+before it's sent, searched on GitHub, and quoted into the list.
+
+**Nothing that identifies a network or a person.** Reports are public. Device
+addresses are described (connection, port, path), never copied; LPD queue
+and Bonjour names, WSD's friendly names, Folio's own names for devices and
+its scanner IDs (made from addresses) are left out. Messages from outside
+(CUPS, SANE, errors) have the known host names and given names replaced,
+and the whole report is scrubbed for anything that looks like an address,
+MAC address, UUID, serial number, local host name, login or email address.
+
 
 Planned in this order; each step is a separate, tested release. Priorities
 may change with real use.
@@ -424,7 +459,8 @@ may change with real use.
    see D18.
 12. ~~**0.22 — Check a network address; share scanners.**~~ Folio asks a
    device which ways to print and scan it offers, with ports and paths (see
-   D19), and shares scanners as AirScan (see D20).
+   D19), shares scanners as AirScan (see D20), and writes hardware reports
+   (see D21).
 13. **Next candidates:** community hardware reports toward 1.0;
    translations; saved scan presets.
 USB-specific work waits for community testers (D11).

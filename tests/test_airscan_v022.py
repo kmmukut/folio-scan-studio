@@ -9,6 +9,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -194,6 +195,68 @@ def test_the_announcement_says_what_airsane_serves(tmp_path, monkeypatch):
     assert 'rs=eSCL' in [r.text for r in service.findall('service/txt-record')]
 
 
+def test_each_scanner_announced_by_hand_gets_its_own_file_name():
+    names = airscan.by_hand_names([
+        {'id': 'net-05a0ef437064', 'name': 'Samsung M2885FW'},
+        {'id': 'net-c708101a48f6', 'name': 'EPSON Scanner'},
+        {'id': 'net-aaaaaaaaaaaa', 'name': 'Büro-Scanner (2. Stock)'},
+        {'id': 'net-bbbbbbbbbbbb', 'name': '★★★'},
+        {'id': 'net-cccccccccccc', 'name': 'Office'},
+        {'id': 'net-dddddddddddd', 'name': 'office!'}])
+    assert names == {
+        'net-05a0ef437064': 'folio-scanner-samsung-m2885fw.service',
+        'net-c708101a48f6': 'folio-scanner-epson-scanner.service',
+        'net-aaaaaaaaaaaa': 'folio-scanner-buro-scanner-2-stock.service',
+        'net-bbbbbbbbbbbb': 'folio-scanner-net-bbbbbbbbbbbb.service',  # Nothing usable in the name
+        'net-cccccccccccc': 'folio-scanner-office-net-cccccccccccc.service',  # Same name: neither replaces the other
+        'net-dddddddddddd': 'folio-scanner-office-net-dddddddddddd.service'}
+    long_name = airscan.by_hand_names([{'id': 'net-eeeeeeeeeeee', 'name': 'A' * 80}])['net-eeeeeeeeeeee']
+    assert long_name == f'folio-scanner-{"a" * 40}.service'
+    # Never a name Folio itself writes and removes in a mounted Avahi folder
+    assert not any(name.startswith(airscan.SERVICE_PREFIX) for name in names.values())
+
+
+def test_each_installation_keeps_its_own_machine_id(tmp_path):
+    data, target = tmp_path / 'data', tmp_path / 'etc-machine-id'
+    target.write_text('a560302b73144f339b5b57cf796f7db5\n')  # The image's own
+    assert airscan.keep_machine_id(data, target)
+    saved = (data / 'machine-id').read_text().strip()
+    assert airscan.MACHINE_ID.fullmatch(saved) and target.read_text() == saved + '\n'
+    # The next start, or a new image with another ID of its own: the installation's stays
+    target.write_text('ffffffffffffffffffffffffffffffff\n')
+    assert airscan.keep_machine_id(data, target)
+    assert target.read_text() == saved + '\n' and (data / 'machine-id').read_text() == saved + '\n'
+    assert airscan.keep_machine_id(tmp_path / 'other', tmp_path / 'other-id')
+    assert (tmp_path / 'other' / 'machine-id').read_text() != saved + '\n'  # Another installation, another ID
+    # docker-entrypoint.sh does it as root, before Folio starts
+    script = (ROOT / 'docker-entrypoint.sh').read_text()
+    assert script.index('python -m backend.airscan') < script.index('exec setpriv')
+
+
+def test_the_machine_id_file_is_neither_followed_nor_waited_on(tmp_path):
+    data, target, saved = tmp_path / 'data', tmp_path / 'machine-id', tmp_path / 'data' / 'machine-id'
+    data.mkdir()
+    elsewhere = tmp_path / 'elsewhere'
+    elsewhere.write_text('0123456789abcdef0123456789abcdef\n')
+    saved.symlink_to(elsewhere)  # Folio may change its data folder; root doesn't follow links there
+    assert airscan.keep_machine_id(data, target)
+    assert elsewhere.read_text() == '0123456789abcdef0123456789abcdef\n' and not saved.is_symlink()
+    assert target.read_text() == saved.read_text() != elsewhere.read_text()
+    saved.unlink()
+    os.mkfifo(saved)  # Nor wait on a pipe
+    worker = threading.Thread(target=airscan.keep_machine_id, args=(data, target), daemon=True)
+    worker.start()
+    worker.join(5)
+    assert not worker.is_alive() and saved.is_file() and airscan.MACHINE_ID.fullmatch(saved.read_text().strip())
+    saved.write_text('not an id\n')
+    assert airscan.keep_machine_id(data, target) and airscan.MACHINE_ID.fullmatch(saved.read_text().strip())
+    # When it can't be kept, Folio still starts
+    saved.unlink()
+    saved.mkdir()
+    assert airscan.keep_machine_id(data, target) is False
+    assert airscan.keep_machine_id(tmp_path / 'more', tmp_path / 'missing' / 'machine-id') is False
+
+
 def test_the_supervisor_trusts_nothing_in_folios_file(tmp_path):
     base = tmp_path / 'airscan'
     base.mkdir()
@@ -210,6 +273,15 @@ def test_the_supervisor_trusts_nothing_in_folios_file(tmp_path):
     (base / 'announce.json').unlink()
     (base / 'announce.json').write_text(' ' * 70000)
     assert airscan.read_announcements(tmp_path) == []
+    (base / 'announce.json').unlink()
+    (base / 'announce.json').mkdir()  # Nor a folder, nor a pipe to wait on
+    assert airscan.read_announcements(tmp_path) == []
+    (base / 'announce.json').rmdir()
+    os.mkfifo(base / 'announce.json')
+    worker = threading.Thread(target=airscan.read_announcements, args=(tmp_path,), daemon=True)
+    worker.start()
+    worker.join(5)
+    assert not worker.is_alive()
 
 
 def test_the_supervisor_announces_shared_scanners_beside_airprint(tmp_path, monkeypatch):
@@ -276,6 +348,8 @@ def test_airsane_runs_while_a_scanner_is_shared(tmp_path, fake_airsane):
         assert status['running'] and status['port'] == 8090 and not status['announcing']
         assert [s['path'] for s in status['scanners']] == ['/eSCL', '/uuid-office']
         assert '<txt-record>rs=uuid-office</txt-record>' in status['scanners'][1]['service_file']
+        assert [s['service_name'] for s in status['scanners']] == [
+            'folio-scanner-samsung-scanner.service', 'folio-scanner-office-scanner.service']
         args = json.loads(Path(f'{fake_airsane}.args').read_text())
         assert f'--listen-port={airscan.LISTEN_PORT}' in args and '--mdns-announce=false' in args
         # A renamed scanner: AirSane reloads (no restart) and the announcement follows.
@@ -310,7 +384,8 @@ def test_a_scanner_airsane_cannot_open_is_reported(tmp_path, fake_airsane):
         wait_for(lambda: sharing.state.get('ready'))
         assert sharing.status()['scanners'] == [{
             'id': SAMSUNG['id'], 'name': 'Samsung scanner', 'path': None, 'uuid': None, 'announced': False,
-            'service_file': None, 'problem': 'AirSane couldn’t open this scanner. Check that it’s switched on, '
+            'service_file': None, 'service_name': None,
+            'problem': 'AirSane couldn’t open this scanner. Check that it’s switched on, '
                                              'then press Refresh devices.'}]
         assert airscan.read_announcements(data) == []  # Nothing to announce
     finally:
@@ -343,6 +418,9 @@ def test_the_page_offers_sharing():
     script = (ROOT / 'frontend' / 'js' / 'devices.js').read_text()
     assert 'id="airscan-panel"' in page
     assert "api('/api/admin/airscan')" in script and 'data-scanner-action="airscan"' in script
+    # Each scanner's own file name, never one shared name that a second scanner would overwrite
+    assert '/etc/avahi/services/${html(s.service_name)}' in script and 'folio-scanner.service' not in script
+    assert 'If you share or stop sharing another scanner, or rename this one, copy the file again' in script
 
 
 # --- The real AirSane, inside the image -------------------------------------------------------

@@ -36,6 +36,12 @@ echo "scanner listing: works"
 # AirSane (scanners shared as AirScan) is built in, with every library it needs.
 docker exec "$name" sh -c '! ldd /usr/local/bin/airsaned | grep -q "not found"' || { echo "AirSane is missing or can't load"; exit 1; }
 echo "AirSane: present"
+# Its scanner addresses come from this installation's machine ID, kept in /data, not the image's.
+own=$(docker exec "$name" cat /data/machine-id)
+built=$(docker run --rm --entrypoint sh "$image" -c 'cat /etc/machine-id 2>/dev/null' || true)
+[ "$(docker exec "$name" cat /etc/machine-id)" = "$own" ] && [ "$own" != "$built" ] ||
+  { echo "the machine ID is not the installation's own"; exit 1; }
+echo "machine ID: the installation's own"
 # The built-in print server: signed in, System check must find it answering.
 jar=$(mktemp)
 csrf=$(curl -fsS -c "$jar" -H 'Content-Type: application/json' \

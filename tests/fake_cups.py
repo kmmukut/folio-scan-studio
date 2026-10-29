@@ -198,7 +198,7 @@ class FakeCups:
                         (ipp.INTEGER, 'marker-low-levels', [m[4] for m in markers])] if markers else []
             return 0, [[], (ipp.PRINTER, [*supplies, (ipp.ENUM, 'printer-state', entry['state']),
                                           (ipp.KEYWORD, 'printer-state-reasons', entry['reasons'] or ['none']),
-                                          (ipp.TEXT, 'printer-state-message', ''),
+                                          (ipp.TEXT, 'printer-state-message', entry.get('message', '')),
                                           (ipp.BOOLEAN, 'printer-is-accepting-jobs', True),
                                           (ipp.INTEGER, 'queued-job-count', 0),
                                           (ipp.TEXT, 'printer-make-and-model', entry.get('make-and-model', entry.get('ppd-name', ''))),

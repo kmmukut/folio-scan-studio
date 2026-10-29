@@ -77,6 +77,8 @@ built-in print server off, the folder belongs to `PUID` as before.
 | `cups-admin.json` | CUPS administrator logins for other print servers (readable by root only, never sent to browsers). |
 | `devices.json` | Scanners, print servers, printer settings, defaults, and destinations (including Paperless API tokens, never sent to browsers). |
 | `managed-airscan.conf` | Scanner configuration Folio writes for SANE; regenerated from `devices.json`. |
+| `airscan/` | AirSane's settings for the scanners shared as AirScan, and what to announce; regenerated. |
+| `machine-id` | This installation's own ID, which shared scanners' AirScan addresses are made from, so they stay the same across updates. Not in Folio's backups: Folio restored on a new computer gets a new one. |
 | `print-log.sqlite3` | Print statistics: one row per job, no document names. Safe to delete. |
 | `jobs/` | Documents: original scans (never modified), edits, and a disposable preview cache. |
 | `print-previews/`, `tasks/` | Temporary files, cleared automatically. |

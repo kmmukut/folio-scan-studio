@@ -4,12 +4,13 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
-## 0.22.0 — Check a network address; share scanners as AirScan
+## 0.22.0 — Check a network address; share scanners as AirScan; hardware reports
 
 Printers and scanners don't all use the same ports and paths, and Folio
-used to expect you to know them. Now it asks the device. And a scanner in
-Folio can now be shared with Macs, Windows and Android as an AirScan
-scanner.
+used to expect you to know them. Now it asks the device. A scanner in Folio
+can now be shared with Macs, Windows and Android as an AirScan scanner. And
+Folio writes a hardware report for any printer or scanner, to tell the
+project how it worked.
 
 **Check a network address.** At the top of **Devices**, type a printer's or
 scanner's IP address or host name. Folio asks the device what it offers:
@@ -61,12 +62,27 @@ How it works:
   scanner. Folio accepts only private addresses.
 - Publish port 8090 and mount the host's Avahi folder, as for AirPrint, and
   Folio announces shared scanners on your network. For computers on another
-  network, Devices shows the announcement file to add by hand.
+  network, Devices shows the announcement file to add by hand, with a file
+  name of its own for each scanner.
+- Shared scanners keep their addresses across updates: Folio keeps an ID
+  for them in the data folder (`machine-id`).
 - Folio uses [AirSane](https://github.com/SimulPiscator/AirSane) (GPL-3.0)
   for this, built into both images from a fixed version.
 
 iPhones and iPads have no built-in app that scans from network scanners;
 use Folio's page there.
+
+**Hardware reports.** Folio's list of printers and scanners that work (and
+that don't) is built from people's reports. Folio now writes the report:
+- **Hardware report** on each printer's and scanner's card, a link in
+  **Check a network address**, and one next to the message when adding a
+  printer fails
+- Folio asks the device and the print server, and writes down the model,
+  connection, driver, what the device accepts and offers, and any error
+- addresses, host names, serial numbers, UUIDs and the names you gave are
+  left out, because reports are public
+- you read it, change anything you like, and open GitHub's report form
+  with it filled in; Folio sends nothing itself
 
 ### Fixed
 - **Some driverless printers couldn't be added.** Adding an Epson L3250
@@ -92,8 +108,8 @@ use Folio's page there.
   WSD the ones the scanner reports.
 
 ### Verified
-- **Tests:** 290 on the host, 5 skipped. Inside the images, on amd64: Full
-  295, Lite 291 with 4 skipped.
+- **Tests:** 303 on the host, 5 skipped. Inside the images, on amd64: Full
+  308, Lite 304 with 4 skipped.
 - **New tests for the address check** use a fake network device (WSD
   discovery over UDP, WSD and eSCL over HTTP) and the fake CUPS server:
   - a scanner that describes itself
@@ -117,8 +133,21 @@ use Folio's page there.
     file, doesn't follow links, and leaves AirPrint's files alone (and
     AirPrint leaves its files alone)
   - only administrators can switch sharing on
+  - a file name of its own for each scanner announced by hand
+  - each installation's own machine ID: kept across starts and new images,
+    and in the data folder no link followed, no pipe waited on, nothing but
+    an ID accepted
   - inside both images, the real AirSane: a scan through it from SANE's
     test scanner, and the pinned version with its licence
+- **New tests for hardware reports:**
+  - logins, addresses, host names, MAC addresses, UUIDs, serial numbers,
+    email addresses, Folio's scanner IDs and the names given in Folio are
+    left out; versions, models, ports and paths stay
+  - device addresses are described, never copied
+  - reports on a printer, a USB printer (no address asked), a scanner (with
+    AirScan; nothing asked while it scans), a scanner SANE found by itself,
+    and a device that couldn't be added
+  - the report's answers match GitHub's form; only administrators get one
 - **The address check, with the maintainer's two real devices**, in a
   separate test copy of Folio (Full), in headless Chrome:
   - **Epson L3250.** The check found WSD scanning at port 80, `/WDP/SCAN`
@@ -148,12 +177,28 @@ use Folio's page there.
     also when scanning directly over WSD, so this is the scanner needing a
     pause; with 15 seconds between them, every scan worked.
   - After a restart, sharing came back by itself, with the same address.
+  - **A Mac scanned from it in Image Capture**, with Folio on another
+    network: the announcement file from the Devices page was added by hand
+    on a Linux computer on the Mac's network, with a port forward to Folio.
+    As with any flatbed scanner, Image Capture makes a quick overview scan
+    as soon as the scanner is chosen.
+- **Hardware reports, with the real Samsung M2885FW**, in a separate test
+  copy of Folio (Full), in headless Chrome: from the printer's card (a
+  JetDirect printer in the test copy's own print server; nothing printed),
+  the scanner's card, the address check, and a printer setup that failed.
+  None contained the device's address or the names given in Folio; edits
+  in the window reach the GitHub link; at 375 px nothing is wider than the
+  screen.
 - **The Epson driverless setup** also worked in a test copy of the Lite
   edition.
-- **Start-up check:** both images start healthy, with AirSane present.
+- **Start-up check:** both images start healthy, with AirSane present
+  and the installation's own machine ID.
 - **Not verified:**
-  - scanning from a Mac, Windows or Android through AirScan
-  - Folio announcing through a real Avahi (only the file was checked)
+  - scanning from Windows or Android through AirScan
+  - GitHub filling in its report form from the link (that needs a signed-in
+    GitHub account)
+  - Folio announcing through the host's own Avahi by itself (the same file,
+    added by hand on another computer, worked with the Mac)
   - printing a page and scanning a page with the Epson
   - the arm64 images (built and tested by the release workflow)
 

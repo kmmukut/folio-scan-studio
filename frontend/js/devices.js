@@ -20,7 +20,7 @@ async function refreshDeviceManager(refresh=false){
     return `<article class="device-card ${s.id===result.default_scanner?'current':''}" data-scanner="${html(s.id)}">
       <header><div><strong>${html(s.name)}</strong><small>${html(s.ip||s.sane_name||s.hint||'Existing configuration')}</small></div><span class="device-state ${s.connected?'':'off'}">${s.connected?'Connected':'Offline'}</span></header>
       <div class="device-tags">${tags.map(x=>`<span>${html(x)}</span>`).join('')}</div>
-      <div class="device-actions"><button data-scanner-action="test">Test</button><button data-scanner-action="edit">Edit</button>${s.id!==result.default_scanner?'<button data-scanner-action="default">Make default</button>':''}<button data-scanner-action="toggle">${s.enabled?'Disable':'Enable'}</button>${['managed','attached'].includes(s.kind)?`<button data-scanner-action="airscan">${s.airscan?'Stop sharing':'Share as AirScan'}</button>`:''}${s.kind==='managed'?'<button data-scanner-action="delete">Remove</button>':''}</div></article>`;
+      <div class="device-actions"><button data-scanner-action="test">Test</button><button data-scanner-action="edit">Edit</button>${s.id!==result.default_scanner?'<button data-scanner-action="default">Make default</button>':''}<button data-scanner-action="toggle">${s.enabled?'Disable':'Enable'}</button>${['managed','attached'].includes(s.kind)?`<button data-scanner-action="airscan">${s.airscan?'Stop sharing':'Share as AirScan'}</button>`:''}<button data-scanner-action="report">Hardware report</button>${s.kind==='managed'?'<button data-scanner-action="delete">Remove</button>':''}</div></article>`;
   }).join('')||'<p>No scanner configured.</p>';
   $('#device-printer-list').innerHTML=result.printers.map(q=>{
     const settings=q.settings||{},caps=q.capabilities||{};
@@ -29,7 +29,7 @@ async function refreshDeviceManager(refresh=false){
        <header><div><strong>${html(q.queue)}</strong><small>${html(q.server_label||q.server)} · ${html(q.status||'')}</small></div><span class="device-state ${q.ready?'':'off'}">${q.ready?'Ready':/disabled/i.test(q.status||'')?'Paused':'Offline'}</span></header>
        <div class="device-tags">${tags.map(x=>`<span>${html(x)}</span>`).join('')}</div>
        <div class="device-access">${[['enabled','Enabled'],['guest','Guest printing'],['member','Members'],['printer','Printer-only accounts']].map(([flag,label])=>`<label><input type="checkbox" data-printer-flag="${flag}" ${settings[flag]?'checked':''}> ${label}</label>`).join('')}</div>
-       <div class="device-actions"><button data-printer-action="save" ${q.status==='Not found in CUPS'?'disabled':''}>Save permissions</button>${result.default_printer!==q.id?`<button data-printer-action="default" ${q.status==='Not found in CUPS'?'disabled':''}>Make default</button>`:''}${q.status!=='Not found in CUPS'?'<button data-queue-action="jobs">Jobs</button><button data-queue-action="test">Test page</button>':''}${managed.has(q.server)&&q.status!=='Not found in CUPS'?`<button data-queue-action="pause">${q.ready?'Pause':'Resume'}</button><button data-queue-action="remove" class="danger-action">Remove</button>`:''}</div>
+       <div class="device-actions"><button data-printer-action="save" ${q.status==='Not found in CUPS'?'disabled':''}>Save permissions</button>${result.default_printer!==q.id?`<button data-printer-action="default" ${q.status==='Not found in CUPS'?'disabled':''}>Make default</button>`:''}${q.status!=='Not found in CUPS'?'<button data-queue-action="jobs">Jobs</button><button data-queue-action="test">Test page</button><button data-queue-action="report">Hardware report</button>':''}${managed.has(q.server)&&q.status!=='Not found in CUPS'?`<button data-queue-action="pause">${q.ready?'Pause':'Resume'}</button><button data-queue-action="remove" class="danger-action">Remove</button>`:''}</div>
        <div class="printer-supplies" aria-live="polite"></div>
        <div class="printer-jobs hidden"></div></article>`;
   }).join('')||'<p class="muted">No printers yet. Add one below.</p>';
@@ -39,26 +39,65 @@ async function refreshDeviceManager(refresh=false){
   for(const q of result.printers)if(q.status!=='Not found in CUPS')loadSupplies(q.id);
   loadAirscan().catch(problem);
 }
+// Copy an element's text; where the browser doesn't allow it (plain HTTP), select it instead.
+function copyText(element){
+  const text=element.value??element.textContent;
+  (navigator.clipboard?.writeText(text)||Promise.reject()).then(()=>toast('Copied.'),()=>{
+    if(element.select)element.select();
+    else{const range=document.createRange();range.selectNodeContents(element);getSelection().removeAllRanges();getSelection().addRange(range);}
+    toast('Selected: copy it with Ctrl+C (⌘C on a Mac).');
+  });
+}
+// Hardware reports (report.py): Folio writes one from what the device answers; the
+// administrator reads it, may change it, and submits it on GitHub. Folio sends nothing.
+const HARDWARE_FORM='https://github.com/kmmukut/folio-scan-studio/issues/new';
+let hardwareReport=null;
+async function openHardwareReport(request){
+  const text=$('#report-text'),status=$('#report-status');
+  hardwareReport=null;text.value='';text.disabled=true;updateReportLink();
+  status.textContent='Asking the device and the print server. This can take up to half a minute.';
+  $('#report-dialog').showModal();
+  try{
+    hardwareReport=await api('/api/admin/devices/report',{method:'POST',body:request});
+    text.value=hardwareReport.text;text.disabled=false;status.textContent='';updateReportLink();
+  }catch(error){status.textContent=error.message;}
+}
+function hardwareReportUrl(report,text){
+  const url=new URL(HARDWARE_FORM),fields={template:'hardware_report.yml',title:report.title,...report.fields,notes:text};
+  for(const [key,value] of Object.entries(fields))if(value)url.searchParams.set(key,value);
+  if(url.href.length>8000)url.searchParams.delete('notes');  // Too long for a link: pasted by hand
+  return url.href;
+}
+function updateReportLink(){
+  const link=$('#report-open');
+  if(!hardwareReport){link.removeAttribute('href');$('#report-long').classList.add('hidden');return;}
+  link.href=hardwareReportUrl(hardwareReport,$('#report-text').value);
+  $('#report-long').classList.toggle('hidden',new URL(link.href).searchParams.has('notes'));
+}
+// After something failed: offer a report on it, next to the message.
+function offerHardwareReport(element,request){
+  const button=document.createElement('button');
+  button.type='button';button.className='small-link report-offer';button.textContent='Write a hardware report';
+  button.onclick=()=>openHardwareReport(request).catch(problem);
+  element.append(' ',button);
+}
+$('#report-text').oninput=updateReportLink;
+$('#report-copy').onclick=()=>copyText($('#report-text'));
+$('#report-close').onclick=()=>$('#report-dialog').close();
 // Scanners shared as AirScan (AirSane): what's shared, and how to announce it by hand.
 async function loadAirscan(){
   const status=await api('/api/admin/airscan'),out=$('#airscan-status');
   out.innerHTML=airscanHtml(status);
-  out.querySelectorAll('[data-copy-service]').forEach(button=>button.onclick=()=>{
-    const text=button.closest('details').querySelector('pre').textContent;
-    (navigator.clipboard?.writeText(text)||Promise.reject()).then(()=>toast('Copied.'),()=>{
-      const range=document.createRange();range.selectNodeContents(button.closest('details').querySelector('pre'));
-      getSelection().removeAllRanges();getSelection().addRange(range);toast('Selected: copy it with Ctrl+C (⌘C on a Mac).');
-    });
-  });
+  out.querySelectorAll('[data-copy-service]').forEach(button=>button.onclick=()=>copyText(button.closest('details').querySelector('pre')));
   if(status.running&&!status.ready)setTimeout(()=>loadAirscan().catch(()=>{}),3000);  // Starting: look again shortly
 }
 function airscanHtml(status){
   if(!status.available)return '<p class="inline-note">This copy of Folio doesn’t include AirSane, so it can’t share scanners.</p>';
   if(!status.running)return '<p class="inline-note">No scanner is shared.</p>';
   if(!status.ready)return '<p class="inline-note">Starting AirSane…</p>';
-  const byHand=`Folio announces shared scanners itself when the host’s Avahi folder is mounted and the built-in print server is on (as for AirPrint), and then only on the host’s own network. If the Macs and phones are on another network, or the host’s Avahi can’t reach them, save this as <code>/etc/avahi/services/folio-scanner.service</code> on a Linux computer that runs Avahi on their network, and make its port ${status.port} reach Folio’s port 8090.`;
+  const byHand=s=>`Folio announces shared scanners itself when the host’s Avahi folder is mounted and the built-in print server is on (as for AirPrint), and then only on the host’s own network. If the Macs and phones are on another network, or the host’s Avahi can’t reach them, save this as <code>/etc/avahi/services/${html(s.service_name)}</code> on a Linux computer that runs Avahi on their network, and make its port ${status.port} reach Folio’s port 8090. If you share or stop sharing another scanner, or rename this one, copy the file again: its address can change.`;
   const rows=status.scanners.map(s=>`<div class="airscan-row"><strong>${html(s.name)}</strong> · ${s.problem?html(s.problem):s.announced?'shared, and announced through this host’s Avahi':'shared; not announced by Folio'}
-    ${!s.problem&&s.service_file?`<details class="manual-details"${s.announced?'':' open'}><summary>Announce it yourself</summary><p class="inline-note">${byHand}</p><pre>${html(s.service_file)}</pre><button type="button" class="small-link" data-copy-service>Copy</button></details>`:''}</div>`).join('');
+    ${!s.problem&&s.service_file?`<details class="manual-details"${s.announced?'':' open'}><summary>Announce it yourself</summary><p class="inline-note">${byHand(s)}</p><pre>${html(s.service_file)}</pre><button type="button" class="small-link" data-copy-service>Copy</button></details>`:''}</div>`).join('');
   return `${status.error?`<p class="print-feedback error">${html(status.error)}</p>`:''}<div class="airscan-list">${rows}</div>
     <p class="inline-note">Other computers reach shared scanners on port ${status.port}: publish it to Folio’s port 8090 (see <code>compose.yaml</code>).</p>`;
 }
@@ -76,6 +115,7 @@ async function loadSupplies(id){
 }
 async function handleScannerAction(btn){
   const card=btn.closest('[data-scanner]'),id=card.dataset.scanner,act=btn.dataset.scannerAction;
+  if(act==='report'){await openHardwareReport({scanner:id});return;}
   const result=await api('/api/admin/devices');const current=result.scanners.find(s=>s.id===id);
   if(!current)return;
   if(act==='edit'){
@@ -312,7 +352,13 @@ $('#add-printer-form').onsubmit=async event=>{
     $('#add-printer-form').reset();addPrinter.found=[];addPrinter.checked=null;$('#found-printers').innerHTML='';$('#find-printers-status').textContent='';
     $('#manual-printer-details').open=false;updateConnectionFields();updatePrinterForm();
     await refreshDeviceManager(true);await refreshPrintQueues(true);
-  }catch(error){setPrintFeedback(feedback,error.message,'error');}
+  }catch(error){
+    setPrintFeedback(feedback,error.message,'error');
+    const how=(source==='manual'?CONNECTION_NAMES[$('#add-printer-connection').value]+', ':'')
+      +(driver==='everywhere'?'driverless':`the driver “${[...$('#driver-choice').options].find(o=>o.value===driver)?.textContent||driver}”`);
+    offerHardwareReport(feedback,{...(source==='manual'?{address:$('#add-printer-address').value.trim()}:{device_uri:source}),
+      name:body.name,problem:`Adding it as a printer (${how}) failed: ${error.message}`});
+  }
   finally{button.disabled=false;}
 };
 // Driverless printing needs PDF or PWG raster; some printers that offer only
@@ -350,6 +396,7 @@ $('#address-check-form').onsubmit=async event=>{
     out.innerHTML=addressCheckHtml(checkedAddress);
     out.querySelectorAll('[data-use-scanner]').forEach(b=>b.onclick=()=>useCheckedScanner(checkedAddress.scanners[Number(b.dataset.useScanner)]));
     out.querySelectorAll('[data-use-printer]').forEach(b=>b.onclick=()=>useCheckedPrinter().catch(problem));
+    out.querySelectorAll('[data-address-report]').forEach(b=>b.onclick=()=>openHardwareReport({address:checkedAddress.address}).catch(problem));
   }catch(error){out.innerHTML=`<p class="print-feedback error">${html(error.message)}</p>`;}
   finally{button.disabled=false;button.textContent='Check';}
 };
@@ -369,7 +416,8 @@ function addressCheckHtml(c){
   return `${heading}<div class="address-check-grid">
     <section><span class="overline">Scanning</span>${scanners?`<ul>${scanners}</ul>`:'<p class="inline-note">No scanning found (eSCL or WSD).</p>'}</section>
     <section><span class="overline">Printing</span>${printing?`<ul>${printing}</ul>`:'<p class="inline-note">No printing found (IPP, JetDirect or LPD).</p>'}
-      ${plan?`<p class="inline-note">Suggested: ${CONNECTION_NAMES[plan.connection]}, ${driver}.</p>${add}`:''}</section></div>`;
+      ${plan?`<p class="inline-note">Suggested: ${CONNECTION_NAMES[plan.connection]}, ${driver}.</p>${add}`:''}</section></div>
+    <p class="inline-note address-report">Whether it works with Folio or not, a <button type="button" class="small-link" data-address-report>hardware report</button> helps others with the same device.</p>`;
 }
 // Scanner names allow letters, numbers, spaces, dot, dash and underscore.
 function deviceName(text){return (text||'').replace(/[^\w .-]+/g,' ').replace(/\s+/g,' ').trim().replace(/^[^A-Za-z0-9]+/,'').slice(0,75);}
@@ -407,6 +455,7 @@ async function handleQueueAction(button){
     panel.querySelectorAll('[data-cancel-job]').forEach(b=>b.onclick=async()=>{await cancelJob(b);button.dataset.open='';await handleQueueAction(button);});
     return;
   }
+  if(action==='report'){await openHardwareReport({printer:id});return;}
   if(action==='test'){button.disabled=true;try{const receipt=await api(`${printerPath(id)}/test-page`,{method:'POST'});toast(`Test page sent${receipt.job_id?' as '+receipt.job_id:''}.`);}finally{button.disabled=false;}return;}
   if(action==='pause'){const pausing=button.textContent==='Pause';await api(`${printerPath(id)}/pause`,{method:'POST',body:{paused:pausing}});toast(pausing?'Printer paused; new jobs wait until it is resumed.':'Printer resumed.');await refreshDeviceManager(true);return;}
   if(action==='remove'){

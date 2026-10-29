@@ -75,4 +75,4 @@ body:
     id: notes
     attributes:
       label: Notes
-      description: What worked, what didn't, anything you had to do (USB passthrough, extra drivers). Paste System check output if something failed.
+      description: What worked, what didn't, anything you had to do (USB passthrough, extra drivers). Folio writes a report for you (Devices → Hardware report on the device's card); paste it here.

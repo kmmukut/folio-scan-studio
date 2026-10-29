@@ -45,10 +45,14 @@ the options the device reports.
 Add yours with a
 [hardware report](https://github.com/kmmukut/folio-scan-studio/issues/new?template=hardware_report.yml),
 including devices that didn't work: knowing what fails is just as useful.
+Folio writes the report for you: **Devices → Hardware report** on the
+device's card, or the link in **Check a network address** for a device you
+couldn't add. It leaves out addresses, host names, serial numbers and the
+names you gave; read it before you submit it.
 
 | Device | Type | Connection | Printing | Scanning | Folio | Notes |
 |---|---|---|---|---|---|---|
-| Samsung M2885FW | Mono laser multifunction | Network | ✓ | ✓ (WSD) | 0.9.x–0.20 | Maintainer's device. Print with the *Samsung M288x Series PXL* driver (verified over JetDirect): driverless printing garbles pages, because the printer offers only AirPrint's raster (no PDF or PWG raster), and Folio says so. Monochrome, duplex, 17 paper sizes; reports toner, imaging unit, fuser and roller levels. Scanner offers flatbed and feeder, at 75–300 dpi: that is the printer's own limit over WSD (it reports 300 dpi optical resolution there); the 600 dpi on spec sheets needs Samsung's own driver (ULD), which exists only for x86 and finds printers only on its own network. |
+| Samsung M2885FW | Mono laser multifunction | Network | ✓ | ✓ (WSD) | 0.9.x–0.22 | Maintainer's device. Print with the *Samsung M288x Series PXL* driver (verified over JetDirect): driverless printing garbles pages, because the printer offers only AirPrint's raster (no PDF or PWG raster), and Folio says so. Monochrome, duplex, 17 paper sizes; reports toner, imaging unit, fuser and roller levels. Scanner offers flatbed and feeder, at 75–300 dpi: that is the printer's own limit over WSD (it reports 300 dpi optical resolution there); the 600 dpi on spec sheets needs Samsung's own driver (ULD), which exists only for x86 and finds printers only on its own network. Shared as AirScan from Folio, a Mac scans from it in Image Capture (0.22). Start scans a few seconds apart: one started right after another may fail. |
 
 ## Tested computers
 

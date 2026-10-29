@@ -8,16 +8,18 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import socket
 import subprocess
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from backend import airprint, airscan, cupsadmin, devices, diagnostics, ipp, printing, printserver, probe, tasks
+from backend import airprint, airscan, cupsadmin, devices, diagnostics, ipp, printing, printserver, probe, report, tasks
 from backend.version import __version__
 from backend import app as web
 
@@ -479,6 +481,67 @@ def check_address(body: AddressCheckBody):
     printing['suggested'] = suggested
     printing['recommended'] = probe.recommend_printer(found, suggested)
     return found
+
+
+class ReportBody(BaseModel):
+    printer: str | None = Field(default=None, max_length=300)
+    scanner: str | None = Field(default=None, max_length=100)
+    address: str | None = Field(default=None, min_length=1, max_length=253)  # Not added (yet)
+    device_uri: str | None = Field(default=None, min_length=1, max_length=512)  # A printer found by searching
+    problem: str | None = Field(default=None, max_length=1000)  # What Folio said when it failed
+    name: str | None = Field(default=None, max_length=100)  # The name typed for it: left out of the report
+
+
+def address_offers(host: str | None) -> dict | None:
+    """What an address offers (the address check), for a report; None if it can't be asked."""
+    if not host:
+        return None
+    try:
+        return probe.check(host)
+    except ValueError:
+        return None
+
+
+@router.post('/api/admin/devices/report')
+def hardware_report(body: ReportBody):
+    """A hardware report for Folio's compatibility list, from what the device and
+    the print server answer now (see report.py). Folio sends it nowhere: the
+    administrator reads it and submits it on GitHub."""
+    if sum(x is not None for x in (body.printer, body.scanner, body.address, body.device_uri)) != 1:
+        raise HTTPException(400, 'Choose one printer, scanner or address')
+    known = [*web.cups_servers(), socket.gethostname()]
+    if body.printer:
+        target = known_printer(body.printer)
+        try:
+            state = cupsadmin.printer_state(cupsadmin.connection(web.DATA_DIR, target['server']), target['queue'])
+        except ipp.IPPError as exc:
+            state = {'error': str(exc)}
+        host = report.uri_host(state.get('device_uri'))
+        with ThreadPoolExecutor(2) as pool:  # Each may wait several seconds for an answer
+            driverless = pool.submit(cupsadmin.driverless_support, state.get('device_uri') or '')
+            offers = pool.submit(address_offers, host)
+        return report.printer(state=state, capabilities=devices.cups_capabilities(target['server'], target['queue']),
+                              driverless=driverless.result(), offers=offers.result(),
+                              builtin=cupsadmin.is_builtin(target['server']), problem=body.problem,
+                              hosts=[*known, host], names=[target['queue'], body.name])
+    if body.scanner:
+        cfg = web.registry()
+        entry = next((e for e in cfg['scanners'] if e['id'] == body.scanner), None)
+        if not entry:
+            raise HTTPException(404, 'Scanner not found')
+        busy = bool(web.scan_state['active'])  # Then nothing extra is asked of the scanner
+        if not busy:
+            devices.invalidate('sane')
+        state = devices.scanners_state({**cfg, 'scanners': [entry]})[0]
+        host = entry.get('ip') if entry.get('kind') == 'managed' else None
+        shared = next((s for s in airscan.sharing.status()['scanners'] if s['id'] == entry['id']), {}) \
+            if entry.get('airscan') else None
+        return report.scanner(entry=entry, state=state, offers=None if busy else address_offers(host), shared=shared,
+                              busy=busy, problem=body.problem, hosts=[*known, host],
+                              names=[entry.get('name'), body.name])
+    host = body.address.strip() if body.address else report.uri_host(body.device_uri)
+    return report.address(offers=address_offers(host), device_uri=body.device_uri, problem=body.problem,
+                          hosts=[*known, host], names=[body.name])
 
 
 class WebAdminBody(BaseModel):

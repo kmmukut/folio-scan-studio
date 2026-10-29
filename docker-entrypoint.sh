@@ -11,6 +11,10 @@ PGID="${PGID:-1000}"
 DATA_DIR="${DATA_DIR:-/data}"
 case "$PUID$PGID" in *[!0-9]*) echo "PUID and PGID must be numbers" >&2; exit 1 ;; esac
 
+# This installation's own machine ID, kept in the data folder: AirSane makes
+# shared scanners' addresses from it, and the image's changes with every build.
+DATA_DIR="$DATA_DIR" python -m backend.airscan || true
+
 if [ "$PUID" != 0 ]; then
   getent group folio >/dev/null || groupadd -o -g "$PGID" folio
   [ "$(getent group folio | cut -d: -f3)" = "$PGID" ] || groupmod -o -g "$PGID" folio

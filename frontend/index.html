@@ -458,6 +458,16 @@
     <p class="inline-note">You’ll be signed out everywhere, and sign in again with the new password.</p>
   </form>
 </dialog>
+<dialog id="report-dialog" class="report-dialog" aria-labelledby="report-title">
+  <div class="saved-print-head"><div><span class="overline">HARDWARE REPORT</span><h2 id="report-title">How did it work?</h2><p>Reports build Folio’s list of the printers and scanners that work with it, and the ones that don’t. Folio asked the device and wrote this one. Reports are public: addresses, host names, serial numbers and the names you gave are left out, but read it and change anything you like. Folio sends nothing itself.</p></div><button type="button" id="report-close" class="round-close" aria-label="Close">✕</button></div>
+  <div class="report-body">
+    <p id="report-status" class="inline-note" role="status" aria-live="polite"></p>
+    <label for="report-text" class="visually-hidden">The report</label>
+    <textarea id="report-text" rows="16" spellcheck="false" maxlength="6000"></textarea>
+    <div class="report-actions"><button type="button" class="button outline-button" id="report-copy">Copy</button><a id="report-open" class="button dark-button" target="_blank" rel="noopener">Open the report form on GitHub ↗</a></div>
+    <p class="inline-note">GitHub’s form opens with the device and this report filled in. Choose whether printing and scanning worked, say what happened, and submit it there; you need a GitHub account. <span id="report-long" class="hidden">This report is too long to fill in by itself: copy it, and paste it under Notes.</span></p>
+  </div>
+</dialog>
 <dialog id="saved-print-dialog" class="saved-print-dialog" aria-label="Print a saved document">
   <div class="saved-print-head"><div><span class="overline">PRINT FROM LIBRARY</span><h2 id="saved-print-title">Print a document</h2><p>Review the document and choose the pages before printing.</p></div><button type="button" id="saved-print-close" class="round-close" aria-label="Close">✕</button></div>
   <div class="saved-print-layout"><div class="saved-preview"><div class="preview-navigation"><button type="button" id="saved-prev">←</button><span id="saved-page-label">Page 1 of 1</span><button type="button" id="saved-next">→</button></div><img id="saved-preview-image" alt="Selected saved document page"><p>Preview uses your current non-destructive edits.</p></div>

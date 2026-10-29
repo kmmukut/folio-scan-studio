@@ -4,6 +4,56 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.22.1 — Safer restores; page limits that hold
+
+Fixes from a review of the code. Each was confirmed in the code and comes
+with a test that fails without the fix.
+
+### Fixed
+- **Two restores at once could mix up their backups.** Every restore was
+  uploaded to the same file, so a second one started while the first was
+  still waiting replaced it, and the first could restore the wrong backup
+  or fail. Now each upload has a file of its own, and only one restore can
+  be waiting or running; a second is refused with *"Another restore is
+  already waiting or running."*
+- **A backup could fill the disk while it was unpacked.** Folio checked the
+  size of the uploaded file, but not how big it gets once unpacked. Now a
+  backup that wouldn't fit (leaving 100 MB free) is refused before anything
+  is written, with both sizes in the message. It's checked again when the
+  restore starts, in case the disk filled up meanwhile.
+- **Two prints sent together could go over a page limit.** Folio checked
+  the pages left, sent the print, then counted it; two prints sent at the
+  same moment could both pass the check. Now checking, sending and
+  counting are one step for each person. A print the print server refuses
+  isn't counted.
+
+### Documentation
+- **What page limits cover.** They apply to printing through Folio. Prints
+  sent straight to the print server, such as AirPrint from phones, need no
+  sign-in and aren't limited. The Print quotas settings, the README and the
+  AirPrint section of the guide now say so; the guide adds that where limits
+  matter, port 631 should stay unpublished (as it is by default).
+
+### Verified
+- **Tests:** 307 on the host, 5 skipped. Inside the images, on amd64: Full
+  312, Lite 308 with 4 skipped. New tests:
+  - two restores with different backups: the second is refused while the
+    first waits, and the first restores its own backup
+  - a backup that unpacks to more than fits is refused, on upload and when
+    the restore starts
+  - two prints sent at the same moment with room for only one: one prints,
+    the other is refused; a refused print isn't counted
+  - each of the three fails on 0.22.0's code
+- **In headless Chrome:** the Print quotas settings show what limits cover;
+  at 375 px nothing is wider than the screen.
+- **Start-up check:** both images start healthy.
+- **Not verified:** the arm64 images (built and tested by the release
+  workflow).
+
+### Upgrading
+Nothing is required; your data and settings carry over. Re-pull the image
+(`0.22`, `full` or `lite` receive this release).
+
 ## 0.22.0 — Check a network address; share scanners as AirScan; hardware reports
 
 Printers and scanners don't all use the same ports and paths, and Folio

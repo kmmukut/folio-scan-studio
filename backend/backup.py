@@ -34,6 +34,8 @@ DATABASES = ('access.sqlite3', 'print-log.sqlite3')
 FILES = ('devices.json', 'cups-admin.json')
 PRINTER_ATTRIBUTES = ['printer-name', 'device-uri', 'printer-info', 'printer-location', 'printer-is-shared']
 REPLACED = (*DATABASES, *FILES, 'jobs', 'managed-airscan.conf')  # What a restore swaps out
+ROOM = 100 * 1024 * 1024  # Left free after unpacking a backup, so Folio keeps working
+MANIFEST_LIMIT = 1024 * 1024
 
 
 class BackupError(ValueError):
@@ -135,15 +137,29 @@ def _safe_name(name: str) -> bool:
             and (name == MANIFEST or path.parts[0] in ('data', 'printers')))
 
 
-def inspect(archive: Path, current_version: str) -> dict:
-    """Check that ``archive`` is a backup this Folio can restore; returns its manifest."""
+def _size(count: int) -> str:
+    return f'{count / 1e9:.1f} GB' if count >= 1e9 else f'{max(count, 0) / 1e6:.0f} MB'
+
+
+def inspect(archive: Path, current_version: str, *, room: int | None = None) -> dict:
+    """Check that ``archive`` is a backup this Folio can restore; returns its manifest.
+
+    ``room``: the free disk space. A backup that wouldn't fit once unpacked
+    (leaving ROOM free) is refused before anything is written; the sizes in a
+    tar file are exactly what unpacking writes."""
     try:
         with tarfile.open(archive, 'r:gz') as tar:
             members = tar.getmembers()
             for member in members:
                 if not _safe_name(member.name) or not (member.isfile() or member.isdir()):
                     raise BackupError(f'Unexpected item in the backup: {member.name[:80]}')
+            unpacked = sum(member.size for member in members if member.isfile())
+            if room is not None and unpacked + ROOM > room:
+                raise BackupError(f'This backup unpacks to {_size(unpacked)}, but only {_size(room - ROOM)} '
+                                  'can be used. Make room on the disk, then try again.')
             try:
+                if tar.getmember(MANIFEST).size > MANIFEST_LIMIT:
+                    raise KeyError(MANIFEST)
                 manifest = json.loads(tar.extractfile(MANIFEST).read())
             except (KeyError, AttributeError, ValueError):
                 raise BackupError('This is not a Folio backup (it has no folio-backup.json)') from None
@@ -164,7 +180,7 @@ def restore(archive: Path, data_dir: Path, *, current_version: str, conn: ipp.Co
     ``on_swapped`` runs as soon as the backup's data is in place (before the
     printers are recreated), so Folio can open the restored databases at once.
     """
-    manifest = inspect(archive, current_version)
+    manifest = inspect(archive, current_version, room=shutil.disk_usage(data_dir).free)
     staging, aside = data_dir / '.restore-staging', data_dir / '.before-restore'
     shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir()

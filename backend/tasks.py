@@ -118,13 +118,15 @@ class TaskRunner:
                     self._threads.append(thread)
 
     def submit(self, kind: str, lane: str, owner: str, work: Callable[[Task], Any],
-               prepare: Callable[[Path], None] | None = None, limit: int | None = None) -> Task:
+               prepare: Callable[[Path], None] | None = None, limit: int | None = None,
+               alone: bool = False) -> Task:
         """Queue ``work``. ``prepare`` runs first, in the caller's thread, to put
         inputs into the task's private directory before any worker can start.
 
         ``limit``: how many tasks ``owner`` may have waiting or running (None:
-        no limit of their own). Raises Busy, before anything is written, when
-        that or MAX_ACTIVE is reached."""
+        no limit of their own). ``alone``: no other task of this kind, anyone's,
+        may be waiting or running (a restore). Raises Busy, before anything is
+        written, when one of those or MAX_ACTIVE is reached."""
         if lane not in LANES or self.root is None:
             raise RuntimeError('Task runner is not started')
         self.prune()
@@ -134,6 +136,8 @@ class TaskRunner:
         with self._mutex:  # Counted and reserved together, so two requests can't both take the last place
             active = [t for t in self._tasks.values() if t.status not in FINISHED]
             mine = sum(t.owner == owner for t in active)
+            if alone and any(t.kind == kind for t in active):
+                raise Busy(f'Another {kind} is already waiting or running. Wait for it to finish.')
             if limit is not None and mine >= limit:
                 raise Busy(f"You already have {mine} {'job' if mine == 1 else 'jobs'} waiting or running "
                            f'(your limit is {limit}). Wait for one to finish, or cancel one.')
@@ -151,6 +155,11 @@ class TaskRunner:
             raise
         self._queues[lane].put(task)
         return task
+
+    def active(self, kind: str) -> bool:
+        """Whether a task of this kind, anyone's, is waiting or running."""
+        with self._mutex:
+            return any(t.kind == kind and t.status not in FINISHED for t in self._tasks.values())
 
     def get(self, task_id: str, owner: str) -> Task | None:
         with self._mutex:

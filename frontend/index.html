@@ -104,7 +104,7 @@
     <div class="rail-bottom">
       <div class="machine-status"><span class="led" id="device-led"></span><div><span id="rail-scanner-name">Selected scanner</span><small id="device-status">Checking connection…</small></div></div>
       <button class="rail-logout" id="logout-button">SIGN OUT <span>↗</span></button>
-      <div class="rail-license">EDITION <span>0.22.0</span></div>
+      <div class="rail-license">EDITION <span>0.22.1</span></div>
       <a class="rail-source" href="https://github.com/kmmukut/folio-scan-studio" target="_blank" rel="noopener">Source code · AGPL-3.0</a>
     </div>
   </aside>
@@ -243,7 +243,7 @@
         </section>
       </div>
       <section class="people-panel quota-panel"><span class="overline">PRINT QUOTAS</span><h2>Pages per month.</h2>
-        <p>A monthly page limit for members and print-only accounts; administrators have none, and guests have their own limits. Each person can also have their own limit below. Pages are counted from the print statistics, from the first of each month.</p>
+        <p>A monthly page limit for members and print-only accounts; administrators have none, and guests have their own limits. Each person can also have their own limit below. Pages are counted from the print statistics, from the first of each month. Limits apply to printing through Folio; prints sent straight to the print server (AirPrint from phones, or a computer set up with it) need no sign-in and aren’t limited.</p>
         <form id="quota-default-form" class="people-form quota-default-form"><label>Limit for everyone <input id="quota-default" type="number" min="0" max="100000" placeholder="No limit"></label><button class="button outline-button" type="submit">Save</button></form>
         <p id="quota-warning" class="quota-warning hidden">Print statistics are switched off, so pages aren’t counted and nobody is limited. Turn them on under Statistics.</p>
       </section>

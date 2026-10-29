@@ -92,7 +92,8 @@ and privacy-conscious design.
 - **Print statistics:** pages, sheets and paper saved by person, printer and
   month, from Folio's own log (no document names), with CSV export.
 - **Print quotas:** an optional monthly page limit per person, shown to
-  them on the Print desk.
+  them on the Print desk. It covers printing through Folio; AirPrint and
+  other prints sent straight to the print server aren't limited.
 - **Fair turns:** a limit on how many exports and prints each person can
   have waiting at once, with a default and per-person settings.
 - **Share safely:** administrator, member and print-only accounts, private

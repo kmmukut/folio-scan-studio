@@ -7,9 +7,12 @@ from __future__ import annotations
 
 import io
 import csv
+import os
 import shutil
+import tempfile
 from datetime import datetime
-from typing import Literal
+from pathlib import Path
+from typing import Callable, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -119,28 +122,43 @@ def start_backup(request: Request):
 
 @router.post('/api/admin/restore', status_code=202)
 async def start_restore(request: Request):
-    """Upload a backup, check it, then replace Folio's data with it in the background."""
-    upload = web.DATA_DIR / '.restore-upload.tar.gz'
-    free = shutil.disk_usage(web.DATA_DIR).free
-    total = 0
-    with upload.open('wb') as target:
-        async for chunk in request.stream():
-            total += len(chunk)
-            if total > free // 2:
-                target.close()
-                upload.unlink(missing_ok=True)
-                raise HTTPException(413, 'Not enough free space to restore this backup')
-            target.write(chunk)
+    """Upload a backup, check it, then replace Folio's data with it in the background.
+
+    One restore at a time. Each upload has a file of its own, which moves into
+    its task's folder (the task folders are cleared when Folio starts)."""
+    if tasks.runner.active('restore'):
+        raise tasks.Busy('Another restore is already waiting or running. Wait for it to finish.')
+    fd, name = tempfile.mkstemp(prefix='.restore-upload-', suffix='.tar.gz', dir=tasks.runner.root or web.DATA_DIR)
+    upload = Path(name)
     try:
-        manifest = backup.inspect(upload, __version__)
-    except backup.BackupError as exc:
-        upload.unlink(missing_ok=True)
-        raise HTTPException(400, str(exc)) from exc
+        free = shutil.disk_usage(web.DATA_DIR).free
+        total = 0
+        with os.fdopen(fd, 'wb') as target:
+            async for chunk in request.stream():
+                total += len(chunk)
+                if total > free // 2:
+                    raise HTTPException(413, 'Not enough free space to restore this backup')
+                target.write(chunk)
+        try:
+            manifest = backup.inspect(upload, __version__, room=shutil.disk_usage(web.DATA_DIR).free)
+        except backup.BackupError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        task = tasks.runner.submit('restore', 'export', web.task_owner(request), restore_work(request),
+                                   prepare=lambda folder: os.replace(upload, folder / 'backup.tar.gz'),
+                                   limit=web.job_limit(request), alone=True)
+    finally:
+        upload.unlink(missing_ok=True)  # Already moved into the task's folder, unless something failed
+    return JSONResponse({'task': task.public(tasks.runner.position(task)), 'manifest': manifest}, status_code=202)
+
+
+def restore_work(request: Request) -> Callable[[tasks.Task], dict]:
+    """The restore itself, run as a task from the backup in its own folder."""
     # Keep the person restoring signed in, if their account is in the backup.
     token = request.cookies.get(security.COOKIE_NAME)
     current = security.session(web.DATA_DIR, token)
 
     def work(task: tasks.Task) -> dict:
+        archive = task.directory / 'backup.tar.gz'
         def swapped() -> None:
             task.update('Starting up with the restored data…', .9)
             web.JOBS_DIR.mkdir(parents=True, exist_ok=True)  # A backup without documents has no jobs folder
@@ -152,13 +170,12 @@ async def start_restore(request: Request):
             devices.invalidate()
             devices.write_managed_sane_config(web.registry(), web.managed_sane_path())
         try:
-            return backup.restore(upload, web.DATA_DIR, current_version=__version__, conn=builtin_admin(),
+            return backup.restore(archive, web.DATA_DIR, current_version=__version__, conn=builtin_admin(),
                                   on_swapped=swapped, progress=lambda done, total: task.update(
                                       f'Restoring ({done} of {total} files)…', .05 + .8 * done / max(total, 1)))
         finally:
-            upload.unlink(missing_ok=True)
-    task = tasks.runner.submit('restore', 'export', web.task_owner(request), work, limit=web.job_limit(request))
-    return JSONResponse({'task': task.public(tasks.runner.position(task)), 'manifest': manifest}, status_code=202)
+            archive.unlink(missing_ok=True)
+    return work
 
 
 class ChecklistBody(BaseModel):

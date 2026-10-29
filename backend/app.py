@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import asyncio
+import contextlib
 import hmac
 import json
 import logging
@@ -530,12 +531,13 @@ def run_print(source: Path, kind: str, title: str, choices: dict,
                                             progress=page_progress)
         except printing.PrintFileError as exc:
             raise HTTPException(400, str(exc)) from exc
-        check_quota(choices.get('user'), selected * choices.get('copies', 1))
-        if task:
-            # Last point at which cancelling stops the job; CUPS owns it after this.
-            task.update('Sending to the printer…', start + (end - start) * .95)
-        outcome = print_with_cups(target, title, **choices)
-    log_print(choices, selected, origin, outcome)
+        with quota_turn(choices.get('user')):  # Checked, sent and counted as one step
+            check_quota(choices.get('user'), selected * choices.get('copies', 1))
+            if task:
+                # Last point at which cancelling stops the job; CUPS owns it after this.
+                task.update('Sending to the printer…', start + (end - start) * .95)
+            outcome = print_with_cups(target, title, **choices)
+            log_print(choices, selected, origin, outcome)
     note_quota_reached(choices.get('user'))
     return {**cups_receipt(outcome), 'pages_selected': selected}
 
@@ -556,6 +558,21 @@ def quota_state(username: str) -> dict:
     limit = security.quota_for(DATA_DIR, username)
     used = stats.pages_this_month(DATA_DIR, username)
     return {'limit': limit, 'used': used, 'left': None if limit is None else max(0, limit - used)}
+
+
+_quota_turns: dict[str, threading.Lock] = {}
+_quota_turns_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def quota_turn(username: str | None):
+    """One print at a time per person, from the quota check until it is counted,
+    so two prints sent together can't both fit in the pages that are left.
+    Only the moment of sending is held; preparing pages happens before."""
+    with _quota_turns_lock:
+        turn = _quota_turns.setdefault(username or '', threading.Lock())
+    with turn:
+        yield
 
 
 def check_quota(username: str | None, pages: int) -> None:

@@ -168,9 +168,11 @@ Announcements only reach the network the host is on. If your phones are on
 another network or VLAN, your router has to repeat them (look for an "mDNS
 repeater" or "multicast DNS" setting) and allow traffic to the host's port.
 
-Prints sent this way don't go through Folio, so they aren't in Folio's
-statistics unless you switch on **Statistics → Also count prints sent
-straight to the print server**.
+Prints sent this way don't go through Folio: they need no sign-in, so
+anyone on your network can print, and Folio's page limits don't apply to
+them. They aren't in Folio's statistics unless you switch on **Statistics →
+Also count prints sent straight to the print server**. Where page limits
+matter, leave port 631 unpublished so people print through Folio.
 
 ### Other CUPS servers
 

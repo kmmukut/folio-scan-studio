@@ -4,6 +4,16 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## Unreleased
+
+### Fixed
+- **An old scan's result kept coming back.** Folio remembered the last
+  scan's result (*"Added 1 page(s)"*, or its error) until the next scan or a
+  restart, and showed it on every page load, whatever document was open:
+  even after that document was deleted, and as an empty *"Ready"* notice
+  to other people. Now the result shows only on the document the scan went
+  into, deleting that document clears it, and nobody else sees it.
+
 ## 0.22.1 — Safer restores; page limits that hold
 
 Fixes from a review of the code. Each was confirmed in the code and comes

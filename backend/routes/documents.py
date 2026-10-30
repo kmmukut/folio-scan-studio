@@ -119,8 +119,10 @@ def scan_status(request: Request):
                 status['job_id'] = None
                 status['message'] = 'Scanner busy' if status['active'] else 'Ready'
                 status['error'] = None
+                status['pages_added'] = 0
         except HTTPException:
             status['job_id'] = None
+            status['pages_added'] = 0
     return status
 
 
@@ -180,6 +182,9 @@ def delete_document(job_id: str):
         # Validated ID, a directory created inside JOBS_DIR by this app.
         # Delete source images, thumbnails, batches, metadata, and edit history.
         shutil.rmtree(path)
+        if web.scan_state['job_id'] == job_id:  # Its last scan's result goes with it
+            web.scan_state.update(message='Ready', job_id=None, pages_added=0, error=None,
+                                  cancelled=False, updated=time.time())
         return {'ok': True, 'deleted': job_id}
 
 

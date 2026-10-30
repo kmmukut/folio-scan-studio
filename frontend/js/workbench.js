@@ -30,7 +30,7 @@ function renderDocument(){
   $('#undo-delete').title=deletedCount?`Restore most recently deleted page (${deletedCount} available)`: 'No deleted pages to restore';
   $('#deleted-page-count').textContent=String(deletedCount);
   $('#export-button').setAttribute('aria-disabled',!j.pages.length);
-  renderPages();renderPreview();renderBatches();
+  renderPages();renderPreview();renderBatches();renderScanNotice();
 }
 // Touch and mouse pointer-based page reordering plus accessible arrow controls.
 async function commitOrder(sourceId,targetId,after){
@@ -306,7 +306,11 @@ function renderScanStatus(status){
   $('#scan-now').innerHTML=state.scanning?`${icon('scanner')} Scanning…`:`${icon('scanner')} Start scan <span>↗</span>`;
   $('#cancel-scan').hidden=!state.scanning;$('#cancel-scan').disabled=!state.scanning||!!status.cancel_requested;
   $('#cancel-scan').textContent=status.cancel_requested?'Cancelling…':'Cancel current scan';
-  let el=$('#scan-alert');if(status.active){el.className='notice';el.textContent=status.cancel_requested?'Requesting graceful cancellation…':'Scanning. Completed pages are preserved even if interrupted.';}
+  state.scan=status;renderScanNotice();
+}
+function renderScanNotice(){
+  const status=state.scan||{},el=$('#scan-alert');if(status.active){el.className='notice';el.textContent=status.cancel_requested?'Requesting graceful cancellation…':'Scanning. Completed pages are preserved even if interrupted.';}
+  else if(!status.job_id||status.job_id!==state.job?.id)el.className='notice hidden';  // A finished scan's result shows on its own document only
   else if(status.error){el.className='notice error';el.textContent=`Scan error: ${status.error}`;}
   else if(status.pages_added>0){el.className='notice';el.textContent=status.message||`Added ${status.pages_added} pages`;}else el.className='notice hidden';
 }

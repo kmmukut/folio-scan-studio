@@ -5,7 +5,7 @@ const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const icon = name => `<svg class="svg-icon"><use href="#ico-${name}"/></svg>`;
 const html = input => String(input??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const state = {job:null,jobs:[],selected:null,scanning:false,csrf:null,user:null,role:null,autoSuggestion:null,guestEnabled:false,guestCsrf:null,guestPreview:false,dragId:null,guestFile:null,memberFile:null,scanners:[],printQueues:[],
+const state = {job:null,jobs:[],selected:null,scanning:false,scan:null,csrf:null,user:null,role:null,autoSuggestion:null,guestEnabled:false,guestCsrf:null,guestPreview:false,dragId:null,guestFile:null,memberFile:null,scanners:[],printQueues:[],
   settings:{scanner_id:'',source:'ADF',mode:'Color',resolution:300,auto:true,count:5,role:'normal',skipBlank:false}};
 let pollTimer, toastTimer, cropGesture=null, cropRect=null, previewSerial=0;
 let suppressPageClickUntil=0;

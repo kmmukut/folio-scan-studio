@@ -69,14 +69,16 @@ and privacy-conscious design.
   your NAS.
 - **Share scanners as AirScan:** Macs, Windows and Android scan from them
   without Folio and without a driver, even from scanners that speak only
-  WSD.
+  WSD (tested with a Mac so far).
 - **Leave out blank pages** while scanning (the empty backs of one-sided
   sheets), or remove them later; dust and show-through don't fool it, and a
   signature or a single line always keeps a page.
 - **A print server built in:** CUPS with drivers for thousands of printer
   models, set up from the browser (driverless or with a driver chosen by
   model, checked with the printer first); test, pause and remove printers,
-  and let phones print to them (AirPrint). CUPS's own administration pages
+  and let phones print to them (AirPrint). A printer maker's own Linux
+  driver, for printers that print best with it, goes in a folder Folio
+  installs it from. CUPS's own administration pages
   are there too, over HTTPS, with a login you choose in Folio.
 - **Printer care:** toner, ink and parts levels, with a warning when
   something runs low, and an email when toner runs low or a printer needs
@@ -142,12 +144,12 @@ Raspberry Pi 3, 4 and 5 running a 64-bit OS, and other ARM servers.
 
 | Edition | Includes | Size (download) | Image |
 |---|---|---|---|
-| **Full** | Everything, including searchable PDFs (OCR) and automatic straightening suggestions | ~1.3 GB (~330 MB) | `ghcr.io/kmmukut/folio-scan-studio:0.22-full` |
-| **Lite** | Everything except those two; for Raspberry Pi–class hosts | ~0.9 GB (~220 MB) | `ghcr.io/kmmukut/folio-scan-studio:0.22-lite` |
+| **Full** | Everything, including searchable PDFs (OCR) and automatic straightening suggestions | ~1.3 GB (~400 MB) | `ghcr.io/kmmukut/folio-scan-studio:0.23-full` |
+| **Lite** | Everything except those two; for Raspberry Pi–class hosts | ~0.9 GB (~315 MB) | `ghcr.io/kmmukut/folio-scan-studio:0.23-lite` |
 
 Both include the print server and its drivers. Choose with
-`FOLIO_EDITION=full` or `lite` in `.env`. Tags: `0.22.0-full` (exact),
-`0.22-full` (receives 0.22.x fixes; what `compose.yaml` uses), `full`
+`FOLIO_EDITION=full` or `lite` in `.env`. Tags: `0.23.0-full` (exact),
+`0.23-full` (receives 0.23.x fixes; what `compose.yaml` uses), `full`
 (newest release), and the same with `-lite`. `latest` is the newest Full
 release. The images are also mirrored to Docker Hub as
 `kmmukut/folio-scan-studio`.

@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from backend import app as web, airscan, devices, probe, report  # noqa: E402
+from backend.version import __version__  # noqa: E402
 import test_builtin_print_server_v015 as v015  # noqa: E402
 
 builtin = v015.builtin  # The built-in print server with a fake CUPS behind it
@@ -85,7 +86,7 @@ def test_a_printer_report_says_what_the_printer_and_cups_answer(builtin, monkeyp
                      'JetDirect: port 9100', 'Scanning: WSD at port 8018, /wsd/scan (found at a known address)',
                      '> <name> printed garbage', '### What happened'):
         assert expected in text, (expected, text.splitlines())
-    assert re.search(r'\*\*Folio:\*\* 0\.22\.\d+, (Full|Lite) edition, (amd64|arm64)\n', text)
+    assert re.search(rf'\*\*Folio:\*\* {re.escape(__version__)}, (Full|Lite) edition, (amd64|arm64)\n', text)
     assert private_parts(text) == [] and 'Kitchen' not in text and fake.server not in text
     assert result['title'] == '[Hardware] Samsung M2885FW Series'
     assert result['fields'] == {'device': 'Samsung M2885FW Series', 'kind': 'Multifunction (print and scan)',

@@ -16,7 +16,7 @@ Most of what makes an old printer feel modern comes from the sharing layer.
 Folio's job is to make the device and sharing layers easy to set up and keep
 healthy, and to make the workflow layer excellent.
 
-## Current structure (0.22)
+## Current structure (0.23)
 
 - `backend/app.py`: the application's shared core: settings and data
   folders, the sign-in middleware, start-up and background upkeep, and the
@@ -500,7 +500,9 @@ may change with real use.
    device which ways to print and scan it offers, with ports and paths (see
    D19), shares scanners as AirScan (see D20), and writes hardware reports
    (see D21).
-13. **Next candidates:** community hardware reports toward 1.0;
+13. ~~**0.23 — Makers' own drivers.**~~ A drivers folder installed at each
+   start (see D22); Black & white (1-bit) removed, Grayscale keeps text sharp.
+14. **Next candidates:** community hardware reports toward 1.0;
    translations; saved scan presets.
 USB-specific work waits for community testers (D11).
 

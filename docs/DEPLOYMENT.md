@@ -474,8 +474,8 @@ docker compose pull
 docker compose up -d
 ```
 
-With `FOLIO_VERSION=0.22` this picks up 0.22.x fixes. To move to a new
-minor version, change `FOLIO_VERSION` (e.g. to `0.23`). To go back, restore
+With `FOLIO_VERSION=0.23` this picks up 0.23.x fixes. To move to a new
+minor version, change `FOLIO_VERSION` (e.g. to `0.24`). To go back, restore
 the backup and set the previous version; newer versions may change the
 data folder in ways older ones don't understand.
 

@@ -27,7 +27,7 @@ FROM python:3.12-slim-trixie@sha256:aa943ce411423c7582288f18707ff66eddcbaeb51050
 # own drivers can be added from a folder (backend/drivers.py); libcupsimage2t64
 # is there for those (many link it) and bsdtar to unpack RPM packages.
 ARG FOLIO_EDITION=full
-ARG FOLIO_VERSION=0.22.2
+ARG FOLIO_VERSION=0.23.0
 LABEL org.opencontainers.image.title="Folio Scan Studio" \
       org.opencontainers.image.version="${FOLIO_VERSION}-${FOLIO_EDITION}" \
       org.opencontainers.image.description="Self-hosted scanning, printing and document workbench for CUPS/SANE devices" \

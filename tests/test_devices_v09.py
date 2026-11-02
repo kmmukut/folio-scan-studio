@@ -171,23 +171,42 @@ def one_page():
         return doc.tobytes()
 
 
-def test_gray_and_black_white_real_pdf_conversion(tmp_path):
+def test_gray_real_pdf_conversion(tmp_path):
     source=tmp_path/'source.pdf'
     source.write_bytes(one_page())
-    for mode in ('gray','bw'):
-        target=tmp_path/f'{mode}.pdf'
-        assert printing.prepare_pdf(source,'pdf',target,color_mode=mode)==1
-        with fitz.open(target) as doc:
-            page=doc[0]
-            assert page.rect.width==595 or page.rect.width>200
-            assert doc.page_count==1
-            imgs=page.get_images(full=True)
-            if mode=='bw':
-                assert imgs
-                pix=fitz.Pixmap(doc, imgs[0][0])
-                assert pix.n==1, '1-bit source should load as a single monochrome channel'
-            else:  # Grayscale keeps text as text since 0.22.2; a picture only without Ghostscript
-                assert ('Hello from Folio' in page.get_text())==bool(shutil.which('gs'))
+    target=tmp_path/'gray.pdf'
+    assert printing.prepare_pdf(source,'pdf',target,color_mode='gray')==1
+    with fitz.open(target) as doc:
+        page=doc[0]
+        assert page.rect.width==595 or page.rect.width>200
+        assert doc.page_count==1
+        # Grayscale keeps text as text since 0.22.2; a picture only without Ghostscript
+        assert ('Hello from Folio' in page.get_text())==bool(shutil.which('gs'))
+
+
+def test_black_and_white_is_gone_and_old_pages_print_in_grayscale(ui):
+    """v0.23: "Black & white (1-bit)" made every colour lighter than mid-gray
+    (yellow, orange, light blue, green…) vanish. It's gone; a page opened
+    before still sends it, and gets Grayscale."""
+    client,tmp=ui
+    page=(Path(__file__).resolve().parents[1]/'frontend'/'index.html').read_text()
+    assert 'value="bw"' not in page and 'Black &amp; white' not in page
+    assert page.count('<option value="gray">Grayscale</option>')==3
+    token=client.post('/api/print/inspect',headers={'X-Upload-Filename':'page.pdf'},content=one_page()).json()['token']
+    saved=[]
+    def capture(path,title,**kwargs):
+        saved.append(kwargs)
+        return 'request id is ColorDesk-2'
+    from pytest import MonkeyPatch
+    with MonkeyPatch.context() as mp:
+        mp.setattr(web,'print_with_cups',capture)
+        sent=client.post('/api/print/submit-preview',json={'token':token},
+                         headers={'x-print-queue':'ColorDesk','x-print-color':'bw'})
+        assert sent.status_code==200,sent.text
+        assert client.post('/api/print/submit-preview',json={'token':token},
+                           headers={'x-print-queue':'ColorDesk','x-print-color':'sepia'}).status_code==400
+    assert saved[0]['color_mode']=='gray'
+    assert 'bw' not in client.get('/api/printers').json()['printers'][0]['capabilities']['color_modes']
 
 
 def test_attach_existing_sane_scanner_and_reject_duplicates(ui, monkeypatch):

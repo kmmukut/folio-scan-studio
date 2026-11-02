@@ -124,7 +124,7 @@ def sheets_used(pages: int, copies: int, nup: int, sides: str) -> int:
 
 def color_of(color_mode: str, printer_has_color: bool | None) -> str:
     """What was asked for. On a colour printer "Automatic" is the printer's call."""
-    if color_mode in ('gray', 'bw') or printer_has_color is False:
+    if color_mode == 'gray' or printer_has_color is False:
         return 'greyscale'
     return 'colour' if color_mode == 'color' else 'auto'
 

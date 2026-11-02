@@ -50,7 +50,7 @@ def test_sheets_count_both_sides_and_pages_per_sheet():
 
 def test_colour_is_what_was_asked_for_and_what_the_printer_can_do():
     assert stats.color_of('color', True) == 'colour'
-    assert stats.color_of('gray', True) == stats.color_of('bw', None) == 'greyscale'
+    assert stats.color_of('gray', True) == stats.color_of('gray', None) == 'greyscale'
     assert stats.color_of('auto', False) == 'greyscale'  # A mono printer cannot print colour
     assert stats.color_of('auto', True) == 'auto'  # The printer decides
 

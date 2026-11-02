@@ -405,7 +405,7 @@ def read_cups_capabilities(server: str, queue: str) -> dict:
     validate_queue(queue)
     result=cups_run(['lpoptions','-h',server,'-p',queue,'-l'])
     caps={'known':False, 'media':[], 'duplex':None, 'color':None,
-          'color_modes':['auto','gray','bw'], 'trays':[], 'resolution':[],
+          'color_modes':['auto','gray'], 'trays':[], 'resolution':[],
           'source_option':None, 'paper_sources':[], 'source_default':None,
           'media_option':None, 'media_map':{},
           'envelope_type_option':None, 'envelope_type_value':None, 'raw':{}}
@@ -458,7 +458,7 @@ def read_cups_capabilities(server: str, queue: str) -> dict:
     color_options=('color','rgb','cmyk','srgb','adobergb','devicecolor')
     caps['color']=any(x.lower() in color_options for x in mode_opts) if mode_opts else None
     if caps['color'] is not False:
-        caps['color_modes']=['auto','color','gray','bw']
+        caps['color_modes']=['auto','color','gray']
     for option in PAPER_SOURCE_KEYS:
         if option not in source_rows:
             continue

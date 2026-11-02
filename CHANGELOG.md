@@ -58,6 +58,14 @@ Sections for 0.9.5 and earlier are carried over from the release READMEs.
 - **Not verified yet:** that page on paper (the reason for all this);
   makers' drivers other than Samsung's; an ARM computer.
 
+### Removed
+- **Black & white (1-bit)**, a choice under *Color handling*. It turned
+  each page into a picture and made every dot black or white: colours
+  lighter than mid-gray (yellow, orange, cyan, light blue, green, pink,
+  light gray) vanished completely, photos lost their shades, and text
+  printed soft. *Grayscale* does what it was for, with sharp text. A page
+  opened before the upgrade that still asks for it prints in Grayscale.
+
 ### Upgrading
 - Your own `compose.yaml` (or Portainer stack) needs the new line under
   `volumes:` to use the drivers folder:
@@ -74,8 +82,6 @@ Sections for 0.9.5 and earlier are carried over from the release READMEs.
   so text prints as sharp as with *Printer default*. Black stays solid
   black, including the CMYK black of files made for print shops. If
   Ghostscript can't convert a file, Folio still makes pictures, as before.
-  *Black & white (1-bit)* is unchanged: still a picture, with solid black
-  text.
 - **An old scan's result kept coming back.** Folio remembered the last
   scan's result (*"Added 1 page(s)"*, or its error) until the next scan or a
   restart, and showed it on every page load, whatever document was open:

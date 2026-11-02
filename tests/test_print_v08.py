@@ -30,7 +30,7 @@ def qa(tmp_path,monkeypatch):
     monkeypatch.setattr(devices,'list_cups_queues', lambda server:[
         {'queue':'SamsungAirPrint','ready':True,'status':'idle'}])
     monkeypatch.setattr(devices,'cups_capabilities', lambda *a: {
-        'known':False,'media':[],'duplex':None,'color':None,'color_modes':['auto','color','gray','bw']})
+        'known':False,'media':[],'duplex':None,'color':None,'color_modes':['auto','color','gray']})
     monkeypatch.setattr(appmod,'DATA_DIR',tmp_path)
     monkeypatch.setattr(appmod,'JOBS_DIR',tmp_path/'jobs')
     monkeypatch.setattr(appmod,'PREVIEW_ROOT',tmp_path/'print-previews')

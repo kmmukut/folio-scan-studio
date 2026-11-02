@@ -187,7 +187,7 @@ def api(tmp_path, monkeypatch):
     monkeypatch.setattr(devices, 'list_cups_queues', lambda server: [{'queue': 'Office', 'ready': True, 'status': 'idle'}])
     monkeypatch.setattr(devices, 'listed_sane_devices', lambda: [])
     monkeypatch.setattr(devices, 'cups_capabilities', lambda *a: {
-        'known': False, 'media': [], 'duplex': None, 'color': None, 'color_modes': ['auto', 'color', 'gray', 'bw']})
+        'known': False, 'media': [], 'duplex': None, 'color': None, 'color_modes': ['auto', 'color', 'gray']})
     printed = []
 
     def fake_cups(path, title, **choices):

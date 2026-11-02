@@ -23,7 +23,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(devices,'list_cups_queues', lambda server:[
         {'queue':'SamsungAirPrint','ready':True,'status':'idle'}])
     monkeypatch.setattr(devices,'cups_capabilities', lambda *a: {
-        'known':False,'media':[],'duplex':None,'color':None,'color_modes':['auto','color','gray','bw']})
+        'known':False,'media':[],'duplex':None,'color':None,'color_modes':['auto','color','gray']})
     monkeypatch.setattr(appmod, 'DATA_DIR', tmp_path)
     monkeypatch.setenv('SCAN_STUDIO_ADMIN_PASSWORD', 'a-test-password-that-is-long-enough')
 

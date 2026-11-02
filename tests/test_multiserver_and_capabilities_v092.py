@@ -60,7 +60,7 @@ def test_independent_servers_duplicate_queue_names_and_permissions(tmp_path,monk
         [{'queue':'Shared','ready':True,'status':'idle'}, {'queue':'ColorOffice','ready':True,'status':'idle'}])
     monkeypatch.setattr(devices,'cups_capabilities',lambda server,queue:{
         'known':True,'media':['Letter'],'duplex':True,'color':server==servers[1],
-        'color_modes':['auto','gray','bw'], 'trays':[], 'resolution':[]})
+        'color_modes':['auto','gray'], 'trays':[], 'resolution':[]})
     security._guest_submissions.clear();security._global_submissions.clear()
     with TestClient(web.app) as client:
         logged=client.post('/api/auth/login',json={'username':'admin','password':'a-secure-testing-password'})

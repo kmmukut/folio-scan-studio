@@ -90,13 +90,3 @@ def test_cancelling_a_print_stops_the_conversion(tmp_path):
     with pytest.raises(RuntimeError, match='Cancelled'):
         printing.prepare_pdf(source, 'pdf', target, color_mode='gray', progress=cancelled)
     assert not list(tmp_path.glob('*.converted.pdf'))
-
-
-@needs_gs
-def test_black_and_white_is_still_a_1_bit_picture(tmp_path):
-    source, target = tmp_path / 'source.pdf', tmp_path / 'bw.pdf'
-    colourful(source)
-    printing.prepare_pdf(source, 'pdf', target, color_mode='bw')
-    with fitz.open(target) as doc:
-        image = doc[0].get_images(full=True)
-        assert image and fitz.Pixmap(doc, image[0][0]).n == 1

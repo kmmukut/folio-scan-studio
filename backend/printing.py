@@ -218,27 +218,26 @@ def prepare_pdf(path: Path, kind: str, output: Path, *, pages: str = 'all',
             else:
                 selected.save(output,garbage=3,deflate=True)
         count=len(ids)
-    if color_mode in ('gray','bw'):
+    if color_mode=='gray':
         convert_color(output,color_mode,progress)
     return count
 
 
 def convert_color(path: Path, mode: str, progress: Callable[[int, int], None] | None = None) -> None:
-    """Convert chosen PDF pages to true grayscale or 1-bit before CUPS processing.
+    """Convert chosen PDF pages to true grayscale before CUPS processing.
 
     Grayscale keeps text and drawings as they are: Ghostscript rewrites their
     colours as grays. A page turned into a picture prints light and soft on a
     laser printer (the smoothed edges of its text become dots), so pictures
-    are only the fallback when Ghostscript can't convert a file, and the way
-    to 1-bit black and white. Auto and Color preserve vector PDFs. Picture
-    resolution is bounded to prevent multi-megapixel PDF pages from
-    exhausting a small Docker VM.
+    are only the fallback when Ghostscript can't convert a file. Auto and
+    Color preserve vector PDFs. Picture resolution is bounded to prevent
+    multi-megapixel PDF pages from exhausting a small Docker VM.
     """
-    if mode not in ('gray','bw'):
+    if mode!='gray':
         return
     converted=path.with_suffix('.converted.pdf')
     try:
-        if mode=='gray' and gray_with_ghostscript(path,converted,progress):
+        if gray_with_ghostscript(path,converted,progress):
             os.replace(converted,path)
             return
         with fitz.open(path) as original, fitz.open() as pdf:
@@ -246,13 +245,9 @@ def convert_color(path: Path, mode: str, progress: Callable[[int, int], None] | 
                 if progress:
                     progress(number,original.page_count)
                 box=item.rect
-                scale=min((220 if mode=='bw' else 200)/72,
-                          (18_000_000/max(box.width*box.height,1))**.5)
+                scale=min(200/72,(18_000_000/max(box.width*box.height,1))**.5)
                 pix=item.get_pixmap(matrix=fitz.Matrix(scale,scale),colorspace=fitz.csGRAY,alpha=False)
                 image=Image.frombytes('L',(pix.width,pix.height),pix.samples)
-                if mode=='bw':
-                    # Threshold may be tuned in future driver presets.
-                    image=image.point(lambda value:255 if value>=170 else 0).convert('1')
                 stream=io.BytesIO()
                 image.save(stream,format='PNG',optimize=True)
                 page=pdf.new_page(width=box.width,height=box.height)

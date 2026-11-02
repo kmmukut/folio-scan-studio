@@ -345,7 +345,9 @@ def print_choices(request: Request, authenticated: bool) -> dict:
     color_mode = request.headers.get('x-print-color','auto').lower()
     paper_source = request.headers.get('x-print-source','default').strip()
     queue = choose_print_queue(request, authenticated)
-    if color_mode not in ('auto','color','gray','bw'):
+    if color_mode=='bw':
+        color_mode='gray'  # "Black & white (1-bit)" until 0.23: a page opened before still sends it
+    if color_mode not in ('auto','color','gray'):
         raise HTTPException(400, 'Unsupported print color mode')
     records=devices.all_cups_queues(cups_servers())
     target=devices.resolve_printer(queue,records)
@@ -432,7 +434,7 @@ def print_with_cups(file_path: Path, title: str = 'Folio print', *,
         command += ['-o', f"{caps['source_option']}={paper_source}"]
     if printing.ORIENTATION[orientation] is not None:
         command += ['-o', f'orientation-requested={printing.ORIENTATION[orientation]}']
-    if color_mode in ('gray','bw'):
+    if color_mode=='gray':
         command += ['-o','print-color-mode=monochrome']
     elif color_mode=='color':
         command += ['-o','print-color-mode=color']

@@ -149,7 +149,7 @@ def cups(tmp_path, monkeypatch):
         {'queue': name, 'ready': entry['state'] != 5, 'status': 'idle'} for name, entry in fake.printers.items()])
     monkeypatch.setattr(devices, 'listed_sane_devices', lambda: [])
     monkeypatch.setattr(devices, 'cups_capabilities', lambda *a: {
-        'known': False, 'media': [], 'duplex': None, 'color': None, 'color_modes': ['auto', 'color', 'gray', 'bw']})
+        'known': False, 'media': [], 'duplex': None, 'color': None, 'color_modes': ['auto', 'color', 'gray']})
     printed = []
 
     def fake_print(path, title, **choices):

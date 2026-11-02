@@ -8,10 +8,15 @@ from __future__ import annotations
 import io
 import os
 import re
+import shutil
+import subprocess
+import time
 from pathlib import Path
 from typing import Callable
 from PIL import Image, ImageOps
 import pymupdf as fitz  # PyMuPDF (the 'fitz' name is deprecated)
+
+GRAY_SECONDS = 300  # Ghostscript's time to rewrite a print as grays; then pictures instead
 
 # A name/CUPS media combination is only shown as definitely supported when the
 # actual queue advertises it (via lpoptions). These are safe optional presets.
@@ -221,14 +226,21 @@ def prepare_pdf(path: Path, kind: str, output: Path, *, pages: str = 'all',
 def convert_color(path: Path, mode: str, progress: Callable[[int, int], None] | None = None) -> None:
     """Convert chosen PDF pages to true grayscale or 1-bit before CUPS processing.
 
-    This is a deliberate raster conversion for explicit print-color overrides.
-    Auto and Color preserve vector PDFs instead. Resolution is bounded to
-    prevent multi-megapixel PDF pages from exhausting a small Docker VM.
+    Grayscale keeps text and drawings as they are: Ghostscript rewrites their
+    colours as grays. A page turned into a picture prints light and soft on a
+    laser printer (the smoothed edges of its text become dots), so pictures
+    are only the fallback when Ghostscript can't convert a file, and the way
+    to 1-bit black and white. Auto and Color preserve vector PDFs. Picture
+    resolution is bounded to prevent multi-megapixel PDF pages from
+    exhausting a small Docker VM.
     """
     if mode not in ('gray','bw'):
         return
     converted=path.with_suffix('.converted.pdf')
     try:
+        if mode=='gray' and gray_with_ghostscript(path,converted,progress):
+            os.replace(converted,path)
+            return
         with fitz.open(path) as original, fitz.open() as pdf:
             for number,item in enumerate(original):
                 if progress:
@@ -249,6 +261,44 @@ def convert_color(path: Path, mode: str, progress: Callable[[int, int], None] | 
         os.replace(converted,path)
     finally:
         converted.unlink(missing_ok=True)
+
+
+def gray_with_ghostscript(source: Path, target: Path,
+                          progress: Callable[[int, int], None] | None = None) -> bool:
+    """Rewrite a PDF's colours as grays, keeping text as text. False when it can't."""
+    gs=shutil.which('gs')
+    if not gs:
+        return False
+    with fitz.open(source) as doc:
+        pages=doc.page_count
+    # UseFastColor: plain formulas instead of colour profiles, which made CMYK black 12% gray
+    command=[gs,'-q','-dSAFER','-dBATCH','-dNOPAUSE','-sDEVICE=pdfwrite',
+             '-sColorConversionStrategy=Gray','-dProcessColorModel=/DeviceGray','-dUseFastColor=true',
+             '-dAutoRotatePages=/None',f'-sOutputFile={target}',str(source)]
+    deadline=time.monotonic()+GRAY_SECONDS
+    with subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL) as process:
+        try:
+            while True:
+                if progress:
+                    progress(0,pages)  # Also where a cancelled print stops
+                try:
+                    process.wait(timeout=.5)
+                    break
+                except subprocess.TimeoutExpired:
+                    if time.monotonic()>deadline:
+                        process.kill()
+                        return False
+        except BaseException:
+            process.kill()
+            raise
+    if process.returncode!=0:
+        return False
+    try:
+        with fitz.open(target) as doc:
+            return doc.page_count==pages
+    except Exception:  # noqa: BLE001 - a damaged result falls back to pictures
+        return False
 
 
 def test_page(output: Path, *, printer: str, server: str, user: str, version: str) -> None:

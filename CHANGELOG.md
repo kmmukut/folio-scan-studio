@@ -4,15 +4,51 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
-## Unreleased
+## 0.22.2 — Sharp grayscale prints
 
 ### Fixed
+- **Prints in Grayscale came out light and faded.** Folio turned each page
+  into a 200 dpi picture to make it gray. The text stopped being text, and
+  its smoothed edges became gray dots on a laser printer. Now Ghostscript
+  rewrites the colours as grays and leaves text and drawings as they are,
+  so text prints as sharp as with *Printer default*. Black stays solid
+  black, including the CMYK black of files made for print shops. If
+  Ghostscript can't convert a file, Folio still makes pictures, as before.
+  *Black & white (1-bit)* is unchanged: still a picture, with solid black
+  text.
 - **An old scan's result kept coming back.** Folio remembered the last
   scan's result (*"Added 1 page(s)"*, or its error) until the next scan or a
   restart, and showed it on every page load, whatever document was open:
   even after that document was deleted, and as an empty *"Ready"* notice
   to other people. Now the result shows only on the document the scan went
   into, deleting that document clears it, and nobody else sees it.
+
+### Verified
+- **Tests:** 317 on the host, 5 skipped. Inside the images, on amd64: Full
+  322, Lite 318 with 4 skipped. New tests:
+  - a coloured PDF printed in Grayscale keeps its text and has no colour
+    left; a landscape page stays landscape
+  - black text stays solid black, whether the file wrote it as RGB, CMYK
+    black or rich black; a 20% gray stays 20% gray
+  - without Ghostscript, or when it fails, pages become pictures as before
+  - cancelling a print stops the conversion
+  - a finished scan's notice belongs to its own document, deleting that
+    document clears it, and other people don't get it
+  - the Grayscale and scan-notice tests fail on 0.22.1's code
+- **Through a Samsung M2885FW's driver, without printing:** a page in
+  Grayscale now reaches the printer as text, exactly the size of the same
+  page with *Printer default* (13.8 kB); 0.22.1 sent a picture (74.5 kB).
+- **In headless Chrome,** with SANE's test scanner: 0.22.1 still showed
+  *"Added 1 page(s)"* after the document was deleted and the page
+  reloaded, and an empty *"Ready"* to another account; 0.22.2 shows
+  neither.
+- **Start-up check:** both images start healthy.
+- **Not verified:** a Grayscale print on paper; the arm64 images (built and
+  tested by the release workflow).
+
+### Upgrading
+Nothing is required; your data and settings carry over. Re-pull the image
+(`0.22`, `full` or `lite` receive this release).
 
 ## 0.22.1 — Safer restores; page limits that hold
 

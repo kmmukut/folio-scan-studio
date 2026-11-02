@@ -1,6 +1,7 @@
 """Folio v0.9 device migration, safety and color conversion regressions."""
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -181,10 +182,12 @@ def test_gray_and_black_white_real_pdf_conversion(tmp_path):
             assert page.rect.width==595 or page.rect.width>200
             assert doc.page_count==1
             imgs=page.get_images(full=True)
-            assert imgs
             if mode=='bw':
+                assert imgs
                 pix=fitz.Pixmap(doc, imgs[0][0])
                 assert pix.n==1, '1-bit source should load as a single monochrome channel'
+            else:  # Grayscale keeps text as text since 0.22.2; a picture only without Ghostscript
+                assert ('Hello from Folio' in page.get_text())==bool(shutil.which('gs'))
 
 
 def test_attach_existing_sane_scanner_and_reject_duplicates(ui, monkeypatch):

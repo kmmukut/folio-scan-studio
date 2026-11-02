@@ -16,8 +16,10 @@ the options the device reports.
 - **Older printers** need a driver. Folio's built-in print server includes
   the drivers Debian ships (Gutenprint, HPLIP for HP, foo2zjs, SpliX for
   Samsung and Xerox, the OpenPrinting collections and more), and lists the
-  best matches for your model first. With CUPS on another computer, the
-  driver must be installed there.
+  best matches for your model first. A maker's own Linux driver can be
+  added through the
+  [drivers folder](DEPLOYMENT.md#printer-makers-own-drivers). With CUPS on
+  another computer, the driver must be installed there.
 - **Connections:** IPP, JetDirect (port 9100) and LPD over the network;
   USB when the printer is plugged into the host and passed to Folio
   (untested, see below).
@@ -52,7 +54,7 @@ names you gave; read it before you submit it.
 
 | Device | Type | Connection | Printing | Scanning | Folio | Notes |
 |---|---|---|---|---|---|---|
-| Samsung M2885FW | Mono laser multifunction | Network | ✓ | ✓ (WSD) | 0.9.x–0.22 | Maintainer's device. Print with the *Samsung M288x Series PXL* driver (verified over JetDirect): driverless printing garbles pages, because the printer offers only AirPrint's raster (no PDF or PWG raster), and Folio says so. Monochrome, duplex, 17 paper sizes; reports toner, imaging unit, fuser and roller levels. Scanner offers flatbed and feeder, at 75–300 dpi: that is the printer's own limit over WSD (it reports 300 dpi optical resolution there); the 600 dpi on spec sheets needs Samsung's own driver (ULD), which exists only for x86 and finds printers only on its own network. Shared as AirScan from Folio, a Mac scans from it in Image Capture (0.22). Start scans a few seconds apart: one started right after another may fail. |
+| Samsung M2885FW | Mono laser multifunction | Network | ✓ | ✓ (WSD) | 0.9.x–0.22 | Maintainer's device. Print with the *Samsung M288x Series PXL* driver (verified over JetDirect): driverless printing garbles pages, because the printer offers only AirPrint's raster (no PDF or PWG raster), and Folio says so. Prints come out lighter through every open driver, and driverless, than with Samsung's own driver from a Mac over the same JetDirect connection; Samsung's own driver can be added through the drivers folder (x86 only; see [Deployment](DEPLOYMENT.md#printer-makers-own-drivers)). Monochrome, duplex, 17 paper sizes; reports toner, imaging unit, fuser and roller levels. Scanner offers flatbed and feeder, at 75–300 dpi: that is the printer's own limit over WSD (it reports 300 dpi optical resolution there); the 600 dpi on spec sheets needs Samsung's own driver (ULD), which exists only for x86 and finds printers only on its own network. Shared as AirScan from Folio, a Mac scans from it in Image Capture (0.22). Start scans a few seconds apart: one started right after another may fail. |
 
 ## Tested computers
 

@@ -27,6 +27,7 @@ Folio is configured in two places:
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Reverse proxies whose `X-Forwarded-For` header is trusted, as IPs or networks (`172.19.0.0/16`). See [Reverse proxy](DEPLOYMENT.md#behind-a-reverse-proxy). |
 | `FOLIO_BUILTIN_CUPS` | `on` | Folio's built-in print server. `off` if you only use CUPS on other computers. See [Printing](DEPLOYMENT.md#printing). |
 | `FOLIO_AIRPRINT_PORT` | `631` | The host port that reaches the built-in print server, used in AirPrint announcements. Change it only if you publish 631 as another port. |
+| `FOLIO_DRIVERS_DIR` | `./drivers` | The folder on the host for printer makers' own drivers (`.deb`, `.rpm`, archives, `.ppd`), mounted read-only and installed at every start. Empty: nothing happens. See [Printer makers' own drivers](DEPLOYMENT.md#printer-makers-own-drivers). |
 | `CUPS_SERVERS` | empty | CUPS on other computers that is always used, e.g. `192.168.1.10:631`. Optional: more are added in **Devices → Print servers**. Servers listed here can only be removed here. |
 | `USER_PRINT_MAX_MB` | `256` | Largest file a signed-in person may upload to print (64–2048). Guests are always limited to 10 MB and 20 pages. |
 | `FOLIO_AIRSCAN_DISCOVERY` | `off` | `on` also finds eSCL/WSD scanners by multicast. That usually needs `network_mode: host`; adding scanners by address works without it. |

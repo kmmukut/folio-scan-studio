@@ -19,7 +19,8 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from backend import airprint, airscan, cupsadmin, devices, diagnostics, ipp, printing, printserver, probe, report, tasks
+from backend import (airprint, airscan, cupsadmin, devices, diagnostics, drivers, ipp, printing, printserver, probe,
+                     report, tasks)
 from backend.version import __version__
 from backend import app as web
 
@@ -421,7 +422,8 @@ def cups_drivers(server: str, make: str, model: str = ''):
         raise HTTPException(400, 'Choose a manufacturer')
     conn = cupsadmin.connection(web.DATA_DIR, web.configured_server(server))
     drivers = web.cups_call(cupsadmin.models, conn, make)
-    return {'drivers': cupsadmin.rank_drivers(drivers, model, limit=60), 'total': len(drivers)}
+    return {'drivers': cupsadmin.rank_drivers(drivers, model, limit=60, preferred=added_drivers(server)),
+            'total': len(drivers)}
 
 
 class DriverlessCheckBody(BaseModel):
@@ -458,8 +460,13 @@ def suggest_driver(server: str, make_model: str) -> dict | None:
         candidates = cupsadmin.models(cupsadmin.connection(web.DATA_DIR, server), make_model.split()[0])
     except ipp.IPPError:
         return None
-    ranked = cupsadmin.rank_drivers(candidates, make_model, limit=1)
+    ranked = cupsadmin.rank_drivers(candidates, make_model, limit=1, preferred=added_drivers(server))
     return ranked[0] if ranked else None
+
+
+def added_drivers(server: str) -> frozenset[str]:
+    """Drivers from the drivers folder, which only the built-in print server has."""
+    return drivers.added() if cupsadmin.is_builtin(server) else frozenset()
 
 
 class AddressCheckBody(BaseModel):

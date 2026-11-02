@@ -41,6 +41,9 @@ services:
       SCAN_GRACE_SECONDS: "${SCAN_GRACE_SECONDS:-30}"
     volumes:
       - ./data:/data
+      # Printer makers' own drivers, installed at every start (.deb, .rpm,
+      # archives, .ppd; see docs/DEPLOYMENT.md). Must stay read-only (:ro).
+      - "${FOLIO_DRIVERS_DIR:-./drivers}:/drivers:ro"
       # Announce the built-in printers (AirPrint) and shared scanners (AirScan)
       # to phones and computers through the host's Avahi, which Raspberry Pi OS
       # and most Linux desktops run:

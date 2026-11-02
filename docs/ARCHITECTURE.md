@@ -53,6 +53,8 @@ healthy, and to make the workflow layer excellent.
   requested in Folio (D17).
 - `backend/airprint.py`: announces the built-in printers through the host's
   Avahi services folder (D14).
+- `backend/drivers.py`: printer makers' own drivers from the read-only
+  `/drivers` folder, installed at each start before the print server (D22).
 - `backend/airscan.py`: shares scanners as AirScan: runs AirSane and
   describes the shared scanners for the announcement (D20).
 - `backend/report.py`: hardware reports, written from what a device and
@@ -433,6 +435,43 @@ its scanner IDs (made from addresses) are left out. Messages from outside
 (CUPS, SANE, errors) have the known host names and given names replaced,
 and the whole report is scrubbed for anything that looks like an address,
 MAC address, UUID, serial number, local host name, login or email address.
+
+### D22 — Makers' own drivers, from a folder people fill (0.23)
+Some printers print worse through every open driver than through the
+maker's own. The maintainer's Samsung M2885FW prints light through the open
+PCL6 driver, through a driver where Ghostscript draws the whole page, and
+driverless (AirPrint raster), yet dark from a Mac with Samsung's driver over
+the same JetDirect connection. The open drivers' data was checked and is
+right (solid black text at 600 dpi). Samsung's driver differs in turning the
+page into toner dots itself, with a colour engine and tuning for each model;
+the others leave that to the printer.
+
+Folio can't ship such drivers: their licences let people install and use
+them, not pass them on, and many exist only for x86. So the container
+installs, at every start and before the print server starts, what people
+put in a folder mounted at `/drivers` (`backend/drivers.py`): Debian
+packages with their scripts, as on any Debian system; RPM packages and
+archives unpacked; bare PPDs; a `root/` tree copied as it is. Every driver
+that comes with them is made visible to CUPS, the filters each names are
+linked where CUPS runs filters, and each filter is checked (this CPU, its
+libraries, its interpreter); System check shows the result, and the driver
+list puts these drivers first, since someone added them on purpose.
+Folio knows one layout by name: Samsung's and HP's Unified Linux Driver,
+which is no package and finds its parts only where its installer puts them.
+
+**The folder must be mounted read-only.** It runs as root, so Folio (an
+ordinary user, and the part exposed to the network) must not be able to
+change it; a writable folder is refused. RPM files and `root/` never land
+in Folio itself or its data.
+
+**Every start, the same result.** Links and unpacked archives are rebuilt
+at each start; packages and copied files last until the container is
+recreated, which is when the image's own state returns anyway.
+
+Rejected: a build option that downloads one maker's driver into a
+self-built image (one maker only, and every update means building again);
+copying drivers into a running container (gone at the next update); asking
+people to write their own Dockerfile on top of Folio's.
 
 
 Planned in this order; each step is a separate, tested release. Priorities

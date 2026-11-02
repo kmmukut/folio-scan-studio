@@ -192,6 +192,55 @@ encrypted connection when CUPS asks for one. Printers Folio creates are
 always shared, because CUPS only accepts jobs from other computers for
 shared printers.
 
+### Printer makers' own drivers
+
+Folio's print server has the drivers Debian ships, and most printers need
+nothing else. Some print well only with their maker's own driver. The
+Samsung M2885FW, for one, prints noticeably lighter through every open
+driver, and driverless, than through Samsung's own driver from a Mac.
+Folio can't ship makers' drivers (their licences, and many exist only for
+x86), but it installs the ones you download into the **drivers folder**:
+
+1. Download the maker's Linux driver for your printer.
+2. Put the file in the drivers folder, next to `compose.yaml`
+   (`FOLIO_DRIVERS_DIR` in `.env` chooses another folder; in Portainer, set
+   it to the folder's full path on the host).
+3. Restart Folio: `docker compose restart` (after changing `compose.yaml`
+   or `.env`: `docker compose up -d`).
+4. **Devices → Add a printer**: the driver is listed first for its models.
+   **System check** says what was added, and what is missing.
+
+At every start, before the print server starts, Folio installs what the
+folder holds:
+
+| In the folder | What Folio does |
+|---|---|
+| Debian packages (`.deb`) | Installs them with their setup scripts, as on any Debian system. A missing dependency doesn't stop them; System check names it, and you can add that package to the folder too. 32-bit x86 packages are accepted on 64-bit x86. |
+| RPM packages (`.rpm`) | Unpacks their files (their scripts don't run; they never replace the image's own files). |
+| Archives (`.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2`, `.zip`) | Unpacks them. Packages inside are installed as above, Debian ones first. Samsung's and HP's *Unified Linux Driver* is set up the way its own installer does it. Anything else is used where it lies. |
+| PPD files (`.ppd`, `.ppd.gz`) | Adds them as drivers: enough for PostScript printers. |
+| A folder named `root` | Copies its contents onto the system as they are (`root/opt/x` becomes `/opt/x`), for anything else. Never over Folio itself or its data. |
+
+Then Folio lists every driver that came with them, links the programs each
+one uses where the print server looks for them, and checks those programs:
+made for this computer's processor (an x86 driver can't run on a Raspberry
+Pi), and with the libraries they need.
+
+**Keep the folder read-only** (`:ro` in `compose.yaml`, as shipped). What is
+in it runs with full rights inside the container, so Folio uses it only
+when it can't change it itself. Put only drivers from their makers there.
+
+Linked drivers are rebuilt at every start; installed packages and copied
+files stay until the container is recreated (`docker compose up -d
+--force-recreate`, or a Folio update). A driver taken out of the folder is
+gone after that. Printers you added with it then need another driver.
+
+**Samsung:** HP publishes Samsung's *Unified Linux Driver*, e.g.
+[uld_V1.00.39_01.17.tar.gz](https://ftp.hp.com/pub/softlib/software13/printers/SS/SL-C4010ND/uld_V1.00.39_01.17.tar.gz).
+Put the `.tar.gz` in the folder as it is, then choose the driver named
+after the series without *PXL* or *Foomatic*, e.g. *Samsung M288x Series*.
+It exists for x86 computers only.
+
 ## Sharing scanners (AirScan)
 
 Folio can share a scanner with other computers as an AirScan (eSCL)

@@ -23,7 +23,9 @@ FROM python:3.12-slim-trixie@sha256:aa943ce411423c7582288f18707ff66eddcbaeb51050
 #   lite:           for Raspberry Pi-class hosts; leaves out the OCR stack
 #                   (OCRmyPDF, Tesseract) and OpenCV/NumPy
 # Both include the built-in print server: CUPS with every printer driver
-# Debian packages, because old printers on small hosts need them most.
+# Debian packages, because old printers on small hosts need them most. Makers'
+# own drivers can be added from a folder (backend/drivers.py); libcupsimage2t64
+# is there for those (many link it) and bsdtar to unpack RPM packages.
 ARG FOLIO_EDITION=full
 ARG FOLIO_VERSION=0.22.2
 LABEL org.opencontainers.image.title="Folio Scan Studio" \
@@ -39,6 +41,7 @@ RUN case "$FOLIO_EDITION" in full|lite) ;; *) echo "FOLIO_EDITION must be full o
        sane-utils sane-airscan cups-client ca-certificates tini \
        libavahi-client3 libjpeg62-turbo libpng16-16t64 libusb-1.0-0 \
        cups cups-filters printer-driver-all foomatic-db-compressed-ppds openprinting-ppds hplip \
+       libcupsimage2t64 libarchive-tools \
        $( [ "$FOLIO_EDITION" = full ] && echo ocrmypdf tesseract-ocr-eng ) \
     && rm -rf /var/lib/apt/lists/* \
     # HP's SANE plug-in (from hplip, kept for its printer drivers) aborts every

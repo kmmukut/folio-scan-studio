@@ -1,7 +1,7 @@
 #!/bin/sh
 # Folio's container start, as root:
 #  1. the built-in print server (CUPS), kept running by Folio's supervisor,
-#     unless FOLIO_BUILTIN_CUPS=off;
+#     with any drivers from the drivers folder, unless FOLIO_BUILTIN_CUPS=off;
 #  2. Folio itself as an ordinary user, PUID/PGID (default 1000), so the data
 #     folder belongs to that user on the host too. PUID=0 keeps Folio as root,
 #     for USB scanners whose device files only root may open.
@@ -40,6 +40,8 @@ case "$(echo "${FOLIO_BUILTIN_CUPS:-on}" | tr '[:upper:]' '[:lower:]')" in
       chown "root:$PGID" "$DATA_DIR" && chmod 1771 "$DATA_DIR" ||
         echo "folio: could not give $DATA_DIR to root; the print server's settings are not protected from Folio" >&2
     fi
+    # Printer drivers from the folder mounted at /drivers (see backend/drivers.py).
+    python -m backend.drivers || true
     python -m backend.printserver &
     ;;
 esac

@@ -16,7 +16,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from backend import airprint, cupsadmin, devices, features, stats
+from backend import airprint, cupsadmin, devices, drivers, features, stats
 
 LOW_DISK_WARN = 1024 ** 3        # 1 GiB
 LOW_DISK_FAIL = 200 * 1024 ** 2  # 200 MiB
@@ -227,6 +227,7 @@ def check_printing(cups_servers: list[str], default_printer: str | None, data_di
         for server in cups_servers:
             if cupsadmin.is_builtin(server):
                 results.append(check_airprint())
+                results += check_drivers()
                 continue
             login = cupsadmin.admin_status(data_dir, server)
             results.append(check(f'cups-admin:{server}', f'Printer administration on {server}', 'info',
@@ -260,6 +261,27 @@ def check_airprint() -> dict:
                  (f"Announced to phones and computers (AirPrint): {', '.join(names)}. They print to port "
                   f"{airprint.port()} on the host, which must reach the built-in print server.") if names else
                  'Ready to announce printers; add one under Devices → Add a printer.')
+
+
+def check_drivers() -> list[dict]:
+    """What the container installed from the drivers folder at its start (see drivers.py)."""
+    state = drivers.status()
+    if state.get('state') in ('refused', 'failed'):
+        return [check('drivers', 'Drivers folder', 'warn', state.get('message') or 'Not used.')]
+    if state.get('state') != 'done':
+        return []  # Nothing in it: nothing to say
+    failed = [f"{s['name']}: {s['detail'] or s['result']}" for s in state.get('sources', [])
+              if s.get('result') in ('failed', 'partly', 'skipped')]
+    found = state.get('drivers', [])
+    names = sorted({d['name'] for d in found})
+    detail = (f"{count(len(found), 'driver')} added: {', '.join(names[:5])}"
+              + (f' and {len(names) - 5} more' if len(names) > 5 else '') + '.') if found else 'No drivers added.'
+    problems = failed + state.get('problems', [])
+    if problems:
+        return [check('drivers', 'Drivers folder', 'warn',
+                      f"{detail} Problems: {'; '.join(problems[:4])}"
+                      + (f' (and {len(problems) - 4} more; see the container log)' if len(problems) > 4 else ''))]
+    return [check('drivers', 'Drivers folder', 'ok' if found else 'warn', detail)]
 
 
 def check_supplies(printers: list[tuple[str, str]], supplies_for) -> list[dict]:

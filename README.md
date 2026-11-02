@@ -203,4 +203,6 @@ and OpenCV (Apache-2.0), FastAPI (MIT), CUPS (Apache-2.0) with cups-filters
 and the printer drivers Debian ships (mostly GPL), SANE with sane-airscan
 (GPL), and AirSane (GPL-3.0, built from
 [its source](https://github.com/SimulPiscator/AirSane) at a fixed commit),
-on a Debian base.
+on a Debian base. Printer makers' own drivers are never in them; Folio
+installs the ones you download from a folder (see
+[Deployment](docs/DEPLOYMENT.md#printer-makers-own-drivers)).

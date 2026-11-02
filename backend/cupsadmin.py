@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 import urllib.parse
+from collections.abc import Collection
 from pathlib import Path
 
 from backend import devices, ipp, printserver
@@ -255,14 +256,17 @@ def _tokens(text: str) -> list[str]:
     return re.findall(r'[a-z0-9]+', text.lower())
 
 
-def rank_drivers(candidates: list[dict], query: str, limit: int = 40) -> list[dict]:
+def rank_drivers(candidates: list[dict], query: str, limit: int = 40,
+                 preferred: Collection[str] = ()) -> list[dict]:
     """Order drivers by how well they match a model name such as "M2885FW".
 
     Driver families are often named with an x ("M288x"), so "m2885fw" also
-    matches "m288x". Among equals, a driver named after exactly what the printer
+    matches "m288x". Among equals, a driver someone added on purpose
+    (``preferred``: from the drivers folder, see drivers.py) comes first, then
+    one named after exactly what the printer
     calls itself ("Samsung M288x Series" → "Samsung M288x Series PXL", usually
-    the manufacturer's own) comes first, then ones marked "(recommended)", then
-    English ones.
+    the manufacturer's PPD for an open driver), then ones marked
+    "(recommended)", then English ones.
     """
     wanted = [t for t in _tokens(query) if t not in ('series', 'printer')]
 
@@ -291,9 +295,10 @@ def rank_drivers(candidates: list[dict], query: str, limit: int = 40) -> list[di
             continue
         named = bool(whole) and whole in ' '.join(driver['name'].lower().split())
         bonus = (2 if 'recommended' in driver['name'].lower() else 0) + (1 if driver['language'] == 'en' else 0)
-        scored.append((score, named, bonus, driver['name'].lower(), driver))
-    scored.sort(key=lambda item: (-item[0], -item[1], -item[2], item[3]))
-    return [item[4] for item in scored[:limit]]
+        own = driver.get('ppd') in preferred
+        scored.append((score, own, named, bonus, driver['name'].lower(), driver))
+    scored.sort(key=lambda item: (-item[0], -item[1], -item[2], -item[3], item[4]))
+    return [item[5] for item in scored[:limit]]
 
 
 # --- Queues --------------------------------------------------------------------

@@ -4,6 +4,66 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## Unreleased
+
+### Added
+- **Printer makers' own drivers, from a folder.** Some printers print well
+  only with their maker's own driver: the Samsung M2885FW prints dark from
+  a Mac with Samsung's driver and light from Folio, over the same
+  connection. Folio can't ship such drivers, so it now installs the ones
+  you download: put them in the new drivers folder (`./drivers`, or
+  `FOLIO_DRIVERS_DIR`) and restart. Debian packages are installed with
+  their setup scripts; RPM packages, archives (`.tar.gz`, `.zip`…) and
+  bare PPDs are unpacked and used; a `root/` folder is copied as it is;
+  Samsung's and HP's Unified Linux Driver is set up like its own installer
+  does. Folio links each driver's programs where the print server needs
+  them, checks they suit this computer (processor, libraries), shows the
+  result in **System check**, and lists these drivers first in **Add a
+  printer**. The folder must be mounted read-only, because what is in it
+  runs with full rights inside the container. See
+  [Deployment](docs/DEPLOYMENT.md#printer-makers-own-drivers).
+- The image gains two small packages for this: the CUPS image library many
+  makers' filters use, and `bsdtar` to unpack RPM packages.
+
+### Verified so far
+- **Tests:** 334 on the host, 6 skipped. Inside the images, on amd64: Full
+  340, Lite 336 with 4 skipped; the start-up check passes for both. New
+  tests:
+  - a bare PPD becomes a driver, listed first for its model (and the
+    ranking stays as before without one)
+  - an archive's filter is linked where CUPS runs filters and its library
+    folder made known, and both are gone at the next start once the archive
+    is taken out
+  - programs are checked: a missing library, a program for another kind of
+    computer, a script whose interpreter is missing, a filter that isn't
+    there
+  - Debian packages: this computer's kind installed, another kind skipped;
+    packages inside an archive come first
+  - RPM packages unpacked, never over Folio's own files
+  - Samsung's and HP's Unified Linux Driver laid out as its installer does,
+    and refused on ARM
+  - a `root/` folder copied, but never into Folio itself or its data;
+    unsafe archives refused; other files skipped and said so
+  - a folder Folio could change is not used; System check reports each case
+  - inside the image: a maker's Debian package installed for real, its
+    driver listed first, and a page printed through it reaching a stand-in
+    printer
+- **With HP's real Samsung driver** (`uld_V1.00.39_01.17.tar.gz`) in a
+  read-only folder, in a container without network: Folio started, added
+  170 drivers with no problems found, listed *Samsung M288x Series* first
+  for an M2885FW, and a page printed through Folio reached a stand-in
+  printer in Samsung's own printer language (with Edge Enhancement Normal,
+  as from a Mac). With the folder writable, it was refused and nothing was
+  installed.
+- **Not verified yet:** that page on paper (the reason for all this);
+  makers' drivers other than Samsung's; an ARM computer.
+
+### Upgrading
+- Your own `compose.yaml` (or Portainer stack) needs the new line under
+  `volumes:` to use the drivers folder:
+  `- "${FOLIO_DRIVERS_DIR:-./drivers}:/drivers:ro"`. Without it, nothing
+  changes.
+
 ## 0.22.2 — Sharp grayscale prints
 
 ### Fixed

@@ -159,12 +159,15 @@ def test_programs_are_checked_for_this_computer(system):
     program = Path(shutil.which('true', path='/usr/bin:/bin'))
     tarball(folder / 'acme.tar.gz', {'acme/Acme_E.ppd': (ppd('Acme E Series', 'acmebin'), 0o644),
                                      'acme/acmebin': (program.read_bytes(), 0o755)})
-    # The system has none of the libraries it needs…
-    assert install(folder, root)['problems'] == ['acmebin needs libraries that are not installed: libc.so.6']
+    # The system has none of the libraries it needs (on ARM, the loader too)…
+    needed = drivers.elf_info(program)['needed']
+    assert 'libc.so.6' in needed
+    assert install(folder, root)['problems'] == [f"acmebin needs libraries that are not installed: {', '.join(needed)}"]
     # …now it has.
-    target = root / drivers.standard_dirs(MACHINE)[-1] / 'libc.so.6'
-    target.parent.mkdir(parents=True)
-    shutil.copyfile(real_library('libc.so.6'), target)
+    folder_for_libraries = root / drivers.standard_dirs(MACHINE)[-1]
+    folder_for_libraries.mkdir(parents=True)
+    for name in needed:
+        shutil.copyfile(real_library(name), folder_for_libraries / name)
     assert install(folder, root)['problems'] == []
     # A program for another kind of computer is named as such.
     (problem,) = install(folder, root, machine=OTHER)['problems']

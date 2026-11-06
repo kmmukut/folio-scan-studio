@@ -92,7 +92,8 @@ and privacy-conscious design.
 - **Follow print jobs:** waiting, printing, stopped (and why) or done, and
   cancel your own.
 - **Print statistics:** pages, sheets and paper saved by person, printer and
-  month, from Folio's own log (no document names), with CSV export.
+  month, from Folio's own log (no document names), with CSV export. Members
+  and print-only accounts see their own.
 - **Print quotas:** an optional monthly page limit per person, shown to
   them on the Print desk. It covers printing through Folio; AirPrint and
   other prints sent straight to the print server aren't limited.
@@ -144,12 +145,12 @@ Raspberry Pi 3, 4 and 5 running a 64-bit OS, and other ARM servers.
 
 | Edition | Includes | Size (download) | Image |
 |---|---|---|---|
-| **Full** | Everything, including searchable PDFs (OCR) and automatic straightening suggestions | ~1.3 GB (~400 MB) | `ghcr.io/kmmukut/folio-scan-studio:0.23-full` |
-| **Lite** | Everything except those two; for Raspberry Pi–class hosts | ~0.9 GB (~315 MB) | `ghcr.io/kmmukut/folio-scan-studio:0.23-lite` |
+| **Full** | Everything, including searchable PDFs (OCR) and automatic straightening suggestions | ~1.3 GB (~400 MB) | `ghcr.io/kmmukut/folio-scan-studio:0.24-full` |
+| **Lite** | Everything except those two; for Raspberry Pi–class hosts | ~0.9 GB (~315 MB) | `ghcr.io/kmmukut/folio-scan-studio:0.24-lite` |
 
 Both include the print server and its drivers. Choose with
-`FOLIO_EDITION=full` or `lite` in `.env`. Tags: `0.23.0-full` (exact),
-`0.23-full` (receives 0.23.x fixes; what `compose.yaml` uses), `full`
+`FOLIO_EDITION=full` or `lite` in `.env`. Tags: `0.24.0-full` (exact),
+`0.24-full` (receives 0.24.x fixes; what `compose.yaml` uses), `full`
 (newest release), and the same with `-lite`. `latest` is the newest Full
 release. The images are also mirrored to Docker Hub as
 `kmmukut/folio-scan-studio`.

@@ -4,6 +4,65 @@ All notable changes to Folio. Versions follow `MAJOR.MINOR.PATCH`; until 1.0,
 minor versions may add features and change defaults (always with upgrade notes).
 Sections for 0.9.5 and earlier are carried over from the release READMEs.
 
+## 0.24.0 — Your own printing
+
+### Added
+- **Everyone sees their own printing.** Members and print-only accounts now
+  have a **Statistics** page too, with only what they printed through
+  Folio: pages, sheets, jobs and sheets saved, colour and greyscale, a chart
+  by day or month, the printers they used, and their monthly page limit if
+  they have one. Nobody else's numbers or names are on it; the table of
+  people, the record-keeping settings and the CSV export stay with
+  administrators, whose page is unchanged. Prints sent straight to a printer
+  from a phone or computer (AirPrint) aren't tied to an account, so they
+  aren't counted here, as with page limits.
+
+### Fixed
+- **Someone signing in after an administrator saw the administrator's
+  setup checklist** (*Set up your paper desk*: invite people, add
+  services…). Folio didn't reload the page between sessions, so what one
+  person had opened stayed for the next: the checklist on screen, and the
+  administrator's people, devices and statistics hidden in the page, where
+  the browser's developer tools could show them. Nothing could be changed
+  that way: the server refuses administrator requests from everyone else.
+  Now signing out reloads the page, and so does someone else signing in
+  after a session ran out.
+
+### Verified
+- **Tests:** 338 on the host, 6 skipped. Inside the images, on amd64: Full
+  344, Lite 340 with 4 skipped; both start and report healthy.
+  New tests:
+  - one person's figures leave out everyone else's and the jobs sent
+    straight to CUPS under their name; "All time" starts at their own first
+    job; everyone's totals are unchanged
+  - members and print-only accounts get only their own report, with their
+    page limit, and nothing of anyone else or of the settings; the
+    administrators' statistics stay closed to them; a wrong period is
+    refused, and signed-out visitors get nothing
+  - every account has the Statistics tab; the administrators' parts of
+    the page are marked and hidden on someone's own page
+  - signing out reloads the page; a session that ran out hides the
+    checklist, and someone else signing in reloads the page
+- **In a browser** (headless Chrome, Full image, with a member, a
+  print-only account and some print history):
+  - an administrator signs out and a member signs in on the same tab: the
+    page reloads, and there is no checklist
+  - an administrator's session runs out and a member signs in on that
+    page: it reloads, with no checklist and no People tab; the same person
+    signing in again keeps the page
+  - the member's Statistics page has only their own numbers (a job sent
+    straight to CUPS under their name left out) and their page limit, and
+    no table of people, settings or export; the administrators' page is as
+    before
+  - a print-only account has Print desk and Statistics; its page fits a
+    phone screen
+- **Not verified:** on the maintainer's Folio, and on real phones.
+
+### Upgrading
+- Set `FOLIO_VERSION=0.24` (or in Portainer, the image tag `0.24-full` or
+  `0.24-lite`) and re-pull. Nothing else changes; your data and `.env` stay
+  as they are.
+
 ## 0.23.0 — Printer makers' own drivers
 
 ### Added

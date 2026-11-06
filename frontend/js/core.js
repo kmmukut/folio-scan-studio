@@ -32,7 +32,7 @@ function pageUrl(p,thumb=false,uncropped=false,large=false){return `/api/jobs/${
 function today(value){try{return new Date(value).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});}catch{return '';}}
 function setViews(name){['auth-view','app-view','guest-view'].forEach(v=>$('#'+v).classList.toggle('hidden',v!==name));}
 function workspace(showPrint=false,showUsers=false,showDevices=false,showStats=false){
-  if(state.role==='printer'){showPrint=true;showUsers=false;showStats=false;}
+  if(state.role==='printer'){showPrint=!showStats;showUsers=showDevices=false;}  // Print desk and their own statistics
   setViews('app-view');$('#workspace-view').classList.toggle('hidden',showPrint||showUsers||showDevices||showStats);
   $('#admin-print-view').classList.toggle('hidden',!showPrint);
   $('#admin-users-view').classList.toggle('hidden',!showUsers);

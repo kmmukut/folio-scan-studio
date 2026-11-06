@@ -163,7 +163,7 @@
 .print-admin-actions{display:flex;align-items:center;gap:17px;flex-wrap:wrap}.print-admin-actions .button{margin:0!important}
 .guest-availability{padding:13px 16px;border:1px solid #d6b592;background:#fff0e2;color:#91533c;font-size:12px;line-height:1.6;margin:-12px 0 24px}
 .guest-view .file-preview{background:#f4f5ed}.guest-view .print-feedback{max-width:500px}
-.printer-only .rail .rail-heading,.printer-only .rail #workspace-tab,.printer-only .rail #recent-jobs,.printer-only .rail #new-job-sidebar,.printer-only .rail #users-tab,.printer-only .rail #stats-tab{display:none!important}
+.printer-only .rail .rail-heading,.printer-only .rail #workspace-tab,.printer-only .rail #recent-jobs,.printer-only .rail #new-job-sidebar,.printer-only .rail #users-tab{display:none!important}
 .printer-only .print-desk-layout{grid-template-columns:minmax(0,720px)}
 .printer-only .print-doc-panel{display:none!important}
 @media(max-width:1150px){.print-desk-layout{grid-template-columns:minmax(0,1fr)}.print-desk-heading{align-items:flex-start}.queue-health{align-self:center}}
@@ -383,6 +383,9 @@
 .stats-panel{padding:27px;border:1px solid #d7dcce;background:#fffdf7;margin-top:18px;min-width:0}
 .stats-panel h2{font:normal 29px Georgia,serif;margin:10px 0 22px}
 .stats-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 18px}
+/* Members and print-only accounts see their own printing on the same page (0.24) */
+.stats-own .stats-admin-only,.stats-desk:not(.stats-own) .stats-own-only{display:none!important}
+.stats-own .stats-grid{grid-template-columns:1fr}
 .stats-empty{font:italic 16px Georgia,serif;color:#626d60;margin:18px 0}
 .stats-chart{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;padding-top:34px}
 .stats-chart>.stats-empty{grid-column:1/-1;padding-top:0;margin-top:-20px}

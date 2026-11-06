@@ -1,7 +1,7 @@
 'use strict';
 // Statistics: what went to paper.
 // (Folio's page loads these files in order: core, auth, workbench, print, people, stats, devices, admin, main.)
-// --- Print statistics (administrators) -----------------------------------------
+// --- Print statistics (administrators: everyone's; others: their own) ----------
 const STATS_KEPT={90:'for 3 months',365:'for 1 year',730:'for 2 years',1825:'for 5 years',0:'until you delete them'};
 function statsName(user,guestUser){return user===guestUser?'Guests':user===''?'Removed account':user;}
 function bucketDate(key){const [y,m,d]=key.split('-').map(Number);return new Date(y,m-1,d||1);}
@@ -10,16 +10,17 @@ function niceCeiling(value){
   const base=10**Math.floor(Math.log10(Math.max(value,1)));
   return [1,2,2.5,3,4,5,6,8,10].map(step=>step*base).find(step=>step>=value)||10*base;
 }
-async function openStats(){if(state.role!=='admin')return;workspace(false,false,false,true);await loadStats();}
+async function openStats(){workspace(false,false,false,true);await loadStats();}
 async function loadStats(){
-  const period=$('#stats-period').value;
+  const period=$('#stats-period').value, own=state.role!=='admin';
+  $('#admin-stats-view').classList.toggle('stats-own',own);
+  if(own){renderStats(await api(`/api/print/usage?period=${encodeURIComponent(period)}`));return;}
   $('#stats-export').href=`/api/admin/stats/export?period=${encodeURIComponent(period)}`;
   renderStats(await api(`/api/admin/stats?period=${encodeURIComponent(period)}`));
 }
 function renderStats(report){
-  const t=report.totals;
-  state.statsSettings=report.settings;
-  $('#stats-off-note').classList.toggle('hidden',report.settings.enabled);
+  const t=report.totals, own=state.role!=='admin';
+  $('#stats-off-note').classList.toggle('hidden',own?report.enabled:report.settings.enabled);
   $('#stats-tiles').innerHTML=[['Pages printed',t.pages],['Sheets of paper',t.sheets],['Print jobs',t.jobs],
     ['Sheets saved',t.sheets_saved,'by double-sided and multi-page printing']]
     .map(([label,value,note])=>`<div class="stat-tile"><span>${label}</span><strong>${count(value)}</strong>${note?`<small>${note}</small>`:''}</div>`).join('');
@@ -31,9 +32,16 @@ function renderStats(report){
   if(t.direct_jobs)parts.push(`${count(t.direct_pages)} ${t.direct_pages===1?'page':'pages'} from ${count(t.direct_jobs)} ${t.direct_jobs===1?'job':'jobs'} sent straight to the print server`);
   $('#stats-breakdown').textContent=parts.join(' · ');
   renderStatsChart(report);
-  renderStatsTable('#stats-people','Person',report.people.map(p=>({...p,name:statsName(p.user,report.guest_user)})),'Nobody printed in this period.');
   const servers=new Set(report.printers.map(p=>p.server));
   renderStatsTable('#stats-printers','Printer',report.printers.map(p=>({...p,name:p.queue,detail:servers.size>1?serverName(p.server):''})),'No printer was used in this period.');
+  if(own){
+    $('#stats-quota').classList.toggle('hidden',report.quota.limit===null);
+    if(report.quota.limit!==null)$('#stats-quota').textContent=quotaText(report.quota);
+    $('#stats-own-kept').textContent=report.retention_days?`Records are kept ${STATS_KEPT[report.retention_days]}.`:'Records are kept until an administrator deletes them.';
+    return;
+  }
+  state.statsSettings=report.settings;
+  renderStatsTable('#stats-people','Person',report.people.map(p=>({...p,name:statsName(p.user,report.guest_user)})),'Nobody printed in this period.');
   $('#stats-enabled').checked=report.settings.enabled;
   $('#stats-retention').value=String(report.settings.retention_days);
   $('#stats-include-cups').checked=!!report.settings.include_cups_jobs;

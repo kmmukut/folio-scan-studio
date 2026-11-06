@@ -30,6 +30,20 @@ def my_print_quota(request: Request):
     return web.quota_state(request.state.username)
 
 
+@router.get('/api/print/usage')
+def my_print_usage(request: Request, period: str = '12m'):
+    """What the signed-in person printed through Folio: their own Statistics page.
+    Nobody else's numbers, names or the record-keeping settings are in it."""
+    if period not in stats.PERIODS:
+        raise HTTPException(400, 'Unknown period')
+    report = stats.summary(web.DATA_DIR, period, user=request.state.username)
+    totals = {key: value for key, value in report['totals'].items() if not key.startswith('direct_')}
+    return {**{key: report[key] for key in ('period', 'label', 'start', 'end', 'unit', 'series', 'printers', 'oldest')},
+            'totals': totals, 'enabled': report['settings']['enabled'],
+            'retention_days': report['settings']['retention_days'],
+            'quota': web.quota_state(request.state.username)}
+
+
 @router.get('/api/guest/status')
 def guest_status(response: Response):
     token, csrf = security.guest_csrf()

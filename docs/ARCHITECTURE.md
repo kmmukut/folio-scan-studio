@@ -16,7 +16,7 @@ Most of what makes an old printer feel modern comes from the sharing layer.
 Folio's job is to make the device and sharing layers easy to set up and keep
 healthy, and to make the workflow layer excellent.
 
-## Current structure (0.23)
+## Current structure (0.24)
 
 - `backend/app.py`: the application's shared core: settings and data
   folders, the sign-in middleware, start-up and background upkeep, and the
@@ -177,6 +177,12 @@ handles this volume with room to spare, is backed up by copying `data/`,
 and the CSV export covers spreadsheets and reporting tools. The SQL is kept
 plain, so the log could move to another database later if a real need
 appears.
+
+Since 0.24, members and print-only accounts see their own figures on the
+same Statistics page (`GET /api/print/usage`). The server filters the log by
+the signed-in name before summing, so nobody else's rows or names leave it,
+and leaves out jobs sent straight to CUPS, whose user names are whatever the
+sending device chose (the same rule as page limits).
 
 ### D13 — Published images, built and tested by CI (0.14)
 Folio is published under the AGPL-3.0-or-later (PyMuPDF and Ghostscript,
@@ -502,7 +508,10 @@ may change with real use.
    (see D21).
 13. ~~**0.23 — Makers' own drivers.**~~ A drivers folder installed at each
    start (see D22); Black & white (1-bit) removed, Grayscale keeps text sharp.
-14. **Next candidates:** community hardware reports toward 1.0;
+14. ~~**0.24 — Your own printing.**~~ Members and print-only accounts see
+   their own statistics (see D12); signing out leaves nothing of a session
+   on the page.
+15. **Next candidates:** community hardware reports toward 1.0;
    translations; saved scan presets.
 USB-specific work waits for community testers (D11).
 

@@ -286,7 +286,7 @@ async def guard_private_api(request: Request, call_next):
             return JSONResponse({'detail':'Administrator privileges required'}, status_code=403)
         # Print-only accounts have access only to account management for
         # themselves and the authenticated printing API, never scan files.
-        if session['role'] == 'printer' and not (path.startswith('/api/auth/') or (path in ('/api/print','/api/print/status','/api/print/quota','/api/print/inspect','/api/print/submit-preview','/api/printers') or path.startswith(('/api/print/preview/', '/api/print/jobs', '/api/tasks/')))):
+        if session['role'] == 'printer' and not (path.startswith('/api/auth/') or (path in ('/api/print','/api/print/status','/api/print/quota','/api/print/usage','/api/print/inspect','/api/print/submit-preview','/api/printers') or path.startswith(('/api/print/preview/', '/api/print/jobs', '/api/tasks/')))):
             return JSONResponse({'detail':'Printing-only account'}, status_code=403)
         # Every job endpoint (including thumbnails, exports and mutations)
         # is protected: members access only documents they created.

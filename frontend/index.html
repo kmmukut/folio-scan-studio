@@ -104,7 +104,7 @@
     <div class="rail-bottom">
       <div class="machine-status"><span class="led" id="device-led"></span><div><span id="rail-scanner-name">Selected scanner</span><small id="device-status">Checking connection…</small></div></div>
       <button class="rail-logout" id="logout-button">SIGN OUT <span>↗</span></button>
-      <div class="rail-license">EDITION <span>0.23.0</span></div>
+      <div class="rail-license">EDITION <span>0.24.0</span></div>
       <a class="rail-source" href="https://github.com/kmmukut/folio-scan-studio" target="_blank" rel="noopener">Source code · AGPL-3.0</a>
     </div>
   </aside>
@@ -369,15 +369,17 @@
       </div>
     </section>
     <section id="admin-stats-view" class="stats-desk hidden">
-      <div class="overline">RECORDS / 07</div><h1>What went<br><em>to paper.</em></h1>
-      <p>Every job Folio sends to a printer is counted here: who printed, on which printer, and how much paper it took. Jobs sent to CUPS from other computers are not included, and document names are never recorded.</p>
-      <div id="stats-off-note" class="stats-off-note hidden" role="status">Statistics are switched off, so new print jobs are not being recorded. Turn them on under “What Folio keeps” below.</div>
+      <div class="overline">RECORDS / 07</div><h1 class="stats-admin-only">What went<br><em>to paper.</em></h1><h1 class="stats-own-only">Your<br><em>printing.</em></h1>
+      <p class="stats-admin-only">Every job Folio sends to a printer is counted here: who printed, on which printer, and how much paper it took. Jobs sent to CUPS from other computers are not included, and document names are never recorded.</p>
+      <p class="stats-own-only">What you have printed through Folio: how many pages, how much paper, and on which printers. Prints sent straight to a printer from a phone or computer (AirPrint) are not included, and document names are never recorded.</p>
+      <p id="stats-quota" class="stats-own-only hidden"></p>
+      <div id="stats-off-note" class="stats-off-note hidden" role="status"><span class="stats-admin-only">Statistics are switched off, so new print jobs are not being recorded. Turn them on under “What Folio keeps” below.</span><span class="stats-own-only">An administrator has switched statistics off, so your new print jobs are not being recorded.</span></div>
       <div class="stats-toolbar">
         <label>Period <select id="stats-period">
           <option value="30d">Last 30 days</option><option value="month">This month</option><option value="last-month">Last month</option>
           <option value="year">This year</option><option value="12m" selected>Last 12 months</option><option value="all">All time</option>
         </select></label>
-        <a class="button outline-button" id="stats-export" href="/api/admin/stats/export?period=12m" download>Download CSV <svg class="svg-icon"><use href="#ico-download"/></svg></a>
+        <a class="button outline-button stats-admin-only" id="stats-export" href="/api/admin/stats/export?period=12m" download>Download CSV <svg class="svg-icon"><use href="#ico-download"/></svg></a>
       </div>
       <div id="stats-tiles" class="stats-tiles" aria-live="polite"></div>
       <p id="stats-breakdown" class="stats-breakdown"></p>
@@ -387,10 +389,10 @@
         <details class="stats-table-toggle"><summary>Show as a table</summary><div id="stats-chart-table"></div></details>
       </section>
       <div class="stats-grid">
-        <section class="stats-panel"><span class="overline">BY PERSON</span><h2>Who printed.</h2><div id="stats-people"></div></section>
+        <section class="stats-panel stats-admin-only"><span class="overline">BY PERSON</span><h2>Who printed.</h2><div id="stats-people"></div></section>
         <section class="stats-panel"><span class="overline">BY PRINTER</span><h2>Where it printed.</h2><div id="stats-printers"></div></section>
       </div>
-      <section class="stats-panel stats-settings"><span class="overline">RECORD KEEPING</span><h2>What Folio keeps.</h2>
+      <section class="stats-panel stats-settings stats-admin-only"><span class="overline">RECORD KEEPING</span><h2>What Folio keeps.</h2>
         <p>For each job: when, who, which printer, pages, copies, sheets, colour and paper size. Never the document's name or contents. Deleting an account removes its name from these records.</p>
         <label class="switch-line"><input id="stats-enabled" type="checkbox"> <span>Keep print statistics</span></label>
         <label class="switch-line"><input id="stats-include-cups" type="checkbox"> <span>Also count prints sent straight to the print server (from phones and computers)</span></label>
@@ -401,7 +403,8 @@
         <div class="print-admin-actions"><button class="button outline-button" id="stats-save" type="button">Save</button><button class="small-link danger-action" id="stats-clear" type="button">Delete all statistics</button></div>
         <p class="inline-note" id="stats-oldest"></p>
       </section>
-      <div class="security-note"><svg class="svg-icon"><use href="#ico-lock"/></svg> Only administrators can see this page. The numbers are what Folio sent to the printer: jobs cancelled in Folio are left out, but pages lost to a paper jam are not.</div>
+      <div class="security-note stats-admin-only"><svg class="svg-icon"><use href="#ico-lock"/></svg> Only administrators see everyone's numbers; everyone else sees only their own. The numbers are what Folio sent to the printer: jobs cancelled in Folio are left out, but pages lost to a paper jam are not.</div>
+      <div class="security-note stats-own-only"><svg class="svg-icon"><use href="#ico-lock"/></svg> <span>Only you and Folio's administrators see these numbers. They are what Folio sent to the printer: jobs cancelled in Folio are left out, but pages lost to a paper jam are not. <span id="stats-own-kept"></span></span></div>
     </section>
   </div>
 </div>

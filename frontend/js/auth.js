@@ -4,6 +4,8 @@
 function showLogin(){
   // Do not retain a previous user's private file selection on this device.
   if(typeof clearPrintSelections==='function')clearPrintSelections();
+  // Someone else signing in on this page gets a fresh one (see signIn).
+  state.lastUser=state.user||state.lastUser;$('#setup-checklist').classList.add('hidden');
   clearTimeout(pollTimer);state.csrf=null;state.user=null;state.role=null;
   $('#login-name').value='';$('#login-password').value='';
   setViews('auth-view');
@@ -25,6 +27,9 @@ async function signIn(){
   const name=$('#login-name').value.trim(), password=$('#login-password').value;
   const status=await api('/api/auth/login',{method:'POST',body:{username:name,password}});
   state.user=status.username;state.role=status.role;state.csrf=status.csrf;$('#login-password').value='';
+  // The page still holds what the previous person saw (an administrator's
+  // checklist, people, statistics); reloading it leaves none of that behind.
+  if(state.lastUser&&state.lastUser!==state.user){location.reload();return;}
   if(state.role==='printer')await setupPrintOnly();else await setupAdmin();
 }
 async function setupAdmin(){
@@ -33,7 +38,7 @@ async function setupAdmin(){
   workspace(false);$('#current-user').textContent=(state.user||'A').toUpperCase();
   $('#users-tab').classList.toggle('hidden',state.role!=='admin');
   $('#devices-tab').classList.toggle('hidden',state.role!=='admin');
-  $('#stats-tab').classList.toggle('hidden',state.role!=='admin');
+  $('#stats-tab').classList.remove('hidden');  // Members see their own printing there
   try{let jobs=await api('/api/jobs');let saved=localStorage.getItem('folio.lastDocument');if(jobs.length)await loadJob(jobs.some(j=>j.id===saved)?saved:jobs[0].id);else await newJob();}
   catch(e){problem(e);}
   updateSettings();
@@ -50,13 +55,12 @@ async function setupPrintOnly(){
   $('#current-user').textContent=state.user.toUpperCase();
   $('#users-tab').classList.add('hidden');
   $('#devices-tab').classList.add('hidden');
-  $('#stats-tab').classList.add('hidden');
+  $('#stats-tab').classList.remove('hidden');  // Their own printing
   await showPrintDesk();
 }
 async function signOut(){
   try{await api('/api/auth/logout',{method:'POST'});}catch{}
-  state.user=null;state.role=null;state.csrf=null;$('#app-view').classList.remove('printer-only');
-  showLogin();
+  location.reload();  // A fresh page: nothing of this session stays on it for the next person
 }
 // Your account: an email address (for "Forgot your password?" and, for
 // administrators, notifications) and a new password.
@@ -83,7 +87,7 @@ $('#account-password-form').onsubmit=async e=>{
   if($('#account-new').value!==$('#account-repeat').value){toast('The two new passwords are different.',true);return;}
   try{
     await api('/api/auth/password',{method:'POST',body:{current_password:$('#account-current').value,new_password:$('#account-new').value}});
-    $('#account-dialog').close();state.user=null;state.role=null;state.csrf=null;showLogin();
+    $('#account-dialog').close();showLogin();
     toast('Password changed. Sign in with the new one.');
   }catch(err){problem(err);}
 };

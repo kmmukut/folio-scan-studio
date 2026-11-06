@@ -65,10 +65,11 @@ async function loadPrinterStatus(){
   }catch(e){$('#print-status-text').textContent=e.message;}
 }
 // "42 of 100 pages this month", for people with a monthly limit.
+function quotaText(quota){return `This month you have printed ${count(quota.used)} of your ${count(quota.limit)} pages; ${count(quota.left)} left.`;}
 async function showMyQuota(){
   const quota=await api('/api/print/quota');
   $('#print-quota').classList.toggle('hidden',quota.limit===null);
-  if(quota.limit!==null)$('#print-quota').textContent=`This month you have printed ${count(quota.used)} of your ${count(quota.limit)} pages; ${count(quota.left)} left.`;
+  if(quota.limit!==null)$('#print-quota').textContent=quotaText(quota);
 }
 async function showPrintDesk(){
   workspace(true);

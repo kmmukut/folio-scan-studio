@@ -233,14 +233,18 @@ def _totals(rows: list[tuple]) -> dict:
             'auto_pages': by_color['auto']}
 
 
-def summary(data_dir: Path, period: str = '12m', now: float | None = None) -> dict:
+def summary(data_dir: Path, period: str = '12m', now: float | None = None, *, user: str | None = None) -> dict:
+    """Everyone's printing, or with ``user`` only what that person printed
+    through Folio (jobs sent straight to CUPS can't be told apart by person,
+    so they count for nobody, as with page limits)."""
     prune(data_dir, now)
+    whose, args = ("user=? AND origin != 'cups'", (user,)) if user is not None else ('1', ())
     with connection(data_dir) as db:
-        oldest = db.execute('SELECT MIN(printed_at) FROM print_log').fetchone()[0]
+        oldest = db.execute(f'SELECT MIN(printed_at) FROM print_log WHERE {whose}', args).fetchone()[0]
         start, end = period_range(period, now, oldest)
         rows = db.execute('SELECT printed_at, user, server, queue, pages, copies, sheets, color, status, origin '
-                          'FROM print_log WHERE printed_at >= ? AND printed_at < ? ORDER BY printed_at',
-                          (int(start.timestamp()), int(end.timestamp()))).fetchall()
+                          f'FROM print_log WHERE printed_at >= ? AND printed_at < ? AND {whose} ORDER BY printed_at',
+                          (int(start.timestamp()), int(end.timestamp()), *args)).fetchall()
     sent = [r for r in rows if r[8] == 'sent']
     unit, keys = _buckets(start, end)
     fmt = '%Y-%m-%d' if unit == 'day' else '%Y-%m'

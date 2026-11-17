@@ -4,7 +4,7 @@
 # scanners (see backend/airscan.py). Debian doesn't package it, so it's built
 # here, on the same base, from a pinned commit (GPL-3.0); only the program and
 # its licence go into the image.
-FROM python:3.12-slim-trixie@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159 AS airsane
+FROM python:3.12-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS airsane
 ARG AIRSANE_COMMIT=08ff4d798d718e2e50ef805404ddef82f6d03cc1
 RUN apt-get update && apt-get install -y --no-install-recommends \
        g++ make cmake git ca-certificates libsane-dev libjpeg-dev libpng-dev libavahi-client-dev libusb-1.0-0-dev \
@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && cp /build/airsaned /out/ && cp /src/LICENSE /out/doc/copyright \
     && printf 'AirSane, built by Folio from https://github.com/SimulPiscator/AirSane\ncommit %s\nLicence: GPL-3.0 (see copyright). The source is at that address.\n' "$AIRSANE_COMMIT" > /out/doc/README.Folio
 
-FROM python:3.12-slim-trixie@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159
+FROM python:3.12-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 # One codebase, two editions:
 #   full (default): everything, including searchable PDFs and auto-straighten
 #   lite:           for Raspberry Pi-class hosts; leaves out the OCR stack
